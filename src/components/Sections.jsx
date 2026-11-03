@@ -1,8 +1,23 @@
 import { Arrow, ArrowDown, CareDrop, DocCheck, External, Flask, NoAlcohol, Plus, Shield, Swipe } from './Icons.jsx';
-import { formatPrice } from '../lib/util.js';
+import { formatPrice, useInView } from '../lib/util.js';
 import { track } from '../lib/api.js';
 
 const BOTTLES_IMG = '/media/domch_bottles.webp';
+const ING = {
+  salt: { src: '/media/ing-salt.webp', w: 774, h: 460, alt: 'Монгол жамц давс' },
+  clove: { src: '/media/ing-clove.webp', w: 754, h: 545, alt: 'Хадаасан цэцэг (башир цэцэг)' },
+  mint: { src: '/media/ing-mint.webp', w: 519, h: 339, alt: 'Гааны навч' },
+};
+
+function IngPhoto({ kind }) {
+  const [ref, inView] = useInView({ rootMargin: '0px 0px -10% 0px' });
+  const img = ING[kind];
+  return (
+    <figure ref={ref} className={`ing-photo ing-photo--${kind}${inView ? ' is-in' : ''}`}>
+      <img src={img.src} alt={img.alt} width={img.w} height={img.h} loading="lazy" decoding="async" />
+    </figure>
+  );
+}
 
 export function Hero({ actions }) {
   return (
@@ -113,6 +128,7 @@ export function Ingredients() {
       <div className="z3d" data-pose="salt">
         <div className="wrap">
           <div className="copy">
+            <IngPhoto kind="salt" />
             <p className="step__n"><span>01</span> / 03</p>
             <h3 className="step__t">Монгол жамц давс</h3>
             <p className="body">Нян бактери устгаж, амны хөндий, хоолойн үрэвслийг намдаана.</p>
@@ -122,6 +138,7 @@ export function Ingredients() {
       <div className="z3d" data-pose="drop">
         <div className="wrap">
           <div className="copy">
+            <IngPhoto kind="clove" />
             <p className="step__n"><span>02</span> / 03</p>
             <h3 className="step__t">Башир цэцгийн ханд</h3>
             <p className="step__sub">Хадаасан цэцгийн ханд</p>
@@ -132,6 +149,7 @@ export function Ingredients() {
       <div className="z3d" data-pose="mint">
         <div className="wrap">
           <div className="copy">
+            <IngPhoto kind="mint" />
             <p className="step__n"><span>03</span> / 03</p>
             <h3 className="step__t">Гаа</h3>
             <p className="body">Амны хөндийг ариутгаж, сэрүүн амт өгнө.</p>
@@ -144,9 +162,9 @@ export function Ingredients() {
             <p className="eyebrow">Бүрэн найрлага</p>
             <ul className="ing-list">
               <li>Шүүсэн ус</li>
-              <li>Жамц давс</li>
-              <li>Хадаасан цэцгийн ханд (башир цэцэг)</li>
-              <li>Гаа</li>
+              <li><img src={ING.salt.src} alt="" width="40" height="24" loading="lazy" />Жамц давс</li>
+              <li><img src={ING.clove.src} alt="" width="40" height="29" loading="lazy" />Хадаасан цэцгийн ханд (башир цэцэг)</li>
+              <li><img src={ING.mint.src} alt="" width="40" height="26" loading="lazy" />Гаа</li>
               <li>Глицерин</li>
               <li>FD&amp;C Blue No.1</li>
             </ul>
