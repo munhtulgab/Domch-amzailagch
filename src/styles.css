@@ -482,6 +482,19 @@ html.menu-open .mcta { display: none; }
 .foot__bottom button { font-size: 13px; }
 @media (max-width: 899px) { .foot__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .foot__grid > :first-child { grid-column: 1 / -1; } }
 
+.msgr {
+  position: fixed; right: max(20px, env(safe-area-inset-right, 0px)); bottom: max(20px, env(safe-area-inset-bottom, 0px)); z-index: 41;
+  display: inline-flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 20px 0 16px; border-radius: 999px;
+  background: var(--accent); color: var(--on-accent); font: 600 15px/1 var(--body); text-decoration: none;
+  box-shadow: 0 16px 36px -14px rgba(10, 30, 24, 0.55); transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.msgr:hover { transform: translateY(-2px); box-shadow: 0 20px 40px -14px rgba(10, 30, 24, 0.6); }
+html.menu-open .msgr, html.modal-open .msgr { display: none; }
+@media (max-width: 819px) {
+  .msgr { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); right: 16px; width: 56px; height: 56px; padding: 0; justify-content: center; }
+  .msgr span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}
+@media (prefers-reduced-motion: reduce) { .msgr { transition: none; } }
 .mcta { display: none; }
 @media (max-width: 819px) {
   .mcta {

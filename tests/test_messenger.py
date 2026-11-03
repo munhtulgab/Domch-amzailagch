@@ -1,0 +1,219 @@
+"""Facebook Messenger integration against a fake Graph API."""
+import hashlib
+import hmac
+import json
+import sys
+import time
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+import httpx
+import pytest
+from fastapi.testclient import TestClient
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "api"))
+
+from _lib import db as dbmod  # noqa: E402
+from _lib import messenger  # noqa: E402
+from _lib.app import app  # noqa: E402
+
+TOKEN = "test-admin-token"
+AUTH = {"Authorization": f"Bearer {TOKEN}"}
+APP_ID = "123456789012345"
+APP_SECRET = "s3cr3t-app-secret-0123456789"
+PAGE_TOKEN = "EAAPageToken0123456789abcdefXYZ"
+HTTPS = {"x-forwarded-proto": "https", "x-forwarded-host": "domch.example"}
+
+
+class FakeGraph:
+    def __init__(self):
+        self.calls = []
+        self.fail = {}
+
+    def __call__(self, request: httpx.Request):
+        url = urlparse(str(request.url))
+        q = {k: v[0] for k, v in parse_qs(url.query).items()}
+        path = url.path.replace(f"/{messenger.GRAPH_VERSION}/", "")
+        body = json.loads(request.content) if request.content else None
+        self.calls.append((request.method, path, q, body))
+        if path in self.fail:
+            code, sub, msg = self.fail[path]
+            return httpx.Response(400, json={"error": {"message": msg, "code": code, "error_subcode": sub}})
+        if q.get("appsecret_proof"):
+            proof = hmac.new(APP_SECRET.encode(), q["access_token"].encode(), hashlib.sha256).hexdigest()
+            if proof != q["appsecret_proof"]:
+                return httpx.Response(400, json={"error": {"message": "Invalid appsecret_proof provided in the API argument", "code": 100}})
+        if path == "me" and request.method == "GET":
+            if q.get("access_token") != PAGE_TOKEN:
+                return httpx.Response(400, json={"error": {"message": "Invalid OAuth access token.", "code": 190}})
+            return httpx.Response(200, json={"id": "777", "name": "DOMCH", "category": "Health/beauty"})
+        if path == f"{APP_ID}/subscriptions":
+            assert q["access_token"] == f"{APP_ID}|{APP_SECRET}"
+            return httpx.Response(200, json={"success": True})
+        if path == "777/subscribed_apps":
+            return httpx.Response(200, json={"success": True})
+        if path == "me/messages":
+            return httpx.Response(200, json={"recipient_id": body["recipient"]["id"], "message_id": f"m_out_{len(self.calls)}"})
+        if path.startswith("psid"):
+            return httpx.Response(200, json={"first_name": "Бат", "last_name": "Дорж"})
+        return httpx.Response(404, json={"error": {"message": "unknown " + path, "code": 803}})
+
+
+@pytest.fixture(autouse=True)
+def env(tmp_path, monkeypatch):
+    for name in ("CF_ACCOUNT_ID", "CLOUDFLARE_ACCOUNT_ID", "CF_D1_DATABASE_ID", "D1_DATABASE_ID",
+                 "CF_API_TOKEN", "CLOUDFLARE_API_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("LOCAL_DB_PATH", str(tmp_path / "m.db"))
+    monkeypatch.setenv("ADMIN_TOKEN", TOKEN)
+    dbmod.reset_db()
+    yield
+    dbmod.reset_db()
+
+
+@pytest.fixture
+def fb(monkeypatch):
+    fake = FakeGraph()
+    monkeypatch.setattr(messenger, "http", httpx.Client(transport=httpx.MockTransport(fake)))
+    return fake
+
+
+@pytest.fixture
+def client():
+    return TestClient(app)
+
+
+def connect(client, **extra):
+    body = {"app_id": APP_ID, "app_secret": APP_SECRET, "page_token": PAGE_TOKEN, "button": True, "connect": True}
+    body.update(extra)
+    return client.put("/api/admin/messenger", json=body, headers={**AUTH, **HTTPS})
+
+
+def signed(payload: dict, secret=APP_SECRET):
+    raw = json.dumps(payload).encode()
+    sig = "sha256=" + hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+    return raw, {"x-hub-signature-256": sig, "content-type": "application/json"}
+
+
+def event(psid="psid-1", text="Сайн байна уу", mid="m1"):
+    return {"object": "page", "entry": [{"id": "777", "time": 0, "messaging": [{
+        "sender": {"id": psid}, "recipient": {"id": "777"}, "timestamp": int(time.time() * 1000),
+        "message": {"mid": mid, "text": text},
+    }]}]}
+
+
+def test_save_connects_and_hides_secrets(client, fb):
+    res = connect(client)
+    assert res.status_code == 200, res.text
+    steps = {s["key"]: s for s in res.json()["steps"]}
+    assert all(s["ok"] for s in steps.values()), steps
+    assert "DOMCH" in steps["token"]["message"]
+    cfg = res.json()["config"]
+    assert cfg["page_id"] == "777" and cfg["connected_at"]
+    assert cfg["webhook_url"] == "https://domch.example/api/messenger/webhook"
+    assert cfg["app_secret"] == {"set": True, "hint": "…6789"}
+    assert PAGE_TOKEN not in json.dumps(cfg) and APP_SECRET not in json.dumps(cfg)
+    sub = next(c for c in fb.calls if c[1] == f"{APP_ID}/subscriptions")
+    assert sub[2]["callback_url"] == cfg["webhook_url"] and sub[2]["verify_token"] == cfg["verify_token"]
+    content = client.get("/api/content").json()
+    assert content["messenger"] == {"enabled": True, "link": "https://m.me/777"}
+    dump = json.dumps(content)
+    assert PAGE_TOKEN not in dump and APP_SECRET not in dump and cfg["verify_token"] not in dump
+
+
+def test_saving_again_keeps_secrets(client, fb):
+    connect(client)
+    res = client.put("/api/admin/messenger", json={"app_id": APP_ID, "app_secret": "", "page_token": "",
+                                                    "auto_reply": "Баярлалаа!", "button": False},
+                     headers={**AUTH, **HTTPS})
+    assert res.status_code == 200
+    cfg = res.json()["config"]
+    assert cfg["page_token"]["set"] and cfg["connected_at"] and cfg["auto_reply"] == "Баярлалаа!" and not cfg["button"]
+    assert client.get("/api/content").json()["messenger"]["enabled"] is False
+
+
+def test_bad_credentials(client, fb):
+    bad = connect(client, page_token="EAAWrongToken0000000000000")
+    steps = bad.json()["steps"]
+    assert steps[0]["key"] == "token" and not steps[0]["ok"] and "хүчингүй" in steps[0]["message"]
+    wrong_secret = connect(client, app_secret="another-secret-000000000")
+    assert "App Secret" in wrong_secret.json()["steps"][0]["message"]
+    invalid = client.put("/api/admin/messenger", json={"app_id": "abc", "page_token": "short"}, headers=AUTH)
+    assert invalid.status_code == 422 and {"app_id", "page_token"} <= set(invalid.json()["fields"])
+
+
+def test_http_only_site_skips_webhook(client, fb):
+    res = client.put("/api/admin/messenger", json={"app_id": APP_ID, "app_secret": APP_SECRET,
+                                                    "page_token": PAGE_TOKEN}, headers=AUTH)
+    steps = {s["key"]: s for s in res.json()["steps"]}
+    assert steps["token"]["ok"] and not steps["webhook"]["ok"] and steps["page"]["ok"]
+    assert not res.json()["config"]["connected_at"]
+
+
+def test_webhook_verify(client, fb):
+    cfg = connect(client).json()["config"]
+    ok = client.get("/api/messenger/webhook", params={"hub.mode": "subscribe", "hub.verify_token": cfg["verify_token"],
+                                                      "hub.challenge": "1158201444"})
+    assert ok.status_code == 200 and ok.text == "1158201444"
+    bad = client.get("/api/messenger/webhook", params={"hub.mode": "subscribe", "hub.verify_token": "nope", "hub.challenge": "1"})
+    assert bad.status_code == 403
+
+
+def test_webhook_receive_reply_and_auto_reply(client, fb):
+    connect(client, auto_reply="Сайн байна уу! Удахгүй хариулна.")
+    raw, headers = signed(event())
+    assert client.post("/api/messenger/webhook", content=raw, headers=headers).text == "EVENT_RECEIVED"
+    # Facebook retries: the same mid is stored once
+    client.post("/api/messenger/webhook", content=raw, headers=headers)
+    raw2, headers2 = signed(event(text="Үнэ хэд вэ?", mid="m2"))
+    client.post("/api/messenger/webhook", content=raw2, headers=headers2)
+    sent = [c for c in fb.calls if c[1] == "me/messages"]
+    assert len(sent) == 1 and sent[0][3]["message"]["text"].startswith("Сайн байна уу!")
+
+    summary = client.get("/api/admin/summary", headers=AUTH).json()
+    assert summary["counts"]["messenger_unread"] == 2
+    threads = client.get("/api/admin/messenger/threads", headers=AUTH).json()["items"]
+    assert threads[0]["name"] == "Бат Дорж" and threads[0]["unread"] == 2 and threads[0]["can_reply"]
+    convo = client.get("/api/admin/messenger/threads/psid-1", headers=AUTH).json()
+    assert [m["direction"] for m in convo["items"]] == ["in", "out", "in"]
+    assert client.get("/api/admin/summary", headers=AUTH).json()["counts"]["messenger_unread"] == 0
+
+    assert client.post("/api/admin/messenger/threads/psid-1/reply", json={"text": "250 мл нь салбараас лавлана уу."},
+                       headers=AUTH).status_code == 200
+    assert len(client.get("/api/admin/messenger/threads/psid-1", headers=AUTH).json()["items"]) == 4
+
+    fb.fail["me/messages"] = (10, 2018278, "Message sent outside of allowed window")
+    late = client.post("/api/admin/messenger/threads/psid-1/reply", json={"text": "Сайн уу"}, headers=AUTH)
+    assert late.status_code == 502 and "24 цаг" in late.json()["message"]
+    assert client.delete("/api/admin/messenger/threads/psid-1", headers=AUTH).status_code == 200
+
+
+def test_webhook_rejects_bad_signature(client, fb):
+    connect(client)
+    raw, headers = signed(event(), secret="wrong-secret")
+    assert client.post("/api/messenger/webhook", content=raw, headers=headers).status_code == 403
+    assert client.get("/api/admin/messenger/threads", headers=AUTH).json()["items"] == []
+
+
+def test_echo_and_page_messages_ignored(client, fb):
+    connect(client)
+    payload = event(psid="777")
+    payload["entry"][0]["messaging"].append({"sender": {"id": "psid-2"}, "recipient": {"id": "777"}, "timestamp": 0,
+                                             "message": {"mid": "e1", "text": "echo", "is_echo": True}})
+    raw, headers = signed(payload)
+    client.post("/api/messenger/webhook", content=raw, headers=headers)
+    assert client.get("/api/admin/messenger/threads", headers=AUTH).json()["items"] == []
+
+
+def test_disconnect(client, fb):
+    connect(client)
+    res = client.delete("/api/admin/messenger", headers=AUTH)
+    assert res.status_code == 200 and not res.json()["config"]["page_token"]["set"]
+    assert any(c[0] == "DELETE" and c[1] == "777/subscribed_apps" for c in fb.calls)
+    assert client.get("/api/content").json()["messenger"]["enabled"] is False
+
+
+def test_admin_only(client, fb):
+    assert client.get("/api/admin/messenger").status_code == 401
+    assert client.put("/api/admin/messenger", json={}).status_code == 401

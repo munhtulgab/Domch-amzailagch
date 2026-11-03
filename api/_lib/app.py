@@ -1,19 +1,19 @@
 """DOMCH website API (FastAPI). Public content, branch finder, forms, analytics and an admin area."""
 import hashlib
-import hmac
 import json
 import os
 import re
-from datetime import datetime, timedelta, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Body, Depends, FastAPI, Header, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from .common import FieldErrors, ago, fail, now_utc, require_admin
 from .db import SCHEMA_PATH, DBError, NotConfigured, get_db
+from . import messenger
 
 app = FastAPI(
     title="DOMCH API",
@@ -30,16 +30,6 @@ RATE_LIMIT = 5  # submissions per form per visitor per 10 minutes
 
 
 # ---------------------------------------------------------------- errors
-
-class FieldErrors(Exception):
-    def __init__(self, fields: dict):
-        super().__init__("validation")
-        self.fields = fields
-
-
-def fail(fields: dict):
-    raise FieldErrors(fields)
-
 
 def _validation_response(fields: dict) -> JSONResponse:
     return JSONResponse(
@@ -103,18 +93,6 @@ async def _db_error(request: Request, exc: DBError):
 
 # ---------------------------------------------------------------- helpers
 
-def _stamp(dt: datetime) -> str:
-    return dt.strftime("%Y-%m-%d %H:%M:%S")
-
-
-def now_utc() -> str:
-    return _stamp(datetime.now(timezone.utc))
-
-
-def ago(minutes: int = 0, days: int = 0) -> str:
-    return _stamp(datetime.now(timezone.utc) - timedelta(minutes=minutes, days=days))
-
-
 def client_ip(request: Request) -> str:
     forwarded = request.headers.get("x-forwarded-for", "")
     if forwarded:
@@ -166,7 +144,7 @@ def health():
 @app.get("/api/content")
 def content(response: Response):
     db = get_db()
-    products, faqs, tips, videos, reviews, stats, places, settings = db.batch([
+    products, faqs, tips, videos, reviews, stats, places, settings, msgr = db.batch([
         "SELECT id, slug, name, volume_ml, price, online_url FROM products WHERE active = 1 ORDER BY sort, id",
         "SELECT id, question, answer FROM faqs WHERE active = 1 ORDER BY sort, id",
         "SELECT id, kind, title, summary, body, doctor_name, doctor_title, video_url, source, published_at, featured, is_sample"
@@ -177,6 +155,8 @@ def content(response: Response):
         "SELECT COUNT(*) AS count, ROUND(AVG(rating), 1) AS average FROM reviews WHERE status = 'approved'",
         "SELECT DISTINCT city, district, chain FROM branches WHERE active = 1",
         "SELECT key, value FROM settings",
+        "SELECT key, value FROM integrations WHERE key IN"
+        " ('messenger.button', 'messenger.page_id', 'messenger.page_link')",
     ])
     stat = stats[0] if stats else {}
     districts: dict = {}
@@ -196,7 +176,8 @@ def content(response: Response):
             "districts": {city: sorted(values) for city, values in districts.items()},
             "chains": sorted({p["chain"] for p in places if p.get("chain")}),
         },
-        "settings": {row["key"]: row["value"] or "" for row in settings},
+        "settings": {row["key"]: row["value"] or "" for row in settings if row["key"] in SETTING_KEYS},
+        "messenger": messenger.public_info({row["key"][len(messenger.PREFIX):]: row["value"] or "" for row in msgr}),
     }
 
 
@@ -439,6 +420,7 @@ def create_location_request(data: LocationIn, request: Request):
 EVENT_NAMES = {
     "where_click", "branch_search", "online_click", "direction_click", "call_click", "usage_view", "video_play",
     "partner_submit", "review_submit", "question_submit", "location_request", "search", "size_select",
+    "messenger_click",
 }
 
 
@@ -456,15 +438,6 @@ def create_event(data: EventIn):
 
 
 # ---------------------------------------------------------------- admin
-
-def require_admin(authorization: str = Header("")):
-    expected = os.getenv("ADMIN_TOKEN", "")
-    if not expected:
-        raise HTTPException(503, "ADMIN_TOKEN тохируулагдаагүй байна.")
-    given = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
-    if not given or not hmac.compare_digest(given.encode(), expected.encode()):
-        raise HTTPException(401, "Нэвтрэх түлхүүр буруу байна.")
-
 
 admin = APIRouter(prefix="/api/admin", dependencies=[Depends(require_admin)])
 
@@ -591,7 +564,8 @@ def admin_summary():
         " (SELECT COUNT(*) FROM partner_requests WHERE status = 'new') AS partners_new,"
         " (SELECT COUNT(*) FROM location_requests WHERE status = 'new') AS locations_new,"
         " (SELECT COUNT(*) FROM branches WHERE is_sample = 1) + (SELECT COUNT(*) FROM tips WHERE is_sample = 1)"
-        " + (SELECT COUNT(*) FROM videos WHERE is_sample = 1) AS samples"
+        " + (SELECT COUNT(*) FROM videos WHERE is_sample = 1) AS samples,"
+        " (SELECT COUNT(*) FROM messenger_messages WHERE direction = 'in' AND is_read = 0) AS messenger_unread"
     )
     since = ago(days=30)
     events = db.all(
@@ -736,3 +710,5 @@ def admin_migrate():
 
 
 app.include_router(admin)
+app.include_router(messenger.admin)
+app.include_router(messenger.public)

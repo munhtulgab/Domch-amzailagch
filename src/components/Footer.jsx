@@ -1,4 +1,5 @@
 import { PARTNER_KINDS } from '../data/static.js';
+import { track } from '../lib/api.js';
 
 const SOCIALS = [
   ['facebook', 'Facebook'],
@@ -6,8 +7,9 @@ const SOCIALS = [
   ['youtube', 'YouTube'],
 ];
 
-export function Footer({ settings, actions }) {
+export function Footer({ settings, messenger, actions }) {
   const socials = SOCIALS.filter(([k]) => settings[k]);
+  const chat = messenger && messenger.enabled ? messenger.link : '';
   const contact = [
     settings.phone && { label: 'Утас', value: settings.phone, href: `tel:${settings.phone.replace(/\s/g, '')}` },
     settings.email && { label: 'И-мэйл', value: settings.email, href: `mailto:${settings.email}` },
@@ -21,11 +23,14 @@ export function Footer({ settings, actions }) {
           <div>
             <h2>ДОМЧ</h2>
             <p>Жамц давсны уусмал, спирт агуулаагүй ам зайлагч. Үйлдвэрлэгч: Жем Интернэшнл ХХК.</p>
-            {socials.length > 0 && (
+            {(socials.length > 0 || chat) && (
               <ul className="foot__social">
                 {socials.map(([k, label]) => (
                   <li key={k}><a href={settings[k]} target="_blank" rel="noopener noreferrer">{label}</a></li>
                 ))}
+                {chat && (
+                  <li><a href={chat} target="_blank" rel="noopener noreferrer" onClick={() => track('messenger_click', { from: 'footer' })}>Messenger</a></li>
+                )}
               </ul>
             )}
           </div>

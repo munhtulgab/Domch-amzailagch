@@ -10,6 +10,7 @@ import { Dialogs } from './components/Dialogs.jsx';
 import { FALLBACK } from './data/static.js';
 import { api, track } from './lib/api.js';
 import { scrollToId } from './lib/util.js';
+import { Chat } from './components/Icons.jsx';
 
 function useToasts() {
   const [toasts, setToasts] = useState([]);
@@ -42,6 +43,7 @@ export default function Landing() {
           faqs: data.faqs && data.faqs.length ? data.faqs : FALLBACK.faqs,
           filters: { ...FALLBACK.filters, ...(data.filters || {}) },
           settings: data.settings || {},
+          messenger: data.messenger || { enabled: false, link: '' },
         });
       })
       .catch(() => {
@@ -122,7 +124,14 @@ export default function Landing() {
           <Faq faqs={content.faqs} />
         </div>
       </main>
-      <Footer settings={content.settings} actions={actions} />
+      <Footer settings={content.settings} messenger={content.messenger} actions={actions} />
+      {content.messenger && content.messenger.enabled && (
+        <a className="msgr" href={content.messenger.link} target="_blank" rel="noopener noreferrer" aria-label="Messenger-ээр бичих"
+          onClick={() => track('messenger_click', { from: 'float' })}>
+          <Chat size={22} />
+          <span>Messenger-ээр бичих</span>
+        </a>
+      )}
       <div className="mcta">
         <a className="btn" href="#where" onClick={(e) => { e.preventDefault(); track('where_click', { from: 'mobile-bar' }); scrollToId('where'); }}>
           Хаанаас авах вэ?

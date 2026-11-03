@@ -3,6 +3,7 @@ import { api } from '../lib/api.js';
 import { CITIES } from '../data/static.js';
 import { formatDate } from '../lib/util.js';
 import { Modal } from '../components/Modal.jsx';
+import { MessengerInbox, MessengerSettings } from './Messenger.jsx';
 import './admin.css';
 
 const KEY = 'domch_admin_token';
@@ -13,12 +14,13 @@ const TABS = [
   { id: 'questions', label: 'Эмчээс асуусан', inbox: true, count: 'questions_new' },
   { id: 'reviews', label: 'Сэтгэгдэл', inbox: true, count: 'reviews_pending' },
   { id: 'locations', label: 'Байршлын санал', inbox: true, count: 'locations_new' },
+  { id: 'messenger', label: 'Messenger', count: 'messenger_unread' },
   { id: 'branches', label: 'Салбарууд', table: true },
   { id: 'products', label: 'Бүтээгдэхүүн, үнэ', table: true },
   { id: 'tips', label: 'Эмчийн зөвлөгөө', table: true },
   { id: 'videos', label: 'Видео', table: true },
   { id: 'faqs', label: 'Түгээмэл асуулт', table: true },
-  { id: 'settings', label: 'Холбоо барих' },
+  { id: 'settings', label: 'Тохиргоо' },
 ];
 
 const STATUS_LABEL = {
@@ -32,6 +34,7 @@ const EVENT_LABEL = {
   direction_click: 'Зам заалгасан', call_click: 'Салбар руу залгасан', usage_view: 'Хэрэглэх заавар үзсэн',
   video_play: 'Видео тоглуулсан', partner_submit: 'Хамтын ажиллагааны хүсэлт', review_submit: 'Сэтгэгдэл илгээсэн',
   question_submit: 'Эмчээс асуусан', location_request: 'Байршлын санал', search: 'Хайлт хийсэн', size_select: 'Савлагаа сонгосон',
+  messenger_click: 'Messenger товч дарсан',
 };
 
 const ACTIVE = { k: 'active', l: 'Сайтад харуулах', type: 'checkbox', def: true };
@@ -269,6 +272,7 @@ function Overview({ call, summary, reload, go }) {
     ['questions', 'Шинэ асуулт', counts.questions_new],
     ['partners', 'Шинэ хүсэлт', counts.partners_new],
     ['locations', 'Байршлын санал', counts.locations_new],
+    ['messenger', 'Уншаагүй мессеж', counts.messenger_unread],
   ];
   const clear = async () => {
     try {
@@ -616,7 +620,7 @@ function TableView({ table, call }) {
   );
 }
 
-function Settings({ call }) {
+function ContactSettings({ call }) {
   const [values, setValues] = useState(null);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
@@ -650,6 +654,25 @@ function Settings({ call }) {
   );
 }
 
+const SETTING_TABS = [['contact', 'Холбоо барих'], ['messenger', 'Facebook Messenger']];
+
+function Settings({ call, tab, onTab, onChange }) {
+  return (
+    <div className="a-stack">
+      <div className="a-tabs" role="tablist" aria-label="Тохиргоо">
+        {SETTING_TABS.map(([id, label]) => (
+          <button key={id} type="button" role="tab" id={`st-tab-${id}`} aria-selected={tab === id} aria-controls={`st-panel-${id}`} onClick={() => onTab(id)}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel" id={`st-panel-${tab}`} aria-labelledby={`st-tab-${tab}`}>
+        {tab === 'messenger' ? <MessengerSettings call={call} onChange={onChange} /> : <ContactSettings call={call} />}
+      </div>
+    </div>
+  );
+}
+
 export default function Admin() {
   const [token, setToken] = useState(() => {
     try {
@@ -659,6 +682,7 @@ export default function Admin() {
     }
   });
   const [tab, setTab] = useState('overview');
+  const [settingsTab, setSettingsTab] = useState('contact');
   const [summary, setSummary] = useState(null);
   const logout = useCallback(() => {
     try {
@@ -673,7 +697,12 @@ export default function Admin() {
     if (!token) return;
     call('/summary').then(setSummary).catch(() => {});
   }, [call, token]);
-  useEffect(() => { loadSummary(); }, [loadSummary]);
+  useEffect(() => { loadSummary(); }, [loadSummary, tab]);
+  useEffect(() => {
+    // keep the badges fresh while the admin is open (new Messenger messages, form requests)
+    const id = setInterval(() => { if (document.visibilityState === 'visible') loadSummary(); }, 30000);
+    return () => clearInterval(id);
+  }, [loadSummary]);
 
   useEffect(() => {
     document.title = 'ДОМЧ удирдлага';
@@ -715,7 +744,10 @@ export default function Admin() {
           {tab === 'overview' && <Overview call={call} summary={summary} reload={loadSummary} go={setTab} />}
           {current.inbox && <Inbox key={tab} kind={tab} call={call} onChange={loadSummary} />}
           {current.table && <TableView key={tab} table={tab} call={call} />}
-          {tab === 'settings' && <Settings call={call} />}
+          {tab === 'messenger' && (
+            <MessengerInbox call={call} onChange={loadSummary} openSettings={() => { setSettingsTab('messenger'); setTab('settings'); }} />
+          )}
+          {tab === 'settings' && <Settings call={call} tab={settingsTab} onTab={setSettingsTab} onChange={loadSummary} />}
         </main>
       </div>
     </div>
