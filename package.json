@@ -1,0 +1,26 @@
+{
+  "name": "domch-amzailagch",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:api": "LOCAL_DB_PATH=.local/domch.db ADMIN_TOKEN=dev-admin python3 -m uvicorn api.index:app --reload --port 8000",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test:api": "python3 -m pytest -q tests"
+  },
+  "dependencies": {
+    "leaflet": "1.9.4",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "three": "0.160.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "4.3.4",
+    "vite": "5.4.11"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
