@@ -1,0 +1,1545 @@
+<!doctype html>
+<html lang="mn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="ДОМЧ жамц давсны уусмал: Монгол жамц давс, башир цэцгийн ханд, гааны найрлагатай, спиртгүй ам зайлагч.">
+<title>ДОМЧ ам зайлагч</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=Noto+Serif+Display:ital,wght@0,400;0,500;1,400;1,500&family=Unbounded:wght@500;600&display=swap">
+<style>
+/* Layout: a fixed 3D layer carries the bottle through four story sections (copy on one side, bottle on the other),
+   then solid sections slide over it for the rest of the page. Phones: bottle in the upper half, copy cards below. */
+:root {
+  --bg: #F6F4EC;
+  --surface: #FFFFFF;
+  --fg: #15201B;
+  --muted: #56625C;
+  --line: #E0DCD0;
+  --label: #46695A;
+  --accent: #0F3D32;
+  --on-accent: #F6F4EC;
+  --link: #0F3D32;
+  --tint: #E4EEE8;
+  --tint-2: #ECE9E0;
+  --ph-ink: #535C57;
+  --deep: #0C372C;
+  --deep-fg: #EAF3EE;
+  --deep-muted: #A6C4B7;
+  --deep-line: rgba(234, 243, 238, 0.16);
+  --mint: #7FE0BE;
+  --card: rgba(246, 244, 236, 0.86);
+  --deep-card: rgba(12, 55, 44, 0.86);
+  --ghost: #EAE8DF;
+  --display: 'Noto Serif Display', Georgia, 'Times New Roman', serif;
+  --body: 'Golos Text', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --wide: 'Unbounded', 'Golos Text', system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0D1411; --surface: #131D18; --fg: #E5EDE8; --muted: #9DAEA5; --line: #22302A; --label: #8CC6AE;
+    --accent: #8FD9BE; --on-accent: #0B1813; --link: #8FD9BE; --tint: #15251F; --tint-2: #18221E; --ph-ink: #A9B8B0;
+    --deep: #0A2B22; --deep-fg: #EAF3EE; --deep-muted: #A6C4B7; --deep-line: rgba(234, 243, 238, 0.14); --mint: #7FE0BE;
+    --card: rgba(13, 20, 17, 0.86); --deep-card: rgba(10, 43, 34, 0.88); --ghost: #141E19;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0D1411; --surface: #131D18; --fg: #E5EDE8; --muted: #9DAEA5; --line: #22302A; --label: #8CC6AE;
+  --accent: #8FD9BE; --on-accent: #0B1813; --link: #8FD9BE; --tint: #15251F; --tint-2: #18221E; --ph-ink: #A9B8B0;
+  --deep: #0A2B22; --deep-fg: #EAF3EE; --deep-muted: #A6C4B7; --deep-line: rgba(234, 243, 238, 0.14); --mint: #7FE0BE;
+  --card: rgba(13, 20, 17, 0.86); --deep-card: rgba(10, 43, 34, 0.88); --ghost: #141E19;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+section[id], footer[id] { scroll-margin-top: 68px; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--body);
+  font-size: 17px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+img { max-width: 100%; height: auto; }
+a { color: var(--link); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+.wrap {
+  max-width: 1280px;
+  margin-inline: auto;
+  padding-left: max(20px, env(safe-area-inset-left, 0px));
+  padding-right: max(20px, env(safe-area-inset-right, 0px));
+}
+@media (min-width: 1024px) {
+  .wrap { padding-left: max(48px, env(safe-area-inset-left, 0px)); padding-right: max(48px, env(safe-area-inset-right, 0px)); }
+}
+.skip {
+  position: fixed; left: 12px; top: -80px; z-index: 100; padding: 10px 16px; border-radius: 10px;
+  background: var(--accent); color: var(--on-accent); font-weight: 600; text-decoration: none;
+}
+.skip:focus { top: calc(12px + env(safe-area-inset-top, 0px)); }
+
+/* Type */
+.eyebrow {
+  margin: 0; display: inline-flex; align-items: center; gap: 12px;
+  font: 600 12px/1.2 var(--body); letter-spacing: 0.2em; text-transform: uppercase; color: var(--label);
+}
+.eyebrow::before { content: ""; width: 28px; height: 1px; background: currentColor; }
+.display {
+  margin: 22px 0 0; font-family: var(--display); font-weight: 400;
+  font-size: clamp(44px, 5.6vw, 88px); line-height: 0.98; letter-spacing: -0.02em; text-wrap: balance;
+}
+.h2 {
+  margin: 18px 0 0; font-family: var(--display); font-weight: 400;
+  font-size: clamp(36px, 4.4vw, 68px); line-height: 1.02; letter-spacing: -0.015em; text-wrap: balance;
+}
+.display em, .h2 em { font-style: italic; color: var(--label); }
+.lead { margin: 26px 0 0; max-width: 32em; font-size: clamp(17px, 1.3vw, 20px); line-height: 1.65; color: var(--muted); }
+.body { margin: 18px 0 0; max-width: 34em; color: var(--muted); }
+
+/* Buttons and links */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  min-height: 54px; padding: 0 28px; border: 0; border-radius: 999px;
+  background: var(--accent); color: var(--on-accent);
+  font: 600 16px/1 var(--body); text-decoration: none; cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.btn:hover { transform: translateY(-1px); box-shadow: 0 14px 28px -16px var(--accent); }
+.btn--sm { min-height: 42px; padding: 0 18px; font-size: 14px; }
+.btn--ghost { min-height: 44px; padding: 0 16px; font-size: 14px; background: transparent; color: var(--link); border: 1px solid currentColor; }
+.btn--ghost:hover { box-shadow: none; }
+.tlink {
+  display: inline-flex; align-items: center; gap: 8px; padding: 12px 0;
+  font-weight: 600; color: var(--link);
+  text-decoration: underline; text-underline-offset: 6px; text-decoration-thickness: 1px;
+}
+.tlink svg { transition: transform 0.2s ease; }
+.tlink:hover svg { transform: translateX(3px); }
+
+/* Header */
+.head {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 30;
+  padding-top: env(safe-area-inset-top, 0px);
+  background: var(--card);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2); backdrop-filter: blur(16px) saturate(1.2);
+  border-bottom: 1px solid var(--line);
+}
+.head__in { display: flex; align-items: center; gap: 20px; height: 68px; }
+.mark { font: 600 22px/1 var(--wide); letter-spacing: 0.08em; color: var(--link); text-decoration: none; }
+.nav { flex: 1 1 auto; display: flex; justify-content: center; gap: 4px 28px; }
+.nav a { position: relative; padding: 8px 0; color: var(--fg); text-decoration: none; font-size: 15px; font-weight: 500; }
+.nav a::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 3px; height: 1px; background: currentColor;
+  transform: scaleX(0); transform-origin: left; transition: transform 0.25s ease;
+}
+.nav a:hover::after { transform: scaleX(1); }
+.menu-btn {
+  display: none; width: 44px; height: 44px; flex: 0 0 44px; padding: 0; border-radius: 50%;
+  border: 1px solid var(--line); background: var(--surface); color: var(--fg);
+  align-items: center; justify-content: center; cursor: pointer;
+}
+.progress {
+  position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--accent);
+  transform-origin: 0 50%; transform: scaleX(0);
+}
+@media (max-width: 1023px) {
+  .nav {
+    display: none; position: absolute; top: 100%; left: 0; right: 0; flex-direction: column; gap: 0;
+    padding: 8px max(20px, env(safe-area-inset-right, 0px)) 20px max(20px, env(safe-area-inset-left, 0px));
+    background: var(--bg); border-bottom: 1px solid var(--line);
+  }
+  .nav.is-open { display: flex; }
+  .nav a { padding: 14px 0; border-bottom: 1px solid var(--line); font-family: var(--display); font-size: 24px; }
+  .nav a::after { display: none; }
+  .menu-btn { display: inline-flex; }
+  .head__cta { margin-left: auto; }
+}
+@media (max-width: 420px) { .head__cta { display: none; } .menu-btn { margin-left: auto; } }
+
+/* 3D layer */
+.gl {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100vh; height: 100lvh; z-index: 1;
+  pointer-events: none; opacity: 0; transition: opacity 0.6s ease;
+}
+.gl canvas { display: block; width: 100%; height: 100%; }
+.gl-ready .gl { opacity: 1; }
+
+/* Story sections that sit over the 3D layer */
+.z3d { position: relative; min-height: 100vh; min-height: 100svh; display: flex; align-items: center; padding-block: 120px 96px; }
+.z3d > .wrap { position: relative; z-index: 2; width: 100%; }
+.copy { max-width: min(560px, 46vw); }
+.copy--right { margin-left: auto; }
+.visual {
+  position: absolute; z-index: 2; top: 12%; bottom: 8%; right: 2%; width: 46%;
+  display: flex; align-items: center; justify-content: center; touch-action: pan-y;
+}
+.visual--left { right: auto; left: 2%; }
+.visual img { width: auto; max-width: 88%; max-height: 100%; object-fit: contain; }
+.gl-ready .visual img { visibility: hidden; }
+.gl-ready .visual[data-drag] { cursor: grab; }
+.gl-ready .visual[data-drag]:active { cursor: grabbing; }
+
+/* Hero */
+.chips { list-style: none; margin: 28px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.chips li {
+  display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--surface); font-size: 14px; font-weight: 600; color: var(--link);
+}
+.actions { margin-top: 34px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; }
+.z3d > .hero__foot {
+  position: absolute; left: 0; right: 0; bottom: 28px; z-index: 2;
+  display: flex; justify-content: space-between; align-items: center; gap: 16px;
+}
+.cue { display: inline-flex; align-items: center; gap: 12px; font-size: 13px; color: var(--muted); text-decoration: none; }
+.cue i { position: relative; display: block; width: 1px; height: 38px; overflow: hidden; background: var(--line); }
+.cue i::after { content: ""; position: absolute; left: 0; top: -40%; width: 1px; height: 40%; background: var(--fg); animation: cue 1.9s ease-in-out infinite; }
+@keyframes cue { to { top: 100%; } }
+.drag-hint { display: none; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.gl-ready .drag-hint { display: inline-flex; }
+
+/* Sizes */
+.opts { margin-top: 32px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; max-width: 480px; }
+.opt {
+  position: relative; display: flex; flex-direction: column; gap: 6px; padding: 20px; text-align: left;
+  border-radius: 22px; border: 1px solid var(--line); background: var(--surface); color: var(--fg);
+  font: inherit; cursor: pointer; transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+.opt:hover { transform: translateY(-2px); }
+.opt::after {
+  content: ""; position: absolute; top: 18px; right: 18px; width: 18px; height: 18px; border-radius: 50%;
+  border: 1.5px solid var(--line); background: var(--surface);
+}
+.opt[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent), 0 20px 40px -28px var(--accent); }
+.opt[aria-pressed="true"]::after { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 3px var(--surface); }
+.opt__vol { font: 600 40px/1 var(--wide); letter-spacing: -0.01em; }
+.opt__vol small { margin-left: 4px; font: 600 15px/1 var(--body); color: var(--muted); }
+.opt__meta { font-size: 13px; color: var(--muted); }
+.opt__price { margin-top: 6px; font-size: 16px; font-weight: 600; }
+.specs { margin: 28px 0 0; display: flex; flex-wrap: wrap; gap: 10px 32px; }
+.specs dt { font-size: 12px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--label); }
+.specs dd { margin: 4px 0 0; font-weight: 600; }
+
+/* Ingredients: deep panel */
+.deep { position: relative; color: var(--deep-fg); }
+.deep::before {
+  content: ""; position: absolute; z-index: 0; top: 0; bottom: 0;
+  left: max(10px, env(safe-area-inset-left, 0px)); right: max(10px, env(safe-area-inset-right, 0px));
+  border-radius: 44px; background: var(--deep);
+}
+.deep .eyebrow, .deep .h2 em { color: var(--mint); }
+.deep .body { color: var(--deep-muted); }
+.step__n { margin: 0; font: 600 15px/1 var(--wide); letter-spacing: 0.06em; color: var(--deep-muted); }
+.step__n span { font-size: 46px; color: var(--mint); }
+.step__t { margin: 22px 0 0; font-family: var(--display); font-weight: 400; font-size: clamp(42px, 5.4vw, 86px); line-height: 1; letter-spacing: -0.015em; }
+.step__sub { margin: 12px 0 0; font-size: 13px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--mint); }
+.ing-list { list-style: none; margin: 26px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 10px; }
+.ing-list li { padding: 10px 16px; border-radius: 999px; border: 1px solid var(--deep-line); font-size: 15px; }
+
+/* Usage */
+.tabs { margin-top: 28px; display: inline-flex; padding: 4px; border-radius: 999px; background: var(--tint-2); }
+.tab {
+  min-height: 44px; padding: 0 20px; border: 0; border-radius: 999px; background: transparent;
+  color: var(--muted); font: 600 15px/1 var(--body); cursor: pointer;
+}
+.tab[aria-selected="true"] { background: var(--surface); color: var(--fg); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12); }
+.age { margin: 18px 0 0; display: inline-flex; padding: 8px 14px; border-radius: 12px; background: var(--tint-2); font-size: 14px; font-weight: 600; }
+.steps { list-style: none; margin: 22px 0 0; padding: 0; }
+.steps li { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 16px; padding: 18px 0; border-top: 1px solid var(--line); }
+.steps li:last-child { border-bottom: 1px solid var(--line); }
+.steps .n { font: 600 22px/1.2 var(--wide); color: var(--label); }
+.steps strong { display: block; font-size: 17px; }
+.steps .d { display: block; margin-top: 4px; font-size: 15px; color: var(--muted); }
+.fine { margin: 14px 0 0; font-size: 14px; color: var(--muted); }
+.quote { margin: 24px 0 0; padding: 18px 20px; border-radius: 18px; background: var(--tint); }
+.quote figcaption { margin-bottom: 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--label); }
+.quote blockquote { margin: 0; font-size: 15px; line-height: 1.6; }
+
+/* Phones: bottle in the upper half, copy as a card below */
+@media (max-width: 819px) {
+  .z3d { align-items: flex-end; padding-top: calc(52svh + 28px); padding-bottom: 36px; }
+  .copy, .copy--right {
+    max-width: none; margin-left: 0; padding: 24px 20px; border-radius: 26px;
+    background: var(--card); border: 1px solid var(--line);
+    -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+  }
+  .deep .copy { background: var(--deep-card); border-color: var(--deep-line); }
+  .visual, .visual--left { top: 76px; bottom: auto; left: 0; right: 0; width: auto; height: 48svh; }
+  .hero__foot { display: none; }
+  .deep::before { border-radius: 30px; left: max(6px, env(safe-area-inset-left, 0px)); right: max(6px, env(safe-area-inset-right, 0px)); }
+  .opts { max-width: none; }
+}
+
+/* Solid sections slide over the 3D layer */
+.solid { position: relative; z-index: 3; background: var(--bg); }
+.sec { padding-block: clamp(80px, 10vw, 140px); }
+.sec--surface { background: var(--surface); }
+.sec__head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 48px; }
+.sec__head > div { flex: 1 1 420px; min-width: 0; }
+
+.q-grid { margin-top: 56px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line); }
+.q { padding: 32px 32px 8px 0; }
+.q + .q { padding-left: 32px; border-left: 1px solid var(--line); }
+.q__icon { width: 52px; height: 52px; border-radius: 16px; background: var(--tint); color: var(--link); display: flex; align-items: center; justify-content: center; }
+.q h3 { margin: 22px 0 0; font-family: var(--display); font-weight: 400; font-size: 28px; line-height: 1.15; }
+.q p { margin: 12px 0 0; font-size: 15px; color: var(--muted); }
+@media (max-width: 899px) {
+  .q-grid { grid-template-columns: minmax(0, 1fr); }
+  .q, .q + .q { padding: 28px 0; border-left: 0; }
+  .q + .q { border-top: 1px solid var(--line); }
+}
+
+.ph {
+  position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden;
+  border-radius: 26px; background: var(--tint-2); max-width: 100%;
+}
+.ph--wide { aspect-ratio: 16 / 9; }
+.ph--tall { aspect-ratio: 3 / 4; }
+.ph__tag {
+  position: absolute; left: 14px; bottom: 14px; display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 12px; border-radius: 999px; background: var(--card); color: var(--ph-ink); font-size: 12px; font-weight: 500;
+}
+.play {
+  width: 72px; height: 72px; padding: 0; border: 0; border-radius: 50%; background: var(--surface); color: var(--link);
+  display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 14px 30px -12px rgba(0, 0, 0, 0.3);
+}
+.tag { align-self: flex-start; margin: 0; padding: 5px 12px; border-radius: 999px; background: var(--tint); color: var(--link); font-size: 12px; font-weight: 600; }
+.meta { margin: 0; font-size: 14px; color: var(--muted); }
+
+.bento { margin-top: 48px; display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 20px; }
+.feature { display: flex; flex-direction: column; gap: 14px; }
+.feature h3 { margin: 4px 0 0; font-family: var(--display); font-weight: 400; font-size: clamp(26px, 2.4vw, 34px); line-height: 1.15; }
+.tips { display: grid; gap: 20px; }
+.tip { display: flex; flex-direction: column; gap: 12px; padding: 28px; border-radius: 26px; background: var(--surface); border: 1px solid var(--line); }
+.tip h3 { margin: 4px 0 0; font-family: var(--display); font-weight: 400; font-size: 26px; line-height: 1.2; }
+@media (max-width: 899px) { .bento { grid-template-columns: minmax(0, 1fr); } }
+
+.reel { margin-top: 48px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.reel h3 { margin: 14px 0 0; font-size: 17px; }
+.reel p { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
+.badge { position: absolute; top: 14px; left: 14px; padding: 5px 12px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: 12px; font-weight: 600; }
+.badge--soft { background: var(--card); color: var(--fg); border: 1px solid var(--line); }
+@media (max-width: 899px) {
+  .reel { display: flex; gap: 14px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 8px; }
+  .reel > article { flex: 0 0 72%; scroll-snap-align: start; }
+}
+
+.where-panel { margin-top: 48px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 40px; padding: clamp(22px, 4vw, 56px); border-radius: 34px; background: var(--tint); }
+.find { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.field label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; }
+.field select {
+  width: 100%; min-height: 50px; padding: 0 14px; border-radius: 14px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--fg); font: 400 15px/1 var(--body);
+}
+.find .btn { grid-column: 1 / -1; }
+.chains { margin-top: 24px; }
+.chains p { margin: 0 0 10px; font-size: 13px; font-weight: 600; }
+.chains div { display: flex; flex-wrap: wrap; gap: 8px; }
+.chains button { min-height: 44px; padding: 0 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); font: 500 14px/1 var(--body); cursor: pointer; }
+.map { position: relative; min-height: 320px; border-radius: 24px; background: var(--tint-2); overflow: hidden; }
+.map .road { position: absolute; background: var(--bg); }
+.map .pin { position: absolute; color: var(--link); }
+.branches { margin-top: 20px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.branch { padding: 20px; border-radius: 20px; background: var(--surface); }
+.branch .k { margin: 0; font-size: 13px; color: var(--muted); }
+.branch h3 { margin: 4px 0 0; font-size: 17px; }
+.branch p { margin: 8px 0 0; font-size: 14px; color: var(--muted); }
+.branch .row { margin-top: 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; }
+.note { margin-top: 20px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px 24px; font-size: 14px; color: var(--muted); }
+.note span { display: inline-flex; align-items: center; gap: 10px; }
+@media (max-width: 899px) {
+  .where-panel, .branches { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 520px) { .find { grid-template-columns: minmax(0, 1fr); } }
+
+.empty {
+  margin: 48px auto 0; max-width: 680px; padding: clamp(32px, 5vw, 56px) 24px; text-align: center;
+  border-radius: 30px; background: var(--surface); border: 1px solid var(--line);
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+}
+.empty__icon { width: 56px; height: 56px; border-radius: 50%; background: var(--tint); color: var(--link); display: flex; align-items: center; justify-content: center; }
+.empty h3 { margin: 6px 0 0; font-family: var(--display); font-weight: 400; font-size: 30px; line-height: 1.2; }
+.empty p { margin: 0; max-width: 440px; color: var(--muted); }
+
+.faq-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 32px 72px; }
+.faq-list details { border-top: 1px solid var(--line); }
+.faq-list details:last-child { border-bottom: 1px solid var(--line); }
+.faq-list summary {
+  list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 16px;
+  min-height: 72px; padding: 16px 0; font-size: 18px; font-weight: 600; cursor: pointer;
+}
+.faq-list summary::-webkit-details-marker { display: none; }
+.pm { flex: 0 0 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line); color: var(--link); display: flex; align-items: center; justify-content: center; transition: transform 0.2s ease; }
+.faq-list details[open] .pm { transform: rotate(45deg); }
+.faq-list details p { margin: 0; padding: 0 52px 24px 0; color: var(--muted); }
+@media (max-width: 899px) { .faq-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* Footer */
+.foot { position: relative; z-index: 3; background: var(--deep); color: var(--deep-fg); padding-block: clamp(64px, 8vw, 110px) 32px; }
+.foot__mark {
+  margin: 0; font: 600 clamp(64px, 17vw, 250px)/0.9 var(--wide); letter-spacing: 0.02em;
+  color: transparent; -webkit-text-stroke: 1px var(--deep-muted);
+}
+.foot__grid { margin-top: 44px; display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr)); gap: 40px; }
+.foot h2 { margin: 0 0 14px; font-size: 12px; font-weight: 600; letter-spacing: 0.16em; color: var(--deep-muted); }
+.foot p { margin: 0; color: var(--deep-muted); max-width: 30em; }
+.foot ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.foot a { color: var(--deep-fg); text-decoration: none; }
+.foot a:hover { text-decoration: underline; }
+.foot__bottom { margin-top: 56px; padding-top: 22px; border-top: 1px solid var(--deep-line); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 24px; font-size: 13px; color: var(--deep-muted); }
+.foot__bottom div { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+@media (max-width: 899px) { .foot__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .foot__grid > :first-child { grid-column: 1 / -1; } }
+
+/* Phone call to action */
+.mcta { display: none; }
+@media (max-width: 819px) {
+  .mcta {
+    display: block; position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+    padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+    background: var(--card); border-top: 1px solid var(--line);
+    -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  }
+  .mcta .btn { width: 100%; }
+  .foot { padding-bottom: 110px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .cue i::after { animation: none; }
+  .btn, .opt, .tlink svg, .gl { transition: none; }
+}
+</style>
+<style>body { margin: 0; } [hidden] { display: none !important; }</style>
+</head>
+<body>
+
+<a class="skip" href="#main">Үндсэн агуулга руу шилжих</a>
+
+<div class="gl" aria-hidden="true"><canvas id="gl"></canvas></div>
+
+<header class="head">
+  <div class="wrap head__in">
+    <a class="mark" href="#hero" aria-label="DOMCH, нүүр">DOMCH</a>
+    <nav class="nav" id="nav" aria-label="Үндсэн цэс">
+      <a href="#sizes">Бүтээгдэхүүн</a>
+      <a href="#ingredients">Найрлага</a>
+      <a href="#usage">Хэрэглээ</a>
+      <a href="#doctor">Эмчийн булан</a>
+      <a href="#people">Хэрэглэгчид</a>
+      <a href="#partner">Хамтран ажиллах</a>
+    </nav>
+    <a class="btn btn--sm head__cta" href="#where">Хаанаас авах вэ?</a>
+    <button class="menu-btn" id="menuBtn" type="button" aria-expanded="false" aria-controls="nav" aria-label="Цэс нээх">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 8h16M4 16h16"></path></svg>
+    </button>
+  </div>
+  <div class="progress" id="progress"></div>
+</header>
+
+<main id="main">
+
+  <section class="z3d" id="hero" data-pose="hero">
+    <div class="wrap">
+      <div class="copy">
+        <p class="eyebrow">DOMCH · Жамц давсны уусмал</p>
+        <h1 class="display">Амны хөндийн <em>өдөр тутмын</em> арчилгаа</h1>
+        <p class="lead">Монгол жамц давс, башир цэцгийн ханд, гааны найрлагатай, спиртгүй ам зайлагч. Амны эвгүй үнэрийг дарж, амны хөндийг цэвэрлэн сэрүүцүүлнэ.</p>
+        <ul class="chips">
+          <li><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"></path><path d="M4 4l16 16"></path></svg>Спирт агуулаагүй</li>
+          <li><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5s7 7.4 7 12.3a7 7 0 0 1-14 0c0-4.9 7-12.3 7-12.3z" fill="#D3262F"></path><path d="M12 11v7M8.5 14.5h7" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round"></path></svg>Ээлтэй бүтээгдэхүүн</li>
+        </ul>
+        <div class="actions">
+          <a class="btn" href="#where">Хаанаас авах вэ?</a>
+          <a class="tlink" href="#ingredients">Найрлагатай танилцах
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"></path></svg>
+          </a>
+        </div>
+      </div>
+    </div>
+    <div class="visual" data-drag>
+      <img src="assets/domch_bottles.webp" alt="DOMCH жамц давсны уусмал, 250 мл ба 500 мл савлагаа" width="1040" height="1492">
+    </div>
+    <div class="wrap hero__foot">
+      <a class="cue" href="#sizes"><i></i>Доош гүйлгэнэ үү</a>
+      <span class="drag-hint">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16M8 8l-4 4 4 4M16 8l4 4-4 4"></path></svg>
+        Савыг чирж эргүүлнэ үү
+      </span>
+    </div>
+  </section>
+
+  <section class="z3d" id="sizes" data-pose="sizes">
+    <div class="wrap">
+      <div class="copy">
+        <p class="eyebrow">Бүтээгдэхүүн</p>
+        <h2 class="h2">Хоёр хэмжээ, <em>нэг найрлага</em></h2>
+        <p class="body">250 мл болон 500 мл савлагаатай. Өөрт тохирох хэмжээгээ сонгоорой.</p>
+        <div class="opts" role="group" aria-label="Савлагааны хэмжээ">
+          <button class="opt" type="button" data-size="small" aria-pressed="false">
+            <span class="opt__vol">250<small>мл</small></span>
+            <span class="opt__meta">Жамц давсны уусмал · Гаа</span>
+            <span class="opt__price">[ҮНЭ] ₮</span>
+          </button>
+          <button class="opt" type="button" data-size="big" aria-pressed="true">
+            <span class="opt__vol">500<small>мл</small></span>
+            <span class="opt__meta">Жамц давсны уусмал · Гаа</span>
+            <span class="opt__price">[ҮНЭ] ₮</span>
+          </button>
+        </div>
+        <dl class="specs">
+          <div><dt>Ангилал</dt><dd>Ам зайлагч</dd></div>
+          <div><dt>Амт</dt><dd>Гаа</dd></div>
+          <div><dt>Үйлдвэрлэж эхэлсэн</dt><dd>2020 он</dd></div>
+        </dl>
+        <a class="tlink" href="#where">Худалдан авах цэг
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+        </a>
+      </div>
+    </div>
+    <div class="visual" data-drag>
+      <img src="assets/domch_bottles.webp" alt="" width="1040" height="1492">
+    </div>
+  </section>
+
+  <section class="deep" id="ingredients" aria-labelledby="ing-title">
+    <div class="z3d" data-pose="intro">
+      <div class="wrap">
+        <div class="copy">
+          <p class="eyebrow">Орц, найрлага</p>
+          <h2 class="h2" id="ing-title">Гурван үндсэн <em>найрлага</em></h2>
+          <p class="body">Найрлага бүр бүтээгдэхүүнд тодорхой зориулалтаар орсон. Доош гүйлгэж танилцаарай.</p>
+        </div>
+      </div>
+      <div class="visual">
+        <img src="assets/domch_bottles.webp" alt="" width="1040" height="1492">
+      </div>
+    </div>
+    <div class="z3d" data-pose="salt">
+      <div class="wrap">
+        <div class="copy">
+          <p class="step__n"><span>01</span> / 03</p>
+          <h3 class="step__t">Монгол жамц давс</h3>
+          <p class="body">Нян бактери устгаж, амны хөндий, хоолойн үрэвслийг намдаана.</p>
+        </div>
+      </div>
+    </div>
+    <div class="z3d" data-pose="drop">
+      <div class="wrap">
+        <div class="copy">
+          <p class="step__n"><span>02</span> / 03</p>
+          <h3 class="step__t">Башир цэцгийн ханд</h3>
+          <p class="step__sub">Хадаасан цэцгийн ханд</p>
+          <p class="body">Амны эвгүй үнэрийг арилгаж, хоолойн өвчнийг намдаана.</p>
+        </div>
+      </div>
+    </div>
+    <div class="z3d" data-pose="mint">
+      <div class="wrap">
+        <div class="copy">
+          <p class="step__n"><span>03</span> / 03</p>
+          <h3 class="step__t">Гаа</h3>
+          <p class="body">Амны хөндийг ариутгаж, сэрүүн амт өгнө.</p>
+        </div>
+      </div>
+    </div>
+    <div class="z3d" data-pose="full">
+      <div class="wrap">
+        <div class="copy">
+          <p class="eyebrow">Бүрэн найрлага</p>
+          <ul class="ing-list">
+            <li>Шүүсэн ус</li>
+            <li>Жамц давс</li>
+            <li>Хадаасан цэцгийн ханд (башир цэцэг)</li>
+            <li>Гаа</li>
+            <li>Глицерин</li>
+            <li>FD&amp;C Blue No.1</li>
+          </ul>
+          <p class="body">Спирт агуулаагүй.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="z3d" id="usage" data-pose="usage">
+    <div class="wrap">
+      <div class="copy copy--right">
+        <p class="eyebrow">Гэр бүлийн хэрэглээ</p>
+        <h2 class="h2">Гэр бүлийн <em>зөв хэрэглээ</em></h2>
+        <p class="body">Хэрэглэгчийн насанд тохирох зааврыг сонгоно уу.</p>
+        <div class="tabs" role="tablist" aria-label="Хэрэглэгч">
+          <button class="tab" type="button" role="tab" id="tab-adult" aria-selected="true" aria-controls="panel-adult">Насанд хүрэгчид</button>
+          <button class="tab" type="button" role="tab" id="tab-kid" aria-selected="false" aria-controls="panel-kid">Хүүхдийн хэрэглээ</button>
+        </div>
+        <div class="tabpanel" role="tabpanel" id="panel-adult" aria-labelledby="tab-adult">
+          <ol class="steps">
+            <li><span class="n">01</span><span><strong>Хэмжих</strong><span class="d">Хэмжүүрээр [баталгаажсан хэмжээ] мл хэмжинэ.</span></span></li>
+            <li><span class="n">02</span><span><strong>Зайлах</strong><span class="d">Зааврын дагуу [хугацаа] секунд зайлна.</span></span></li>
+            <li><span class="n">03</span><span><strong>Нулимах</strong><span class="d">Залгихгүй, бүрэн нулимна.</span></span></li>
+          </ol>
+        </div>
+        <div class="tabpanel" role="tabpanel" id="panel-kid" aria-labelledby="tab-kid" hidden>
+          <p class="age">Насны заалт: [баталгаажсан нас]</p>
+          <ol class="steps">
+            <li><span class="n">01</span><span><strong>Хэмжих</strong><span class="d">Эцэг эх нь [баталгаажсан хэмжээ] мл хэмжиж өгнө.</span></span></li>
+            <li><span class="n">02</span><span><strong>Зайлах</strong><span class="d">Эцэг эхийн хяналтан дор зайлна.</span></span></li>
+            <li><span class="n">03</span><span><strong>Нулимах</strong><span class="d">Залгихгүй, бүрэн нулимна.</span></span></li>
+          </ol>
+        </div>
+        <p class="fine">Гэр бүлийн гишүүн бүр тусдаа хэмжүүр хэрэглэнэ.</p>
+        <figure class="quote">
+          <figcaption>Шошгон дээрх зөвлөмж</figcaption>
+          <blockquote>Намар, өвөл, хаврын улиралд Домч уусмалаар амны хөндий, хоолойгоо тогтмол зайлснаар амны хөндий, буйл, хоолой, залгиурын бактери, вирусын гаралтай үрэвсэлт өвчин, ханиад томуунаас сэргийлнэ.</blockquote>
+        </figure>
+      </div>
+    </div>
+    <div class="visual visual--left" data-drag>
+      <img src="assets/domch_bottles.webp" alt="" width="1040" height="1492">
+    </div>
+  </section>
+
+  <div class="solid">
+
+    <section class="sec sec--surface" id="quality" aria-labelledby="q-title">
+      <div class="wrap">
+        <p class="eyebrow">Чанар хангалт</p>
+        <h2 class="h2" id="q-title">Чанар, аюулгүй байдлын <em>баталгаа</em></h2>
+        <div class="q-grid">
+          <article class="q">
+            <div class="q__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-9V3"></path><path d="M7.5 15h9"></path></svg></div>
+            <h3>Өдөр бүрийн лабораторийн хяналт</h3>
+            <p>Дотоод хяналтын итгэмжлэгдсэн лабораторийн өдөр тутмын хяналтаар бүтээгдэхүүний чанар, аюулгүй байдлыг баталгаажуулсан.</p>
+          </article>
+          <article class="q">
+            <div class="q__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13H7z"></path><path d="M14 3v5h5"></path><path d="M10 14l2 2 4-4"></path></svg></div>
+            <h3>Байгууллагын стандарт</h3>
+            <p>Жем Интернэшнл ХХК-ийн чанарын бодлогод нийцүүлэн Монгол Улсын стандартаас илүү өндөр шаардлага бүхий «Байгууллагын стандарт»-ын шаардлагыг хангасан.</p>
+          </article>
+          <article class="q">
+            <div class="q__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"></path><path d="M9 12l2 2 4-4"></path></svg></div>
+            <h3>Аюулгүйн тэмдэг · ISO 9001</h3>
+            <p>Бүтээгдэхүүний чанарыг Стандарт, хэмжил зүйн газраас олгодог «Аюулгүйн тэмдгийн гэрчилгээ»-гээр, үйл ажиллагааны чанарыг ISO 9001 стандартаар баталгаажуулсан.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec" id="doctor" aria-labelledby="doc-title">
+      <div class="wrap">
+        <div class="sec__head">
+          <div>
+            <p class="eyebrow">Эмчийн булан</p>
+            <h2 class="h2" id="doc-title">Эмчийн <em>зөвлөгөө</em></h2>
+          </div>
+          <a class="tlink" href="#doctor">Бүх зөвлөгөө
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+          </a>
+        </div>
+        <div class="bento">
+          <article class="feature">
+            <div class="ph ph--wide">
+              <button class="play" type="button" aria-label="Видео тоглуулах"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"></path></svg></button>
+              <span class="ph__tag">Видео · Эмчийн онцлох зөвлөгөө</span>
+            </div>
+            <p class="tag">Эмчийн зөвлөгөө</p>
+            <h3>Амны хөндийн өдөр тутмын арчилгааны дараалал</h3>
+            <p class="meta">[Эмчийн нэр], [мэргэжил] · [Нийтэлсэн огноо]</p>
+          </article>
+          <div class="tips">
+            <article class="tip">
+              <p class="tag">1 минутын зөвлөгөө</p>
+              <h3>[Нэг асуулт, нэг богино хариулт]</h3>
+              <p class="meta">[Эмчийн нэр] · [Огноо]</p>
+            </article>
+            <article class="tip">
+              <p class="tag">Үнэн үү, ташаа юу?</p>
+              <h3>[Амны хөндийн арчилгааны түгээмэл ойлголт]</h3>
+              <p class="meta">[Эмчийн нэр] · Эх сурвалж: [ ]</p>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec sec--surface" id="people" aria-labelledby="people-title">
+      <div class="wrap">
+        <div class="sec__head">
+          <div>
+            <p class="eyebrow">Хэрэглэгчид</p>
+            <h2 class="h2" id="people-title">Домчийг <em>сонгосон хүмүүс</em></h2>
+          </div>
+          <a class="tlink" href="#people">Видео үзэх
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+          </a>
+        </div>
+        <div class="reel">
+          <article>
+            <div class="ph ph--tall">
+              <span class="badge">Хамтарсан контент</span>
+              <button class="play" type="button" aria-label="Видео тоглуулах"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"></path></svg></button>
+            </div>
+            <h3>[Контент бүтээгчийн нэр]</h3>
+            <p>[Видеоны сэдэв]</p>
+          </article>
+          <article>
+            <div class="ph ph--tall">
+              <span class="badge">Хамтарсан контент</span>
+              <button class="play" type="button" aria-label="Видео тоглуулах"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"></path></svg></button>
+            </div>
+            <h3>[Контент бүтээгчийн нэр]</h3>
+            <p>[Видеоны сэдэв]</p>
+          </article>
+          <article>
+            <div class="ph ph--tall">
+              <span class="badge badge--soft">Манай гэрийн Домч</span>
+              <button class="play" type="button" aria-label="Видео тоглуулах"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"></path></svg></button>
+            </div>
+            <h3>[Гэр бүлийн нэр]</h3>
+            <p>[Түүхийн сэдэв]</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec" id="where" aria-labelledby="where-title">
+      <div class="wrap">
+        <p class="eyebrow">Худалдаалах цэг</p>
+        <h2 class="h2" id="where-title">Хаанаас <em>авах вэ?</em></h2>
+        <p class="body">Хот, аймаг болон дүүргээ сонгоод ойрын салбараа олоорой.</p>
+        <div class="where-panel">
+          <div>
+            <form class="find" id="find">
+              <div class="field">
+                <label for="w-city">Хот / аймаг</label>
+                <select id="w-city" name="city"><option>Улаанбаатар</option><option>[Аймаг]</option></select>
+              </div>
+              <div class="field">
+                <label for="w-district">Дүүрэг</label>
+                <select id="w-district" name="district"><option>Бүх дүүрэг</option><option>[Дүүрэг]</option></select>
+              </div>
+              <button class="btn" type="submit">Салбар олох</button>
+            </form>
+            <div class="chains">
+              <p>Хамтрагч эмийн сангууд</p>
+              <div>
+                <button type="button">[Сүлжээ 1]</button>
+                <button type="button">[Сүлжээ 2]</button>
+                <button type="button">[Сүлжээ 3]</button>
+                <button type="button">[Сүлжээ 4]</button>
+              </div>
+            </div>
+          </div>
+          <div class="map" aria-hidden="true">
+            <div class="road" style="left:-10%; top:42%; width:120%; height:10px; transform:rotate(-8deg);"></div>
+            <div class="road" style="left:38%; top:-10%; width:10px; height:120%; transform:rotate(12deg);"></div>
+            <div class="road" style="left:-10%; top:74%; width:120%; height:6px; transform:rotate(4deg);"></div>
+            <svg class="pin" width="30" height="38" viewBox="0 0 24 30" style="left:22%; top:24%;"><path d="M12 29s10-9.6 10-17A10 10 0 0 0 2 12c0 7.4 10 17 10 17z" fill="currentColor"></path><circle cx="12" cy="12" r="4" style="fill: var(--bg)"></circle></svg>
+            <svg class="pin" width="30" height="38" viewBox="0 0 24 30" style="left:58%; top:18%;"><path d="M12 29s10-9.6 10-17A10 10 0 0 0 2 12c0 7.4 10 17 10 17z" fill="currentColor"></path><circle cx="12" cy="12" r="4" style="fill: var(--bg)"></circle></svg>
+            <svg class="pin" width="30" height="38" viewBox="0 0 24 30" style="left:46%; top:56%;"><path d="M12 29s10-9.6 10-17A10 10 0 0 0 2 12c0 7.4 10 17 10 17z" fill="currentColor"></path><circle cx="12" cy="12" r="4" style="fill: var(--bg)"></circle></svg>
+            <svg class="pin" width="30" height="38" viewBox="0 0 24 30" style="left:76%; top:62%;"><path d="M12 29s10-9.6 10-17A10 10 0 0 0 2 12c0 7.4 10 17 10 17z" fill="currentColor"></path><circle cx="12" cy="12" r="4" style="fill: var(--bg)"></circle></svg>
+            <span class="ph__tag">Газрын зураг · Худалдаалах цэгүүд</span>
+          </div>
+        </div>
+        <div class="branches">
+          <article class="branch">
+            <p class="k">[Эмийн сангийн сүлжээ]</p>
+            <h3>[Салбарын нэр]</h3>
+            <p>[Дүүрэг, дэлгэрэнгүй хаяг]<br>[Цагийн хуваарь] · [Утас]</p>
+            <div class="row"><a class="btn btn--ghost" href="#where">Зам заалгах</a><span class="meta">Утас: [дугаар]</span></div>
+          </article>
+          <article class="branch">
+            <p class="k">[Эмийн сангийн сүлжээ]</p>
+            <h3>[Салбарын нэр]</h3>
+            <p>[Дүүрэг, дэлгэрэнгүй хаяг]<br>[Цагийн хуваарь] · [Утас]</p>
+            <div class="row"><a class="btn btn--ghost" href="#where">Зам заалгах</a><span class="meta">Утас: [дугаар]</span></div>
+          </article>
+          <article class="branch">
+            <p class="k">Онлайн худалдаа</p>
+            <h3>Онлайнаар авах</h3>
+            <p>[Баталгаатай онлайн дэлгүүрийн холбоос]</p>
+            <div class="row"><a class="btn btn--sm" href="#where">Дэлгүүр рүү очих</a></div>
+          </article>
+        </div>
+        <div class="note">
+          <span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v6M12 7.5v.5"></path></svg>Худалдан авахаасаа өмнө салбараас үлдэгдлийг лавлана уу.</span>
+          <a class="tlink" href="#partner">Миний ойролцоо байхгүй байна</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec sec--surface" id="reviews" aria-labelledby="rev-title">
+      <div class="wrap" style="text-align:center;">
+        <p class="eyebrow">Сэтгэгдэл</p>
+        <h2 class="h2" id="rev-title">Хэрэглэгчдийн <em>сэтгэгдэл</em></h2>
+        <div class="empty">
+          <div class="empty__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4A8 8 0 1 1 20 12z"></path></svg></div>
+          <h3>Та анхны сэтгэгдлээ үлдээгээрэй</h3>
+          <p>Домчийг хэрэглэсэн туршлагаа бусадтай хуваалцаарай.</p>
+          <a class="btn" href="#reviews">Сэтгэгдэл үлдээх</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec" id="faq" aria-labelledby="faq-title">
+      <div class="wrap faq-grid">
+        <div>
+          <p class="eyebrow">Түгээмэл асуулт</p>
+          <h2 class="h2" id="faq-title">Хамгийн их <em>асуудаг</em></h2>
+        </div>
+        <div class="faq-list">
+          <details open>
+            <summary>Домч спирт агуулсан уу?<span class="pm" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary>
+            <p>Үгүй. Домч бол спирт агуулаагүй ам зайлагч.</p>
+          </details>
+          <details>
+            <summary>Ямар найрлагатай вэ?<span class="pm" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary>
+            <p>Шүүсэн ус, жамц давс, хадаасан цэцгийн ханд (башир цэцэг), гаа, глицерин, FD&amp;C Blue No.1.</p>
+          </details>
+          <details>
+            <summary>Ямар савлагаатай вэ?<span class="pm" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary>
+            <p>250 мл болон 500 мл савлагаатай.</p>
+          </details>
+          <details>
+            <summary>Хүүхэд хэрэглэж болох уу?<span class="pm" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary>
+            <p>[Шошгонд баталгаажсан насны заалт, хэмжээ, анхааруулга]</p>
+          </details>
+          <details>
+            <summary>Хэрхэн хадгалах вэ?<span class="pm" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary>
+            <p>[Шошгонд заасан хадгалалтын нөхцөл]</p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<footer class="foot" id="partner">
+  <div class="wrap">
+    <p class="foot__mark" aria-hidden="true">DOMCH</p>
+    <div class="foot__grid">
+      <div>
+        <h2>ДОМЧ</h2>
+        <p>Жамц давсны уусмал, спирт агуулаагүй ам зайлагч. Үйлдвэрлэгч: Жем Интернэшнл ХХК.</p>
+        <p style="margin-top:16px;">[Facebook] · [Instagram] · [YouTube]</p>
+      </div>
+      <div>
+        <h2>БҮТЭЭГДЭХҮҮН</h2>
+        <ul>
+          <li><a href="#sizes">Домч ам зайлагч</a></li>
+          <li><a href="#ingredients">Орц, найрлага</a></li>
+          <li><a href="#usage">Хэрэглэх заавар</a></li>
+          <li><a href="#faq">Түгээмэл асуулт</a></li>
+        </ul>
+      </div>
+      <div>
+        <h2>ХАМТРАН АЖИЛЛАХ</h2>
+        <ul>
+          <li><a href="#partner">Эмийн сан, борлуулагч</a></li>
+          <li><a href="#partner">Шүдний эмнэлэг</a></li>
+          <li><a href="#partner">Байгууллагын захиалга</a></li>
+          <li><a href="#partner">Контент бүтээгч</a></li>
+        </ul>
+      </div>
+      <div>
+        <h2>ХОЛБОО БАРИХ</h2>
+        <ul>
+          <li>Утас: [УТАС]</li>
+          <li>И-мэйл: [И-МЭЙЛ]</li>
+          <li>Хаяг: [ХАЯГ]</li>
+        </ul>
+      </div>
+    </div>
+    <div class="foot__bottom">
+      <span>© 2026 Жем Интернэшнл ХХК</span>
+      <div><a href="#partner">Нууцлалын бодлого</a><a href="#partner">Үйлчилгээний нөхцөл</a></div>
+    </div>
+  </div>
+</footer>
+
+<div class="mcta"><a class="btn" href="#where">Хаанаас авах вэ?</a></div>
+
+<script>
+(function () {
+  var menuBtn = document.getElementById('menuBtn');
+  var nav = document.getElementById('nav');
+  menuBtn.addEventListener('click', function () {
+    var open = nav.classList.toggle('is-open');
+    menuBtn.setAttribute('aria-expanded', String(open));
+    menuBtn.setAttribute('aria-label', open ? 'Цэс хаах' : 'Цэс нээх');
+  });
+  nav.addEventListener('click', function (e) {
+    if (e.target.closest('a')) { nav.classList.remove('is-open'); menuBtn.setAttribute('aria-expanded', 'false'); }
+  });
+
+  var opts = document.querySelectorAll('.opt');
+  opts.forEach(function (o) {
+    o.addEventListener('click', function () {
+      opts.forEach(function (x) { x.setAttribute('aria-pressed', String(x === o)); });
+      window.dispatchEvent(new CustomEvent('domch:size', { detail: o.dataset.size }));
+    });
+  });
+
+  var tabs = document.querySelectorAll('.tab');
+  tabs.forEach(function (t) {
+    t.addEventListener('click', function () {
+      tabs.forEach(function (x) {
+        var on = x === t;
+        x.setAttribute('aria-selected', String(on));
+        document.getElementById(x.getAttribute('aria-controls')).hidden = !on;
+      });
+    });
+  });
+
+  document.querySelectorAll('form').forEach(function (f) {
+    f.addEventListener('submit', function (e) { e.preventDefault(); });
+  });
+
+  var bar = document.getElementById('progress');
+  function onScroll() {
+    var h = document.documentElement.scrollHeight - window.innerHeight;
+    bar.style.transform = 'scaleX(' + (h > 0 ? Math.min(1, window.scrollY / h) : 0) + ')';
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll);
+  onScroll();
+})();
+</script>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+
+const root = document.documentElement;
+const canvas = document.getElementById('gl');
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const S = 1 / 1000; // photo pixels -> scene units
+
+// Outlines measured from the product photo (pixel units, y from the top of each bottle).
+// body rows: [y, half-width, shape] where shape 0 = round neck, 1 = rounded-square body.
+const BOTTLES = {
+  big: {
+    key: 'big', H: 1440, volume: '500 мл', seed: 7, drops: 240, capDrops: 26,
+    cap: { y0: 0, y1: 205, rTop: 117, rBot: 123 },
+    ring: { y0: 205, y1: 242, r: 124 },
+    neck: { y0: 242, y1: 302, r: 100, threads: [258, 274, 290] },
+    body: [[302,100,0],[308,140,.15],[316,200,.4],[330,243,.65],[350,262,.82],[370,278,.93],[390,292,1],[410,296,1],[580,296,1],[595,290,1],[610,278,1],[625,265,1],[640,260,1],[1100,260,1],[1115,266,1],[1130,276,1],[1150,286,1],[1170,290,1],[1190,292,1],[1360,292,1],[1385,282,1],[1405,264,1],[1420,240,1],[1430,205,1],[1436,150,1],[1439,80,1],[1440,4,1]],
+    labels: { upper: [408, 578, 252], main: [645, 1135, 250], back: [665, 1095, 236] }
+  },
+  small: {
+    key: 'small', H: 1182, volume: '250 мл', seed: 19, drops: 190, capDrops: 20,
+    cap: { y0: 0, y1: 205, rTop: 103, rBot: 108 },
+    ring: { y0: 205, y1: 226, r: 104 },
+    neck: { y0: 226, y1: 257, r: 84, threads: [236, 248] },
+    body: [[257,84,0],[262,140,.3],[272,190,.55],[282,218,.72],[302,234,.86],[322,251,.96],[342,257,1],[482,257,1],[502,242,1],[522,228,1],[542,225,1],[922,225,1],[942,231,1],[962,240,1],[982,249,1],[1002,250,1],[1102,250,1],[1122,243,1],[1142,222,1],[1162,196,1],[1172,178,1],[1178,140,1],[1181,70,1],[1182,4,1]],
+    labels: { upper: [332, 486, 218], main: [524, 938, 209], back: [548, 905, 200] }
+  }
+};
+
+// Story poses. Bottle: [x across the screen (-0.5..0.5), y up the screen, depth, turn, tip, lean, scale].
+// Ingredients: [shown, salt, extract, mint].
+const OFF_R = [0.78, -0.85, 0.3, 0.4, 0, 0, 0.9];
+const OFF_L = [-0.9, -0.05, 0.2, -0.6, 0, 0, 0.9];
+const POSES = {
+  wide: {
+    hero:  { big: [0.22, -0.02, 0, -0.32, 0, 0, 1], small: OFF_R, ing: [0, 0, 0, 0], mark: 1 },
+    sizes: { big: [0.3, -0.02, -0.1, 0.16, 0, 0, 1], small: [0.1, -0.07, 0.3, -0.22, 0, 0, 1], ing: [0, 0, 0, 0], mark: 0 },
+    intro: { big: [0.21, 0, 0, 0.9, 0, 0, 0.9], small: OFF_L, ing: [0.75, 0.6, 0.6, 0.6], mark: 0 },
+    salt:  { big: [0.21, 0, 0, 1.75, 0, 0, 0.9], small: OFF_L, ing: [1, 1, 0.22, 0.22], mark: 0 },
+    drop:  { big: [0.21, 0, 0, 3.05, 0, 0, 0.9], small: OFF_L, ing: [1, 0.22, 1, 0.22], mark: 0 },
+    mint:  { big: [0.21, 0, 0, 4.35, 0, 0, 0.9], small: OFF_L, ing: [1, 0.22, 0.22, 1], mark: 0 },
+    full:  { big: [0.21, 0, 0, 5.6, 0, 0, 0.9], small: OFF_L, ing: [0.55, 0.55, 0.55, 0.55], mark: 0 },
+    usage: { big: [-0.22, 0, 0, 6.45, 0, -0.34, 1], small: OFF_L, ing: [0, 0, 0, 0], mark: 0 }
+  },
+  narrow: {
+    hero:  { big: [0, 0.19, 0, -0.32, 0, 0, 1], small: [0.85, -0.6, 0.3, 0.4, 0, 0, 0.9], ing: [0, 0, 0, 0], mark: 1 },
+    sizes: { big: [0.17, 0.19, -0.1, 0.16, 0, 0, 0.95], small: [-0.17, 0.16, 0.3, -0.22, 0, 0, 0.95], ing: [0, 0, 0, 0], mark: 0 },
+    intro: { big: [0, 0.2, 0, 0.9, 0, 0, 0.86], small: [-1, 0.2, 0.2, -0.6, 0, 0, 0.9], ing: [0.75, 0.6, 0.6, 0.6], mark: 0 },
+    salt:  { big: [0, 0.2, 0, 1.75, 0, 0, 0.86], small: [-1, 0.2, 0.2, -0.6, 0, 0, 0.9], ing: [1, 1, 0.22, 0.22], mark: 0 },
+    drop:  { big: [0, 0.2, 0, 3.05, 0, 0, 0.86], small: [-1, 0.2, 0.2, -0.6, 0, 0, 0.9], ing: [1, 0.22, 1, 0.22], mark: 0 },
+    mint:  { big: [0, 0.2, 0, 4.35, 0, 0, 0.86], small: [-1, 0.2, 0.2, -0.6, 0, 0, 0.9], ing: [1, 0.22, 0.22, 1], mark: 0 },
+    full:  { big: [0, 0.2, 0, 5.6, 0, 0, 0.86], small: [-1, 0.2, 0.2, -0.6, 0, 0, 0.9], ing: [0.55, 0.55, 0.55, 0.55], mark: 0 },
+    usage: { big: [0, 0.2, 0, 6.45, 0, -0.28, 0.95], small: [-1, 0.2, 0.2, -0.6, 0, 0, 0.9], ing: [0, 0, 0, 0], mark: 0 }
+  }
+};
+
+function rng(seed) {
+  return function () {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const smooth = (u) => u * u * (3 - 2 * u);
+const sgnPow = (v, p) => Math.sign(v) * Math.pow(Math.abs(v), p);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// ---- Bottle geometry (outline resampled every 4 px and smoothed) ----
+function buildRows(b) {
+  const P = b.body, y0 = P[0][0], y1 = P[P.length - 1][0], STEP = 4, raw = [];
+  for (let y = y0; y <= y1 + 0.001; y += STEP) {
+    let i = 0;
+    while (i < P.length - 2 && P[i + 1][0] < y) i++;
+    const a = P[i], c = P[i + 1], f = clamp((y - a[0]) / (c[0] - a[0]), 0, 1);
+    raw.push({ y, w: a[1] + (c[1] - a[1]) * f, s: a[2] + (c[2] - a[2]) * f });
+  }
+  const rows = raw.map((r, i) => {
+    if (i < 2 || i > raw.length - 3) return r;
+    let w = 0, s = 0;
+    for (let k = -2; k <= 2; k++) { w += raw[i + k].w; s += raw[i + k].s; }
+    return { y: r.y, w: w / 5, s: s / 5 };
+  });
+  return { y0, step: STEP, rows };
+}
+function shapeAt(R, yPix) {
+  const f = clamp((yPix - R.y0) / R.step, 0, R.rows.length - 1);
+  const i = Math.min(Math.floor(f), R.rows.length - 2), t = f - i;
+  const a = R.rows[i], c = R.rows[i + 1];
+  const w = a.w + (c.w - a.w) * t, s = a.s + (c.s - a.s) * t;
+  return { w: w * S, d: w * S * (1 - 0.38 * s), n: 2 + 1.3 * s };
+}
+const yWorld = (b, yPix) => (b.H - yPix) * S;
+function surfacePoint(b, yPix, phi) {
+  const sh = shapeAt(b.R, yPix);
+  const c = Math.cos(phi), s = Math.sin(phi);
+  const x = sh.w * sgnPow(c, 2 / sh.n), z = sh.d * sgnPow(s, 2 / sh.n);
+  const nx = Math.sign(x) * Math.pow(Math.abs(x) / sh.w, sh.n - 1) / sh.w;
+  const nz = Math.sign(z) * Math.pow(Math.abs(z) / sh.d, sh.n - 1) / sh.d;
+  const n = new THREE.Vector3(nx, 0, nz);
+  if (n.lengthSq() < 1e-12) n.set(0, 0, 1);
+  n.normalize();
+  return { p: new THREE.Vector3(x, yWorld(b, yPix), z), n };
+}
+function bodyGeometry(b) {
+  const R = b.R, M = 112, pos = [], idx = [], N = R.rows.length;
+  R.rows.forEach((r) => {
+    for (let k = 0; k < M; k++) {
+      const { p } = surfacePoint(b, r.y, (k / M) * Math.PI * 2);
+      pos.push(p.x, p.y, p.z);
+    }
+  });
+  for (let r = 0; r < N - 1; r++) {
+    for (let k = 0; k < M; k++) {
+      const a = r * M + k, bb = r * M + (k + 1) % M, c = (r + 1) * M + k, d = (r + 1) * M + (k + 1) % M;
+      idx.push(a, bb, c, bb, d, c);
+    }
+  }
+  const top = pos.length / 3; pos.push(0, yWorld(b, R.rows[0].y), 0);
+  const bot = pos.length / 3; pos.push(0, yWorld(b, R.rows[N - 1].y) - 0.0005, 0);
+  for (let k = 0; k < M; k++) {
+    idx.push(top, (k + 1) % M, k);
+    idx.push(bot, (N - 1) * M + k, (N - 1) * M + (k + 1) % M);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+// A label is a patch of the bottle surface, so it wraps round the corners like a printed sleeve.
+function labelGeometry(b, spec, side) {
+  const [y0, y1, hw] = spec, COLS = 52, ROWS = 34, lift = 0.0016;
+  const pos = [], nor = [], uv = [], idx = [];
+  for (let j = 0; j <= ROWS; j++) {
+    const v = j / ROWS, yPix = y0 + v * (y1 - y0), sh = shapeAt(b.R, yPix);
+    for (let i = 0; i <= COLS; i++) {
+      const u = i / COLS, xw = (u - 0.5) * 2 * hw * S * side;
+      const c = sgnPow(clamp(xw / sh.w, -0.995, 0.995), sh.n / 2);
+      const phi = Math.atan2(Math.sqrt(Math.max(0, 1 - c * c)) * side, c);
+      const { p, n } = surfacePoint(b, yPix, phi);
+      p.addScaledVector(n, lift);
+      pos.push(p.x, p.y, p.z); nor.push(n.x, n.y, n.z); uv.push(u, 1 - v);
+    }
+  }
+  const W = COLS + 1;
+  for (let j = 0; j < ROWS; j++) {
+    for (let i = 0; i < COLS; i++) {
+      const a = j * W + i, bb = a + 1, c = a + W, d = c + 1;
+      idx.push(a, c, bb, bb, c, d);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  return g;
+}
+function capGeometry(b) {
+  const c = b.cap, bevel = 12;
+  const pts = [
+    [c.rBot * 0.92, c.y1], [c.rBot, c.y1 - 2], [c.rBot, c.y1 - 10],
+    [c.rTop + (c.rBot - c.rTop) * 0.1, c.y0 + bevel + 6], [c.rTop, c.y0 + bevel],
+    [c.rTop - bevel * 0.3, c.y0 + bevel * 0.3], [c.rTop - bevel, c.y0], [0, c.y0]
+  ].map(([r, y]) => new THREE.Vector2(r * S, yWorld(b, y)));
+  const g = new THREE.LatheGeometry(pts, 240);
+  const p = g.attributes.position, v = new THREE.Vector3();
+  const yTop = yWorld(b, c.y0 + bevel + 4), yBot = yWorld(b, c.y1 - 6);
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i);
+    if (v.y <= yTop && v.y >= yBot) {
+      const ang = Math.atan2(v.z, v.x), r = Math.hypot(v.x, v.z);
+      const k = (r + Math.pow(0.5 + 0.5 * Math.cos(ang * 60), 2) * 3.2 * S) / r;
+      p.setXYZ(i, v.x * k, v.y, v.z * k);
+    }
+  }
+  g.computeVertexNormals();
+  return g;
+}
+function backLabelTexture(b) {
+  const [y0, y1, hw] = b.labels.back;
+  const W = 1024, H = Math.round(W * (y1 - y0) / (2 * hw));
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d');
+  const sil = g.createLinearGradient(0, 0, W, 0);
+  sil.addColorStop(0, '#b7bdbb'); sil.addColorStop(0.35, '#e4e7e6'); sil.addColorStop(0.65, '#cfd4d2'); sil.addColorStop(1, '#aab1ae');
+  const r = 46;
+  g.beginPath(); g.moveTo(r, 0); g.lineTo(W - r, 0); g.lineTo(W, r); g.lineTo(W, H - r); g.lineTo(W - r, H); g.lineTo(r, H); g.lineTo(0, H - r); g.lineTo(0, r); g.closePath();
+  g.fillStyle = '#0d5a45'; g.fill();
+  g.save(); g.beginPath(); g.rect(18, 18, W - 36, H - 36); g.clip();
+  g.fillStyle = sil; g.fillRect(0, 0, W, H);
+  g.fillStyle = '#0b4f3d'; g.fillRect(18, 18, W - 36, 120);
+  g.restore();
+  const font = (wt, px) => `${wt} ${px}px "Golos Text", system-ui, sans-serif`;
+  g.fillStyle = '#ffffff'; g.font = font(700, 52); g.textBaseline = 'middle';
+  g.fillText('ОРЦ, НАЙРЛАГА', 60, 80);
+  g.fillStyle = '#123b30'; g.textBaseline = 'alphabetic';
+  const wrap = (text, x, y, maxW, lh) => {
+    let line = '';
+    for (const w of text.split(' ')) {
+      const t = line ? line + ' ' + w : w;
+      if (g.measureText(t).width > maxW && line) { g.fillText(line, x, y); y += lh; line = w; } else line = t;
+    }
+    if (line) { g.fillText(line, x, y); y += lh; }
+    return y;
+  };
+  g.font = font(500, 40);
+  let y = wrap('Шүүсэн ус, жамц давс, хадаасан цэцгийн ханд (башир цэцэг), гаа, глицерин, FD&C Blue No.1.', 60, 210, W - 120, 54);
+  g.fillStyle = 'rgba(13, 90, 69, 0.45)'; g.fillRect(60, y - 10, W - 120, 3);
+  g.fillStyle = '#123b30'; g.font = font(600, 38); y += 50;
+  ['Ангилал: Ам зайлагч', 'Амт: Гаа', 'Спирт агуулаагүй'].forEach((t) => { g.fillText(t, 60, y); y += 54; });
+  g.font = font(500, 32); g.fillStyle = '#2c4a41';
+  g.fillText('Үйлдвэрлэгч: Жем Интернэшнл ХХК', 60, H - 70);
+  g.fillStyle = '#0b4f3d'; g.font = font(700, 76); g.textAlign = 'right';
+  g.fillText(b.volume, W - 60, H - 150);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+// ---- Ingredient forms ----
+function leafGeometry() {
+  const U = 12, V = 72, pos = [], uv = [], idx = [];
+  const half = (y) => 0.36 * Math.pow(Math.sin(Math.PI * Math.min(1, Math.pow(y, 0.82))), 0.92)
+    + ((y > 0.12 && y < 0.93) ? 0.022 * Math.abs(Math.sin(y * Math.PI * 9)) : 0);
+  for (let j = 0; j <= V; j++) {
+    const y = j / V, h = half(y);
+    for (let i = 0; i <= U; i++) {
+      const u = i / U, x = (u * 2 - 1) * h;
+      pos.push(x, y - 0.5, 0.55 * x * x + 0.07 * Math.sin(y * Math.PI) - 0.12 * y * y);
+      uv.push(u, y);
+    }
+  }
+  for (let j = 0; j < V; j++) {
+    for (let i = 0; i < U; i++) {
+      const a = j * (U + 1) + i, b = a + 1, c = a + U + 1, d = c + 1;
+      idx.push(a, b, c, b, d, c);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+function leafTexture() {
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 512;
+  const g = cv.getContext('2d');
+  const grad = g.createLinearGradient(0, 0, 256, 0);
+  grad.addColorStop(0, '#2b7a45'); grad.addColorStop(0.5, '#52b06c'); grad.addColorStop(1, '#2b7a45');
+  g.fillStyle = grad; g.fillRect(0, 0, 256, 512);
+  g.lineCap = 'round';
+  g.strokeStyle = 'rgba(214, 245, 222, 0.75)'; g.lineWidth = 5;
+  g.beginPath(); g.moveTo(128, 512); g.lineTo(128, 24); g.stroke();
+  g.strokeStyle = 'rgba(200, 240, 212, 0.45)'; g.lineWidth = 2.2;
+  for (let k = 1; k <= 7; k++) {
+    const y = 512 - k * 60;
+    g.beginPath(); g.moveTo(128, y); g.quadraticCurveTo(170, y - 26, 236, y - 70); g.stroke();
+    g.beginPath(); g.moveTo(128, y); g.quadraticCurveTo(86, y - 26, 20, y - 70); g.stroke();
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+function dropGeometry() {
+  const pts = [];
+  for (let i = 0; i <= 24; i++) {
+    const a = Math.PI - (i / 24) * Math.PI;
+    pts.push(new THREE.Vector2(Math.max(0.0001, 0.62 * Math.sin(a) * Math.pow(Math.sin(a / 2), 1.2)), Math.cos(a)));
+  }
+  return new THREE.LatheGeometry(pts, 32);
+}
+function radialTexture(stops) {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 256;
+  const g = cv.getContext('2d');
+  const grd = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+  stops.forEach(([o, c]) => grd.addColorStop(o, c));
+  g.fillStyle = grd; g.fillRect(0, 0, 256, 256);
+  return new THREE.CanvasTexture(cv);
+}
+function wordmarkTexture() {
+  const cv = document.createElement('canvas'); cv.width = 2048; cv.height = 560;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#ffffff'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.font = '600 420px Unbounded, "Golos Text", sans-serif';
+  g.fillText('DOMCH', 1024, 290);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+async function init() {
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
+  } catch (e) { return; }
+  renderer.setClearColor(0x000000, 0);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+
+  const scene = new THREE.Scene();
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
+  const key = new THREE.DirectionalLight(0xffffff, 1.4); key.position.set(-2.2, 3.2, 3.5); scene.add(key);
+  const rim = new THREE.DirectionalLight(0xe8fff6, 0.9); rim.position.set(3, 2, -2.5); scene.add(rim);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x9fb8ae, 0.35));
+
+  const FOV = 28, tanH = Math.tan(THREE.MathUtils.degToRad(FOV / 2));
+  const camera = new THREE.PerspectiveCamera(FOV, 1, 0.1, 60);
+  let D = 5, aspect = 1, narrow = window.innerWidth < 820;
+  const visH = (z) => 2 * (D - z) * tanH;
+  const visW = (z) => visH(z) * aspect;
+
+  const loader = new THREE.TextureLoader();
+  const [upperTex, mainTex] = await Promise.all([loader.loadAsync('assets/label_upper.webp'), loader.loadAsync('assets/label_main.webp')]);
+  const aniso = renderer.capabilities.getMaxAnisotropy();
+  [upperTex, mainTex].forEach((t) => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = aniso; });
+  try {
+    await Promise.race([
+      Promise.all([
+        document.fonts.load('500 40px "Golos Text"'), document.fonts.load('700 40px "Golos Text"'), document.fonts.load('600 200px Unbounded')
+      ]),
+      sleep(1600)
+    ]);
+  } catch (e) { /* canvas text falls back to system faces */ }
+
+  // ---- Materials ----
+  const liquid = new THREE.MeshPhysicalMaterial({
+    color: 0x0c8f68, roughness: 0.1, metalness: 0, transmission: 0.3, thickness: 0.35, ior: 1.36,
+    attenuationColor: new THREE.Color(0x05634a), attenuationDistance: 0.25,
+    clearcoat: 1, clearcoatRoughness: 0.06, envMapIntensity: 1.15
+  });
+  const glass = new THREE.MeshPhysicalMaterial({ color: 0xdcefe8, roughness: 0.05, metalness: 0, transparent: true, opacity: 0.32, clearcoat: 1, envMapIntensity: 1.6, depthWrite: false });
+  const capMat = new THREE.MeshPhysicalMaterial({ color: 0x141616, roughness: 0.42, metalness: 0.05, clearcoat: 0.35, clearcoatRoughness: 0.4 });
+  const beadMat = new THREE.MeshPhysicalMaterial({ color: 0xf2fffa, roughness: 0, metalness: 0, transparent: true, opacity: 0.3, clearcoat: 1, envMapIntensity: 3 });
+  const labelMat = (map) => new THREE.MeshStandardMaterial({ map, transparent: true, roughness: 0.42, metalness: 0.12, emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0.18 });
+  const upperMat = labelMat(upperTex), mainMat = labelMat(mainTex);
+  const saltMat = new THREE.MeshPhysicalMaterial({ color: 0xf6f9f7, roughness: 0.3, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.2, sheen: 0.6, sheenColor: new THREE.Color(0xffffff), envMapIntensity: 1.3 });
+  const extractMat = new THREE.MeshPhysicalMaterial({ color: 0xe9fff6, roughness: 0.02, metalness: 0, transparent: true, opacity: 0.6, clearcoat: 1, iridescence: 0.6, iridescenceIOR: 1.3, envMapIntensity: 2.4 });
+  const leafMat = new THREE.MeshStandardMaterial({ map: leafTexture(), roughness: 0.5, side: THREE.DoubleSide });
+  const shadowTex = radialTexture([[0, 'rgba(255,255,255,1)'], [0.55, 'rgba(255,255,255,0.4)'], [1, 'rgba(255,255,255,0)']]);
+  const haloTex = radialTexture([[0, 'rgba(255,255,255,0.9)'], [0.4, 'rgba(255,255,255,0.35)'], [1, 'rgba(255,255,255,0)']]);
+
+  // ---- Bottles ----
+  const beadGeo = new THREE.SphereGeometry(1, 12, 9);
+  function buildBottle(b) {
+    b.R = buildRows(b);
+    b.maxW = Math.max(...b.body.map((r) => r[1]));
+    const inner = new THREE.Group();
+    inner.add(new THREE.Mesh(bodyGeometry(b), liquid));
+    inner.add(new THREE.Mesh(labelGeometry(b, b.labels.upper, 1), upperMat));
+    inner.add(new THREE.Mesh(labelGeometry(b, b.labels.main, 1), mainMat));
+    const backTex = backLabelTexture(b); backTex.anisotropy = aniso;
+    inner.add(new THREE.Mesh(labelGeometry(b, b.labels.back, -1), labelMat(backTex)));
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(b.neck.r * S, b.neck.r * S, (b.neck.y1 - b.neck.y0) * S, 56, 1, true), glass);
+    neck.position.y = yWorld(b, (b.neck.y0 + b.neck.y1) / 2); inner.add(neck);
+    b.neck.threads.forEach((ty) => {
+      const t = new THREE.Mesh(new THREE.TorusGeometry(b.neck.r * S + 0.0015, 0.0045, 8, 56), glass);
+      t.rotation.x = Math.PI / 2; t.position.y = yWorld(b, ty); inner.add(t);
+    });
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(b.ring.r * S, b.ring.r * S, (b.ring.y1 - b.ring.y0) * S, 64), glass);
+    ring.position.y = yWorld(b, (b.ring.y0 + b.ring.y1) / 2); inner.add(ring);
+    inner.add(new THREE.Mesh(capGeometry(b), capMat));
+
+    const rand = rng(b.seed), total = b.drops + b.capDrops;
+    const beads = new THREE.InstancedMesh(beadGeo, beadMat, total);
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), zAxis = new THREE.Vector3(0, 0, 1);
+    const yA = b.body[0][0] + 20, yB = b.H - 40;
+    for (let i = 0; i < total; i++) {
+      const r = (2.5 + 8 * Math.pow(rand(), 3)) * S;
+      let p, n;
+      if (i < b.drops) {
+        ({ p, n } = surfacePoint(b, yA + rand() * (yB - yA), rand() * Math.PI * 2));
+      } else {
+        const ang = rand() * Math.PI * 2, rr = (b.cap.rBot - 2) * S;
+        n = new THREE.Vector3(Math.cos(ang), 0, Math.sin(ang));
+        p = new THREE.Vector3(n.x * rr, yWorld(b, b.cap.y0 + 22 + rand() * (b.cap.y1 - b.cap.y0 - 40)), n.z * rr);
+      }
+      p.addScaledVector(n, r * 0.25);
+      q.setFromUnitVectors(zAxis, n);
+      sc.set(r, r, r * 0.5);
+      m.compose(p, q, sc);
+      beads.setMatrixAt(i, m);
+    }
+    inner.add(beads);
+    inner.position.y = -b.H * S / 2;
+    const pivot = new THREE.Group();
+    pivot.rotation.order = 'ZYX';
+    pivot.add(inner);
+    scene.add(pivot);
+
+    const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: shadowTex, color: 0x0a2820, transparent: true, opacity: 0, depthWrite: false, toneMapped: false }));
+    scene.add(shadow);
+    return { pivot, shadow, b };
+  }
+  const BIG = buildBottle(BOTTLES.big);
+  const SMALL = buildBottle(BOTTLES.small);
+
+  // ---- Ingredients orbiting the bottle ----
+  const ingGroup = new THREE.Group();
+  scene.add(ingGroup);
+  const elems = [];
+  {
+    const rand = rng(31);
+    const kinds = [
+      { g: 0, n: 14, geo: new RoundedBoxGeometry(1, 1, 1, 3, 0.1), mat: saltMat, size: [0.05, 0.09] },
+      { g: 1, n: 11, geo: dropGeometry(), mat: extractMat, size: [0.045, 0.075] },
+      { g: 2, n: 9, geo: leafGeometry(), mat: leafMat, size: [0.17, 0.26] }
+    ];
+    kinds.forEach(({ g, n, geo, mat, size }) => {
+      for (let i = 0; i < n; i++) {
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.visible = false;
+        ingGroup.add(mesh);
+        elems.push({
+          mesh, g,
+          th: (i / n) * Math.PI * 2 + g * 0.9 + rand() * 0.5,
+          r: 0.58 + rand() * 0.36,
+          h: (rand() - 0.5) * 1.3,
+          base: size[0] + rand() * (size[1] - size[0]),
+          rx: rand() * 6, ry: rand() * 6, rz: rand() * 6,
+          sx: (rand() - 0.5) * 0.9, sy: (rand() - 0.5) * 0.9,
+          ph: rand() * 6.28
+        });
+      }
+    });
+  }
+
+  const halo = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: haloTex, transparent: true, opacity: 0, depthWrite: false, toneMapped: false }));
+  halo.scale.set(3.2, 3.2, 1);
+  scene.add(halo);
+  const mark = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 5.2 * 560 / 2048), new THREE.MeshBasicMaterial({ map: wordmarkTexture(), transparent: true, opacity: 0, depthWrite: false, toneMapped: false }));
+  scene.add(mark);
+
+  const readColors = () => {
+    const cs = getComputedStyle(root);
+    mark.material.color.setStyle(cs.getPropertyValue('--ghost').trim() || '#E3E6DC');
+    halo.material.color.setStyle(cs.getPropertyValue('--mint').trim() || '#7FE0BE');
+  };
+  readColors();
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readColors);
+  new MutationObserver(readColors).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+
+  // ---- Layout, anchors and scroll poses ----
+  let anchors = [], sizesY = null, zoneEnd = Infinity;
+  const ingEl = document.getElementById('ingredients');
+  const solidEl = document.querySelector('.solid');
+  function computeAnchors() {
+    const vh = window.innerHeight, sy = window.scrollY;
+    anchors = Array.from(document.querySelectorAll('[data-pose]')).map((el) => {
+      const r = el.getBoundingClientRect(), name = el.dataset.pose;
+      return { name, y: name === 'hero' ? 0 : Math.max(0, r.top + sy + r.height / 2 - vh / 2) };
+    }).sort((a, b) => a.y - b.y);
+    const s = anchors.find((a) => a.name === 'sizes');
+    sizesY = s ? s.y : null;
+    zoneEnd = solidEl.getBoundingClientRect().top + sy;
+  }
+  function layout() {
+    const w = canvas.clientWidth || window.innerWidth, h = canvas.clientHeight || window.innerHeight;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, window.innerWidth < 820 ? 1.5 : 2));
+    renderer.setSize(w, h, false);
+    aspect = w / h;
+    camera.aspect = aspect;
+    narrow = window.innerWidth < 820;
+    const frac = narrow ? 0.42 : (aspect < 1.25 ? 0.5 : 0.6);
+    D = (1.44 / frac) / (2 * tanH);
+    camera.updateProjectionMatrix();
+    computeAnchors();
+  }
+  const mixPose = (A, B, u) => ({
+    big: A.big.map((v, i) => v + (B.big[i] - v) * u),
+    small: A.small.map((v, i) => v + (B.small[i] - v) * u),
+    ing: A.ing.map((v, i) => v + (B.ing[i] - v) * u),
+    mark: A.mark + (B.mark - A.mark) * u
+  });
+  function poseAt(sy) {
+    const set = POSES[narrow ? 'narrow' : 'wide'];
+    if (!anchors.length || sy <= anchors[0].y) return mixPose(set.hero, set.hero, 0);
+    for (let i = 0; i < anchors.length - 1; i++) {
+      const A = anchors[i], B = anchors[i + 1];
+      if (sy < B.y) {
+        const u = smooth(clamp(((sy - A.y) / Math.max(1, B.y - A.y) - 0.15) / 0.7, 0, 1));
+        return mixPose(set[A.name], set[B.name], u);
+      }
+    }
+    const last = set[anchors[anchors.length - 1].name];
+    return mixPose(last, last, 0);
+  }
+
+  layout();
+  let cur = poseAt(window.scrollY);
+  let resizeTimer = 0;
+  new ResizeObserver(() => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { layout(); wake(); }, 80); }).observe(canvas);
+  window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { layout(); wake(); }, 80); });
+  window.addEventListener('load', computeAnchors);
+  document.fonts.ready.then(computeAnchors);
+
+  // ---- Input ----
+  let sel = (document.querySelector('.opt[aria-pressed="true"]') || {}).dataset?.size || 'big';
+  let selB = sel === 'big' ? 1 : 0;
+  window.addEventListener('domch:size', (e) => { sel = e.detail; wake(); });
+  let drag = 0, dragging = false, lastX = 0;
+  document.querySelectorAll('[data-drag]').forEach((el) => {
+    el.addEventListener('pointerdown', (e) => {
+      if (!root.classList.contains('gl-ready')) return;
+      dragging = true; lastX = e.clientX;
+      try { el.setPointerCapture(e.pointerId); } catch (err) { /* capture is optional */ }
+      wake();
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      drag = clamp(drag + (e.clientX - lastX) * 0.012, -4, 4);
+      lastX = e.clientX;
+    });
+    const end = () => { dragging = false; };
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+  });
+  let mx = 0, my = 0, pmx = 0, pmy = 0;
+  if (window.matchMedia('(pointer: fine)').matches && !reduceMotion) {
+    window.addEventListener('pointermove', (e) => {
+      mx = (e.clientX / window.innerWidth) * 2 - 1;
+      my = (e.clientY / window.innerHeight) * 2 - 1;
+    }, { passive: true });
+  }
+
+  // ---- Frame ----
+  let t0 = performance.now() + 150, lastT = performance.now(), running = false;
+  function place(pivot, p, ex) {
+    const z = p[2] + ex.z, x = p[0] * visW(z), y = p[1] * visH(z) + ex.y, s = p[6] * ex.s;
+    pivot.position.set(x, y, z);
+    pivot.rotation.set(p[4], p[3] + ex.yaw, p[5]);
+    pivot.scale.setScalar(s);
+    return { x, y, z, s, roll: p[5] };
+  }
+  function placeShadow(B, P, strength) {
+    const halfH = (B.b.H * S / 2) * P.s, w = B.b.maxW * S * P.s;
+    B.shadow.position.set(P.x, P.y - halfH - 0.012, P.z - 0.06);
+    B.shadow.scale.set(w * 2.9, w * 0.42, 1);
+    B.shadow.material.opacity = clamp(strength * (1 - Math.abs(P.roll) * 3), 0, 1) * 0.55;
+  }
+  function frame(now) {
+    const dt = clamp((now - lastT) / 1000, 0.001, 0.05); lastT = now;
+    const t = now / 1000, sy = window.scrollY, vh = window.innerHeight;
+    const tgt = poseAt(sy), k = 1 - Math.exp(-dt * (reduceMotion ? 14 : 5.5));
+    ['big', 'small', 'ing'].forEach((key) => { for (let i = 0; i < cur[key].length; i++) cur[key][i] += (tgt[key][i] - cur[key][i]) * k; });
+    cur.mark += (tgt.mark - cur.mark) * k;
+
+    const ip = reduceMotion ? 1 : clamp((now - t0) / 2400, 0, 1);
+    const eRot = 1 - Math.pow(1 - ip, 4), ePos = 1 - Math.pow(1 - ip, 3);
+    selB += ((sel === 'big' ? 1 : 0) - selB) * (1 - Math.exp(-dt * 6));
+    const wS = sizesY == null ? 0 : clamp(1 - Math.abs(sy - sizesY) / (vh * 0.6), 0, 1);
+    if (!dragging) drag *= Math.exp(-dt * 2.4);
+    const idle = reduceMotion ? 0 : 1;
+
+    const r = ingEl.getBoundingClientRect();
+    const inT = smooth(clamp((vh * 0.9 - r.top) / (vh * 0.6), 0, 1));
+    const outT = smooth(clamp((vh * 0.7 - r.bottom) / (vh * 0.6), 0, 1));
+    const deep = inT * (1 - outT);
+
+    const pb = place(BIG.pivot, cur.big, {
+      z: wS * (selB * 0.3 - (1 - selB) * 0.14),
+      s: (0.9 + 0.1 * ePos) * (1 + wS * selB * 0.03),
+      y: -(1 - ePos) * visH(0) * 0.9 + Math.sin(t * 1.1) * 0.012 * idle,
+      yaw: (1 - eRot) * -Math.PI * 2.5 + Math.sin(t * 0.5) * 0.06 * idle + drag
+    });
+    const ps = place(SMALL.pivot, cur.small, {
+      z: wS * ((1 - selB) * 0.3 - selB * 0.14),
+      s: 1 + wS * (1 - selB) * 0.03,
+      y: Math.sin(t * 1.1 + 1.7) * 0.012 * idle,
+      yaw: Math.sin(t * 0.5 + 1.7) * 0.06 * idle + drag
+    });
+    placeShadow(BIG, pb, ePos * (1 - deep));
+    placeShadow(SMALL, ps, 1 - deep);
+
+    const [show, wSalt, wDrop, wMint] = cur.ing;
+    const ringS = narrow ? 0.78 : 1;
+    const orbit = t * 0.12 * idle + cur.big[3] * 0.3;
+    ingGroup.position.set(pb.x, pb.y, 0);
+    for (const e of elems) {
+      const w = e.g === 0 ? wSalt : e.g === 1 ? wDrop : wMint;
+      const sc = e.base * Math.pow(show, 1.5) * (0.35 + 0.65 * w) * ringS;
+      if (show < 0.04 || sc < 0.002) { e.mesh.visible = false; continue; }
+      e.mesh.visible = true;
+      const th = e.th + orbit, rad = e.r * ringS * (1 + (1 - show) * 0.5);
+      e.mesh.position.set(Math.cos(th) * rad, e.h * ringS + Math.sin(t * 0.9 + e.ph) * 0.03 * idle, Math.sin(th) * rad * 0.85);
+      e.mesh.rotation.set(e.rx + t * e.sx * idle, e.ry + t * e.sy * idle, e.rz);
+      e.mesh.scale.setScalar(sc);
+    }
+    halo.position.set(pb.x, pb.y, -1.1);
+    halo.material.opacity = deep * 0.45;
+    rim.intensity = 0.9 + deep * 0.9;
+    mark.position.set(pb.x, pb.y - 0.02, -2.6);
+    mark.scale.setScalar(narrow ? 0.42 : 0.55);
+    mark.material.opacity = cur.mark * ePos;
+
+    pmx += (mx - pmx) * k; pmy += (my - pmy) * k;
+    camera.position.set(pmx * 0.14, 0.05 - pmy * 0.08, D);
+    camera.lookAt(0, 0, 0);
+    renderer.render(scene, camera);
+  }
+  const shouldRun = () => !document.hidden && window.scrollY < zoneEnd + 2;
+  function loop(now) {
+    frame(now);
+    if (shouldRun()) requestAnimationFrame(loop); else running = false;
+  }
+  function wake() {
+    if (!running && shouldRun()) { running = true; lastT = performance.now(); requestAnimationFrame(loop); }
+  }
+  window.addEventListener('scroll', wake, { passive: true });
+  document.addEventListener('visibilitychange', wake);
+
+  frame(performance.now());
+  root.classList.add('gl-ready');
+  t0 = performance.now() + 150;
+  running = true;
+  requestAnimationFrame(loop);
+}
+
+init().catch(() => { /* photos stay in place when 3D cannot start */ });
+</script>
+</body>
+</html>
