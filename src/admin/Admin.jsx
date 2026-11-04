@@ -87,7 +87,8 @@ const SCHEMAS = {
       { k: 'body', l: 'Дэлгэрэнгүй текст', type: 'textarea', rows: 7, hint: 'Догол мөрийг хоосон мөрөөр тусгаарлана.' },
       { k: 'doctor_name', l: 'Эмчийн нэр' },
       { k: 'doctor_title', l: 'Мэргэжил' },
-      { k: 'video_url', l: 'Видео холбоос', type: 'url', hint: 'YouTube холбоос бол сайт дээр шууд тоглоно.' },
+      { k: 'video_url', l: 'Видео холбоос', type: 'url', hint: 'YouTube эсвэл Facebook видео/reel холбоос. Сайт дээр шууд тоглоно.' },
+      { k: 'image_url', l: 'Нүүр зураг', type: 'image', hint: 'Видеоны нүүр эсвэл зөвлөгөөний зураг. Хоосон бол YouTube-ийн зураг гарна.' },
       { k: 'source', l: 'Эх сурвалж' },
       { k: 'published_at', l: 'Нийтэлсэн огноо', type: 'date' },
       { k: 'featured', l: 'Онцлох зөвлөгөө (том хэмжээгээр)', type: 'checkbox' },
@@ -103,7 +104,8 @@ const SCHEMAS = {
       { k: 'title', l: 'Гарчиг', req: true },
       { k: 'author', l: 'Бүтээгч, гэр бүлийн нэр' },
       { k: 'topic', l: 'Сэдэв' },
-      { k: 'video_url', l: 'Видео холбоос', type: 'url' },
+      { k: 'video_url', l: 'Видео холбоос', type: 'url', hint: 'YouTube эсвэл Facebook видео/reel холбоос (жишээ: facebook.com/reel/…).' },
+      { k: 'image_url', l: 'Нүүр зураг', type: 'image', hint: 'Сонговол сайт дээр энэ зураг гарч, дарахад видео тоглоно.' },
       { k: 'sponsored', l: 'Хамтарсан контент (тэмдэглэгээ харагдана)', type: 'checkbox', def: true },
       SORT,
       ACTIVE,
@@ -486,7 +488,69 @@ function InboxBody({ kind, r }) {
   );
 }
 
-function EditForm({ schema, row, onSave, onCancel }) {
+async function toWebp(file, max = 1280) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('Зургийг уншиж чадсангүй.'));
+      el.src = url;
+    });
+    const scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(img.naturalWidth * scale);
+    canvas.height = Math.round(img.naturalHeight * scale);
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/webp', 0.82));
+    const out = blob && blob.type === 'image/webp' ? blob : await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+    return await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.readAsDataURL(out);
+    });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function ImageField({ id, value, onChange, call, onError }) {
+  const [busy, setBusy] = useState(false);
+  const pick = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!/^image\//.test(file.type)) {
+      onError('Зураг сонгоно уу.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const data = await toWebp(file);
+      const res = await call('/media', { method: 'POST', body: { data } });
+      onChange(res.url);
+    } catch (err) {
+      onError(err.fields?.file || err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="a-image">
+      {value ? <img src={value} alt="" /> : <span className="a-image__empty">Зураг алга</span>}
+      <div className="a-image__ctl">
+        <label className="a-btn a-btn--ghost a-image__pick">
+          <input type="file" accept="image/*" onChange={pick} disabled={busy} />
+          {busy ? 'Оруулж байна…' : value ? 'Зураг солих' : 'Зураг оруулах'}
+        </label>
+        {value && <button type="button" className="a-btn a-btn--ghost" onClick={() => onChange('')}>Хасах</button>}
+        <input id={id} type="url" value={value} onChange={(e) => onChange(e.target.value)} placeholder="эсвэл зургийн холбоос https://…" />
+      </div>
+    </div>
+  );
+}
+
+function EditForm({ schema, row, onSave, onCancel, call }) {
   const initial = {};
   schema.fields.forEach((f) => {
     const v = row ? row[f.k] : undefined;
@@ -519,13 +583,16 @@ function EditForm({ schema, row, onSave, onCancel }) {
           setError('');
         };
         return (
-          <div key={f.k} className={`a-field${f.type === 'checkbox' ? ' a-field--check' : ''}${errors[f.k] ? ' has-error' : ''}`}>
+          <div key={f.k} className={`a-field${f.type === 'checkbox' ? ' a-field--check' : ''}${f.type === 'image' ? ' a-field--wide' : ''}${errors[f.k] ? ' has-error' : ''}`}>
             {f.type === 'checkbox' ? (
               <label htmlFor={id}><input id={id} type="checkbox" checked={values[f.k]} onChange={(e) => set(e.target.checked)} /> {f.l}</label>
             ) : (
               <>
                 <label htmlFor={id}>{f.l}{f.req && <span className="req"> *</span>}</label>
-                {f.type === 'textarea' ? (
+                {f.type === 'image' ? (
+                  <ImageField id={id} value={values[f.k]} onChange={set} call={call}
+                    onError={(msg) => setErrors((s) => ({ ...s, [f.k]: msg }))} />
+                ) : f.type === 'textarea' ? (
                   <textarea id={id} rows={f.rows || 3} value={values[f.k]} onChange={(e) => set(e.target.value)} />
                 ) : f.type === 'select' ? (
                   <select id={id} value={values[f.k]} onChange={(e) => set(e.target.value)}>
@@ -633,7 +700,7 @@ function TableView({ table, call }) {
       )}
       {editing && (
         <Modal title={editing.id ? 'Засах' : 'Шинээр нэмэх'} onClose={() => setEditing(null)} wide>
-          <EditForm schema={schema} row={editing.id ? editing : null} onSave={save} onCancel={() => setEditing(null)} />
+          <EditForm schema={schema} row={editing.id ? editing : null} onSave={save} onCancel={() => setEditing(null)} call={call} />
         </Modal>
       )}
     </div>

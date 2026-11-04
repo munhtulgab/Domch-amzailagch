@@ -11,7 +11,7 @@ import { fold, formatDate } from '../lib/util.js';
 function TipView({ tip }) {
   return (
     <div className="prose">
-      {tip.video_url && <VideoBox url={tip.video_url} title={tip.title} meta={{ tip: tip.id }} />}
+      {(tip.video_url || tip.image_url) && <VideoBox url={tip.video_url} image={tip.image_url} title={tip.title} meta={{ tip: tip.id }} />}
       <p className="meta">
         {[TIP_KINDS[tip.kind], [tip.doctor_name, tip.doctor_title].filter(Boolean).join(', '), formatDate(tip.published_at)].filter(Boolean).join(' · ')}
       </p>

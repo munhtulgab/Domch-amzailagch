@@ -350,6 +350,11 @@ html.menu-open .mcta { display: none; }
 .ph--wide { aspect-ratio: 16 / 9; }
 .ph--tall { aspect-ratio: 3 / 4; }
 .ph--video iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.ph--video { background: #000; }
+.ph--video .ph__soon { position: relative; }
+.ph--fallback { background-size: auto 72%; background-position: center 42%; }
+.ph--fallback .ph__soon { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); white-space: nowrap; }
+.tip__cover { display: block; width: calc(100% + 52px); max-width: none; margin: -26px -26px 4px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 26px 26px 0 0; background: var(--tint-2); }
 .ph__tag {
   position: absolute; left: 14px; bottom: 14px; display: inline-flex; align-items: center; gap: 8px;
   padding: 6px 12px; border-radius: 999px; background: var(--card); color: var(--ph-ink); font-size: 12px; font-weight: 500;

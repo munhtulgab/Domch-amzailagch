@@ -1,5 +1,5 @@
 import { Arrow, Chat } from './Icons.jsx';
-import { VideoBox } from './Media.jsx';
+import { VideoBox, coverOf } from './Media.jsx';
 import { TIP_KINDS } from '../data/static.js';
 import { formatDate } from '../lib/util.js';
 
@@ -31,6 +31,7 @@ export function Doctor({ tips, actions }) {
             <article className="feature">
               <VideoBox
                 url={featured.video_url}
+                image={featured.image_url}
                 title={featured.title}
                 sample={featured.is_sample}
                 label={<span className="ph__tag">Видео · {TIP_KINDS[featured.kind] || 'Эмчийн зөвлөгөө'}</span>}
@@ -47,6 +48,7 @@ export function Doctor({ tips, actions }) {
             <div className="tips">
               {rest.map((t) => (
                 <article className="tip" key={t.id}>
+                  {coverOf(t) && <img className="tip__cover" src={coverOf(t)} alt="" loading="lazy" decoding="async" />}
                   <div className="tip__top">
                     <p className="tag">{TIP_KINDS[t.kind] || 'Зөвлөгөө'}</p>
                     {t.is_sample ? <span className="badge badge--sample badge--inline">Жишээ</span> : null}

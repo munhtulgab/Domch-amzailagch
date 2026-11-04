@@ -212,3 +212,35 @@ def test_settings_and_samples(client):
 def test_unknown_route(client):
     res = client.get("/api/nope")
     assert res.status_code == 404 and res.json()["ok"] is False
+
+
+def test_media_upload_and_serve(client):
+    import base64
+    png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
+    res = client.post("/api/admin/media", headers=AUTH, json={"data": "data:image/png;base64," + base64.b64encode(png).decode()})
+    assert res.status_code == 201, res.text
+    url = res.json()["url"]
+    assert url.startswith("/api/media/") and url.endswith(".png")
+    got = client.get(url)
+    assert got.status_code == 200 and got.content == png and got.headers["content-type"] == "image/png"
+    assert "immutable" in got.headers["cache-control"]
+    svg = base64.b64encode(b"<svg xmlns='http://www.w3.org/2000/svg'/>").decode()
+    assert client.post("/api/admin/media", headers=AUTH, json={"data": svg}).status_code == 422
+    assert client.post("/api/admin/media", json={"data": svg}).status_code == 401
+    assert client.get("/api/media/nope.png").status_code == 404
+    # covers are saved on tips/videos and reach the public content
+    tip = client.post("/api/admin/t/videos", headers=AUTH, json={"title": "Reel", "video_url": "https://www.facebook.com/reel/1616920993305370",
+                                                                   "image_url": url, "active": True})
+    assert tip.status_code == 201
+    videos = client.get("/api/content").json()["videos"]
+    assert any(v["image_url"] == url for v in videos)
+
+
+def test_old_database_is_upgraded():
+    db = dbmod.get_db()
+    db.run("ALTER TABLE tips DROP COLUMN image_url")
+    db.run("DROP TABLE media")
+    dbmod.reset_db()
+    db = dbmod.get_db()
+    assert db.one("SELECT image_url FROM tips LIMIT 1") is not None
+    assert db.all("SELECT id FROM media") == []

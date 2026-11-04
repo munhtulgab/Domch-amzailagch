@@ -254,3 +254,13 @@
 .a-ai-state { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin: -4px 0 12px; padding: 8px 12px; border-radius: 12px; background: var(--tint); font-size: 13px; }
 .a-ai-state.is-paused { background: var(--tint-2); }
 .a-ai-state .a-btn { min-height: 32px; padding: 0 12px; font-size: 13px; }
+
+/* Image field */
+.a-image { display: flex; gap: 14px; align-items: flex-start; }
+.a-image img, .a-image__empty { flex: 0 0 160px; width: 160px; aspect-ratio: 4 / 3; border-radius: 12px; object-fit: cover; background: var(--tint-2); }
+.a-image__empty { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 13px; }
+.a-image__ctl { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.a-image__ctl input[type="url"] { flex: 1 1 100%; }
+.a-image__pick { position: relative; overflow: hidden; }
+.a-image__pick input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+@media (max-width: 560px) { .a-image { flex-direction: column; } .a-image img, .a-image__empty { width: 100%; flex-basis: auto; } }

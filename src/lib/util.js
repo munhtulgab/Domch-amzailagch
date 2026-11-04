@@ -48,6 +48,24 @@ export function youtubeId(url) {
   return null;
 }
 
+/** Facebook video/reel link → the href the Facebook embed player accepts, or null. */
+export function facebookVideo(url) {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^(www|m|web|mbasic)\./, '');
+    if (host === 'fb.watch') return url;
+    if (host !== 'facebook.com') return null;
+    const reel = u.pathname.match(/^\/reels?\/(\d+)/);
+    if (reel) return `https://www.facebook.com/watch/?v=${reel[1]}`;
+    if (u.pathname.startsWith('/watch') && u.searchParams.get('v')) return `https://www.facebook.com/watch/?v=${u.searchParams.get('v')}`;
+    if (/\/videos\/|^\/share\/(v|r)\//.test(u.pathname)) return url;
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 export function distanceKm(a, b) {
   const rad = (x) => (x * Math.PI) / 180;
   const dLat = rad(b.lat - a.lat);

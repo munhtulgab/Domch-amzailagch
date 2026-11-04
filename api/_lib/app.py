@@ -13,7 +13,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .common import FieldErrors, ago, fail, now_utc, require_admin
 from .db import SCHEMA_PATH, DBError, NotConfigured, get_db
-from . import ai, messenger
+from . import ai, media, messenger
 
 app = FastAPI(
     title="DOMCH API",
@@ -147,9 +147,9 @@ def content(response: Response):
     products, faqs, tips, videos, reviews, stats, places, settings, msgr = db.batch([
         "SELECT id, slug, name, volume_ml, price, online_url FROM products WHERE active = 1 ORDER BY sort, id",
         "SELECT id, question, answer FROM faqs WHERE active = 1 ORDER BY sort, id",
-        "SELECT id, kind, title, summary, body, doctor_name, doctor_title, video_url, source, published_at, featured, is_sample"
+        "SELECT id, kind, title, summary, body, doctor_name, doctor_title, video_url, image_url, source, published_at, featured, is_sample"
         " FROM tips WHERE active = 1 ORDER BY featured DESC, sort, id",
-        "SELECT id, kind, title, author, topic, video_url, sponsored, is_sample FROM videos WHERE active = 1 ORDER BY sort, id",
+        "SELECT id, kind, title, author, topic, video_url, image_url, sponsored, is_sample FROM videos WHERE active = 1 ORDER BY sort, id",
         "SELECT id, name, rating, size, body, created_at FROM reviews WHERE status = 'approved'"
         " ORDER BY created_at DESC, id DESC LIMIT 12",
         "SELECT COUNT(*) AS count, ROUND(AVG(rating), 1) AS average FROM reviews WHERE status = 'approved'",
@@ -459,13 +459,13 @@ TABLES = {
     },
     "tips": {
         "fields": {"kind": "text", "title": "text", "summary": "text", "body": "text", "doctor_name": "text",
-                   "doctor_title": "text", "video_url": "text", "source": "text", "published_at": "text",
+                   "doctor_title": "text", "video_url": "text", "image_url": "text", "source": "text", "published_at": "text",
                    "featured": "bool", "active": "bool", "sort": "int"},
         "required": ("title",), "order": "featured DESC, sort, id", "sample": True,
     },
     "videos": {
         "fields": {"kind": "text", "title": "text", "author": "text", "topic": "text", "video_url": "text",
-                   "sponsored": "bool", "active": "bool", "sort": "int"},
+                   "image_url": "text", "sponsored": "bool", "active": "bool", "sort": "int"},
         "required": ("title",), "order": "sort, id", "sample": True,
     },
     "knowledge": {
@@ -718,4 +718,6 @@ def admin_migrate():
 app.include_router(admin)
 app.include_router(messenger.admin)
 app.include_router(ai.admin)
+app.include_router(media.admin)
+app.include_router(media.public)
 app.include_router(messenger.public)

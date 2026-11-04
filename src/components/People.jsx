@@ -19,6 +19,7 @@ export function People({ videos, actions }) {
               <article key={v.id}>
                 <VideoBox
                   url={v.video_url}
+                  image={v.image_url}
                   title={v.title}
                   ratio="tall"
                   sample={v.is_sample}

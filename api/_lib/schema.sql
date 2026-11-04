@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS tips (
   doctor_name TEXT,
   doctor_title TEXT,
   video_url TEXT,
+  image_url TEXT,
   source TEXT,
   published_at TEXT,
   featured INTEGER NOT NULL DEFAULT 0,
@@ -62,6 +63,7 @@ CREATE TABLE IF NOT EXISTS videos (
   author TEXT,
   topic TEXT,
   video_url TEXT,
+  image_url TEXT,
   sponsored INTEGER NOT NULL DEFAULT 1,
   active INTEGER NOT NULL DEFAULT 1,
   is_sample INTEGER NOT NULL DEFAULT 0,
@@ -166,4 +168,13 @@ CREATE TABLE IF NOT EXISTS knowledge (
   active INTEGER NOT NULL DEFAULT 1,
   sort INTEGER NOT NULL DEFAULT 0,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Images uploaded from the admin (covers for doctor tips and videos), served from /api/media/<id>
+CREATE TABLE IF NOT EXISTS media (
+  id TEXT PRIMARY KEY,
+  mime TEXT NOT NULL,
+  data TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

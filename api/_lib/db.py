@@ -144,7 +144,39 @@ def get_db():
         _db = db
     else:
         raise NotConfigured("Өгөгдлийн сан тохируулагдаагүй байна.")
+    upgrade(_db)
     return _db
+
+
+# Columns/tables added after the first release; added once per process if missing.
+UPGRADES = (
+    ("tips", "image_url", "ALTER TABLE tips ADD COLUMN image_url TEXT"),
+    ("videos", "image_url", "ALTER TABLE videos ADD COLUMN image_url TEXT"),
+)
+MEDIA_TABLE = (
+    "CREATE TABLE IF NOT EXISTS media (id TEXT PRIMARY KEY, mime TEXT NOT NULL, data TEXT NOT NULL,"
+    " size INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')))"
+)
+
+
+def upgrade(db) -> None:
+    try:
+        db.one("SELECT " + ", ".join(f"(SELECT {c} FROM {t} LIMIT 1)" for t, c, _ in UPGRADES) + ", (SELECT id FROM media LIMIT 1)")
+        return
+    except DBError:
+        pass
+    for table, column, sql in UPGRADES:
+        try:
+            db.one(f"SELECT {column} FROM {table} LIMIT 1")
+        except DBError:
+            try:
+                db.run(sql)
+            except DBError:
+                pass
+    try:
+        db.run(MEDIA_TABLE)
+    except DBError:
+        pass
 
 
 def reset_db() -> None:
