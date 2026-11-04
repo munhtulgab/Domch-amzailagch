@@ -279,20 +279,26 @@ def to_contents(history: list, question: str) -> list:
     return turns
 
 
-def fallback_chain(cfg: dict, limit: int = 3) -> list:
-    """The chosen model first, then the best stable Flash models this key can use."""
+def fallback_chain(cfg: dict, limit: int = 4) -> list:
+    """The chosen model first, then stable Flash-Lite and Flash models in turn: different models have separate
+    capacity, so when one is "experiencing high demand" another usually answers."""
     try:
         models = json.loads(cfg.get("models") or "[]")
     except ValueError:
         models = []
+    stable = [m for m in sorted(models, key=_model_rank)
+              if "flash" in m and not re.search(r"preview|exp|latest|transcribe|omni|image|tts|live", m)]
+    lites = [m for m in stable if "flash-lite" in m]
+    flashes = [m for m in stable if "flash-lite" not in m]
     chain = [cfg["model"]] if cfg.get("model") else []
-    for name in sorted(models, key=_model_rank):
-        if name not in chain and "flash" in name and not re.search(r"preview|exp|latest|transcribe|omni", name):
-            chain.append(name)
+    for pair in zip(lites + [None] * len(flashes), flashes + [None] * len(lites)):
+        for name in pair:
+            if name and name not in chain:
+                chain.append(name)
     return chain[:limit]
 
 
-def generate_any(cfg: dict, system: str, contents: list, budget: float = 10.0):
+def generate_any(cfg: dict, system: str, contents: list, budget: float = 18.0):
     """Try the chosen model; when it is overloaded or out of quota, the next one. Returns (text, model)."""
     started = time.monotonic()
     last = AIError("Gemini загвар сонгогдоогүй байна.")
@@ -301,7 +307,7 @@ def generate_any(cfg: dict, system: str, contents: list, budget: float = 10.0):
         if left < 1.5:
             break
         try:
-            return generate(cfg["gemini_key"], model, system, contents, timeout=min(7.0, left)), model
+            return generate(cfg["gemini_key"], model, system, contents, timeout=min(6.0, left)), model
         except AIError as exc:
             last = exc
             print(f"[ai] {model}: {exc}", flush=True)
@@ -310,8 +316,30 @@ def generate_any(cfg: dict, system: str, contents: list, budget: float = 10.0):
     raise last
 
 
+def local_answer(db, question: str, messenger_faq: list | None = None, site: str = "") -> str:
+    """No AI available: the knowledge entry that best matches the question, as is."""
+    q = _words(question)
+    if not q:
+        return ""
+    prefix = {w[:5] for w in q}
+
+    def hits(text):
+        return sum(1 for w in _words(text) if w in q or w[:5] in prefix)
+    best, score = None, 0
+    for item in knowledge_items(db, messenger_faq):
+        value = 3 * hits(item["title"]) + 3 * hits(item["keys"]) + hits(item["text"])
+        if value > score:
+            best, score = item, value
+    if not best or score < 3:
+        return ""
+    text = best["text"].strip()
+    if len(text) > 900:
+        text = text[:900].rsplit(" ", 1)[0] + "…"
+    return text + (f"\n\nДэлгэрэнгүй: {site}" if site and site not in text else "")
+
+
 def answer(db, cfg: dict, question: str, history: list | None = None, site: str = "",
-           messenger_faq: list | None = None, timeout: float = 10.0) -> dict:
+           messenger_faq: list | None = None, timeout: float = 18.0) -> dict:
     items = select(knowledge_items(db, messenger_faq), question)
     started = time.monotonic()
     text, model = generate_any(cfg, system_prompt(items, site, cfg.get("instructions") or ""),

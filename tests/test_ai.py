@@ -176,7 +176,8 @@ def test_ai_failure_falls_back_and_is_reported(client, gem, fb):
     gem.status = 429
     raw, headers = signed(event(text="Хаанаас авах вэ, Дархан?", mid="f1"))
     client.post("/api/messenger/webhook", content=raw, headers=headers)
-    assert texts(fb) == ["Таны асуултыг хүлээн авлаа. Манай ажилтан удахгүй хариулна."]
+    # no AI: the matching knowledge entry still answers
+    assert len(texts(fb)) == 1 and texts(fb)[0].startswith("Худалдаалах цэгүүдийг сайтын")
     err = client.get("/api/admin/ai", headers=AUTH).json()["last_error"]
     assert err["context"] == "Messenger хариулт" and "quota" in err["message"]
 
@@ -300,12 +301,17 @@ def test_all_models_overloaded_sends_the_holding_reply(client, gem, fb):
     enable(client)
     gem.overloaded = ["gemini-"]
     post(client, event(text="Орц нь юу вэ?", mid="o2"))
-    assert texts(fb) == ["Таны асуултыг хүлээн авлаа. Манай ажилтан удахгүй хариулна."]
+    assert texts(fb)[-1].startswith("Шүүсэн ус, жамц давс")  # knowledge entry «Орц найрлага»
     assert "ачаалалтай" in client.get("/api/admin/ai", headers=AUTH).json()["last_error"]["message"]
+    assert "мэдлэгийн сангаас" in client.get("/api/admin/messenger", headers=AUTH).json()["last_decision"]["reason"]
+    post(client, event(text="Une", mid="o3"))  # nothing to match: a holding reply that still points somewhere
+    assert texts(fb)[-1].startswith("Таны асуултыг хүлээн авлаа") and "http" in texts(fb)[-1]
 
 
 def test_fallback_chain_skips_previews_and_aliases():
     cfg = {"model": "gemini-flash-lite-latest", "models": json.dumps(
         ["gemini-4-argon", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash-lite", "gemini-3.5-transcribe",
          "gemini-3-flash-preview", "gemini-flash-latest", "gemini-omni-flash-preview", "gemini-flash-lite-latest"])}
-    assert ai.fallback_chain(cfg) == ["gemini-flash-lite-latest", "gemini-3.8-flash", "gemini-3.7-flash"]
+    assert ai.fallback_chain(cfg) == ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-3.7-flash"]
+    cfg["model"] = "gemini-3.8-flash"
+    assert ai.fallback_chain(cfg) == ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.7-flash"]

@@ -12,7 +12,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 import httpx
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 
 from . import ai
@@ -415,18 +415,28 @@ def ai_reply(db, cfg: dict, psid: str, text: str, site: str) -> None:
                or acfg.get("enabled") != "1" else "AI загвар сонгогдоогүй.")
         return
     history = list(reversed(db.all(
-        "SELECT direction, text FROM messenger_messages WHERE psid = ? ORDER BY created_at DESC, id DESC LIMIT 9",
+        "SELECT direction, text FROM messenger_messages WHERE psid = ? ORDER BY id DESC LIMIT 10",
         (psid,),
     )))
-    if history and history[-1]["direction"] == "in" and history[-1]["text"] == text:
-        history = history[:-1]  # the current message is passed separately
+    for i in range(len(history) - 1, -1, -1):  # the current message is passed separately
+        if history[i]["direction"] == "in" and history[i]["text"] == text:
+            del history[i]
+            break
     typing(cfg, psid)
     try:
-        result = ai.answer(db, acfg, text, history[-8:], site=site, messenger_faq=parse_faq(cfg), timeout=11.0)
+        result = ai.answer(db, acfg, text, history[-8:], site=site, messenger_faq=parse_faq(cfg), timeout=18.0)
     except ai.AIError as exc:
         ai.note_error(db, "Messenger хариулт", exc)
-        decide(db, psid, f"AI алдаа: {exc}")
-        send_text(db, cfg, psid, "Таны асуултыг хүлээн авлаа. Манай ажилтан удахгүй хариулна.", kind="auto")
+        # still answer: the matching knowledge entry, or at least where to look
+        local = ai.local_answer(db, text, parse_faq(cfg), site)
+        if local:
+            send_text(db, cfg, psid, local, kind="auto", quick_replies=faq_buttons(parse_faq(cfg)))
+            decide(db, psid, f"AI түр ажиллахгүй байсан ({exc}) тул мэдлэгийн сангаас хариулсан.")
+        else:
+            send_text(db, cfg, psid, "Таны асуултыг хүлээн авлаа, манай ажилтан удахгүй хариулна."
+                      + (f" Бүтээгдэхүүн, худалдаалах цэгийн мэдээллийг эндээс харна уу: {site}" if site else ""),
+                      kind="auto", quick_replies=faq_buttons(parse_faq(cfg)))
+            decide(db, psid, f"AI алдаа: {exc}")
         return
     send_text(db, cfg, psid, result["answer"], kind="ai")
     decide(db, psid, f"AI хариулсан ({result['model']}, {result['ms']} мс).")
@@ -571,8 +581,18 @@ def verify(request: Request):
     raise HTTPException(403, "Verify token таарахгүй байна.")
 
 
+def process(cfg: dict, data: dict, site: str) -> None:
+    db = get_db()
+    for entry in data.get("entry") or []:
+        for event in entry.get("messaging") or []:
+            try:
+                handle_event(db, cfg, event, site=site)
+            except Exception as exc:  # noqa: BLE001 — one bad event must not stop the rest
+                note_error(db, "Мессеж боловсруулах", exc)
+
+
 @public.post("/api/messenger/webhook")
-async def receive(request: Request):
+async def receive(request: Request, background: BackgroundTasks):
     raw = await request.body()
     db = get_db()
     cfg = load(db)
@@ -591,12 +611,8 @@ async def receive(request: Request):
             store(db, {"last_event_at": now_utc()})
         except DBError:
             pass
-        for entry in data.get("entry") or []:
-            for event in entry.get("messaging") or []:
-                try:
-                    handle_event(db, cfg, event, site=site_url(request))
-                except DBError:
-                    pass
+        # answer after Facebook has its 200 OK, so slow AI replies do not make Facebook resend the event
+        background.add_task(process, cfg, data, site_url(request))
     return PlainTextResponse("EVENT_RECEIVED")
 
 
