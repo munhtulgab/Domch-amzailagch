@@ -68,7 +68,7 @@ function Steps({ steps }) {
           <li key={s.key} className={s.ok ? 'is-ok' : 'is-bad'}>
             <span className="a-check__icon" aria-hidden="true">{s.ok ? '✓' : '✕'}</span>
             <span>
-              <strong>{s.label}</strong> <span className="sr">{s.ok ? 'амжилттай' : 'амжилтгүй'}</span>
+              <strong>{s.label}</strong><span className="sr"> — {s.ok ? 'амжилттай' : 'амжилтгүй'}. </span>
               {s.message && <span className="a-check__msg">{s.message}</span>}
             </span>
           </li>
@@ -153,7 +153,7 @@ export function MessengerSettings({ call, onChange }) {
       <div className={`a-card a-status${connected ? ' is-ok' : ''}`}>
         <span className="a-status__dot" aria-hidden="true" />
         <div>
-          <strong>{connected ? `Холбогдсон: ${cfg.page_name}` : hasCreds ? 'Холболт дуусаагүй' : 'Холбогдоогүй'}</strong>
+          <strong>{connected ? `Холбогдсон: ${cfg.page_name || `Page ${cfg.page_id}`}` : hasCreds ? 'Холболт дуусаагүй' : 'Холбогдоогүй'}</strong>
           <p className="a-muted">
             {connected
               ? `${formatDate(cfg.connected_at)}-нд холбосон. Page руу бичсэн мессеж «Messenger» цэсэнд ирнэ.`

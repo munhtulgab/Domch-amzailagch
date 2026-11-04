@@ -128,12 +128,45 @@ def friendly(exc: GraphError) -> str:
         return "Хэрэглэгчийн сүүлийн мессежээс хойш 24 цаг өнгөрсөн тул Facebook-ийн дүрмээр хариулах боломжгүй. Page Inbox-оос хариулна уу."
     if exc.code == 551:
         return "Энэ хэрэглэгч одоогоор мессеж хүлээн авах боломжгүй байна."
+    if exc.code == 100 and "pages_read_engagement" in text:
+        return "Token-д pages_read_engagement эрх хэрэгтэй үйлдэл байна. " + text
     if exc.code in (200, 10, 230):
         return f"Эрх хүрэлцэхгүй байна (pages_messaging, pages_manage_metadata). {text}"
     return text
 
 
 # ------------------------------------------------------------------ connecting
+
+REQUIRED_SCOPES = ("pages_messaging", "pages_manage_metadata")
+
+
+def _detail(exc: GraphError) -> str:
+    return f" ({exc})" if str(exc) else ""
+
+
+def token_problem(cfg: dict, info: dict) -> str:
+    if not info.get("is_valid"):
+        err = (info.get("error") or {}).get("message") or ""
+        return "Page access token хүчингүй эсвэл хугацаа нь дууссан байна. Шинээр үүсгээд оруулна уу." + (f" ({err})" if err else "")
+    if str(info.get("app_id") or "") != cfg["app_id"]:
+        return f"Энэ token өөр аппынх байна (App ID {info.get('app_id')}). Оруулсан App ID-тай аппаас token үүсгэнэ үү."
+    kind = str(info.get("type") or "").upper()
+    if kind and kind != "PAGE":
+        return f"Энэ нь {kind} token байна. Messenger → API Setup → Generate access tokens хэсгээс Page-ийн token үүсгэнэ үү."
+    missing = [s for s in REQUIRED_SCOPES if s not in (info.get("scopes") or [])]
+    if missing:
+        return "Token-д " + ", ".join(missing) + " эрх алга. Token-ийг дахин үүсгэхдээ эдгээр эрхийг зөвшөөрнө үү."
+    return ""
+
+
+def page_id_from(info: dict) -> str:
+    if info.get("profile_id"):
+        return str(info["profile_id"])
+    for item in info.get("granular_scopes") or []:
+        if item.get("scope") in REQUIRED_SCOPES and item.get("target_ids"):
+            return str(item["target_ids"][0])
+    return ""
+
 
 def connect(db, cfg: dict, request: Request) -> list:
     """Check the credentials and wire up the webhook. Returns a checklist for the admin."""
@@ -147,17 +180,39 @@ def connect(db, cfg: dict, request: Request) -> list:
         step("fields", "App ID, App Secret, Page access token", False, "Гурван утгыг бүгдийг нь оруулна уу.")
         return steps
 
+    # Inspect the token with the app access token: this needs no Page permissions and also proves
+    # that the App ID and App Secret belong together.
     try:
-        page = graph("GET", "me", cfg["page_token"], {"fields": "id,name,category"}, app_secret=cfg["app_secret"])
-        cfg.update(page_id=page.get("id", ""), page_name=page.get("name", ""))
-        store(db, {"page_id": cfg["page_id"], "page_name": cfg["page_name"]})
-        step("token", "Page access token, App Secret", True, f"Page: {cfg['page_name']}")
+        info = graph("GET", "debug_token", f"{cfg['app_id']}|{cfg['app_secret']}",
+                     {"input_token": cfg["page_token"]}).get("data") or {}
     except GraphError as exc:
-        msg = friendly(exc)
-        if exc.code == 100 and "category" in str(exc):
-            msg = "Энэ нь хэрэглэгчийн token байна. Page-ийн access token оруулна уу."
-        step("token", "Page access token, App Secret", False, msg)
+        step("token", "App ID, App Secret", False,
+             "App ID эсвэл App Secret буруу байна. App settings → Basic хэсгээс дахин хуулна уу." + _detail(exc))
         return steps
+    problem = token_problem(cfg, info)
+    if problem:
+        step("token", "Page access token", False, problem)
+        return steps
+    page_id = page_id_from(info)
+    if not page_id:
+        try:
+            page_id = graph("GET", "me", cfg["page_token"], {"fields": "id"}, app_secret=cfg["app_secret"]).get("id", "")
+        except GraphError:
+            page_id = ""
+    if not page_id:
+        step("token", "Page access token", False, "Token-оос Page ID олдсонгүй. Messenger → API Setup хэсгээс Page-ийн token үүсгэнэ үү.")
+        return steps
+    name = ""
+    try:  # needs pages_read_engagement, which Messenger-only tokens often lack, so it is optional
+        name = graph("GET", page_id, cfg["page_token"], {"fields": "name"}, app_secret=cfg["app_secret"],
+                     timeout=4.0).get("name", "")
+    except GraphError:
+        pass
+    cfg.update(page_id=page_id, page_name=name)
+    store(db, {"page_id": page_id, "page_name": name})
+    expires = int(info.get("expires_at") or 0)
+    note = "хугацаагүй" if not expires else "дуусах: " + datetime.fromtimestamp(expires, timezone.utc).strftime("%Y-%m-%d")
+    step("token", "Page access token, App Secret", True, f"Page: {name or page_id} · token {note}")
 
     url = callback_url(request)
     if not url.startswith("https://"):

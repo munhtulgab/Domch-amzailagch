@@ -24,6 +24,16 @@ APP_ID = "123456789012345"
 APP_SECRET = "s3cr3t-app-secret-0123456789"
 PAGE_TOKEN = "EAAPageToken0123456789abcdefXYZ"
 HTTPS = {"x-forwarded-proto": "https", "x-forwarded-host": "domch.example"}
+PAGES_READ_ERROR = ("(#100) Object does not exist, cannot be loaded due to missing permission or reviewable feature, or does not"
+                    " support this operation. This endpoint requires the 'pages_read_engagement' permission")
+SCOPES = ["pages_messaging", "pages_manage_metadata", "pages_show_list"]
+TOKENS = {
+    PAGE_TOKEN: {"app_id": APP_ID, "type": "PAGE", "is_valid": True, "profile_id": "777", "scopes": SCOPES, "expires_at": 0},
+    "EAAUserToken000000000000000": {"app_id": APP_ID, "type": "USER", "is_valid": True, "scopes": SCOPES},
+    "EAAOtherAppToken00000000000": {"app_id": "999", "type": "PAGE", "is_valid": True, "profile_id": "777", "scopes": SCOPES},
+    "EAANoScopeToken000000000000": {"app_id": APP_ID, "type": "PAGE", "is_valid": True, "profile_id": "777",
+                                    "scopes": ["pages_show_list"]},
+}
 
 
 class FakeGraph:
@@ -44,10 +54,14 @@ class FakeGraph:
             proof = hmac.new(APP_SECRET.encode(), q["access_token"].encode(), hashlib.sha256).hexdigest()
             if proof != q["appsecret_proof"]:
                 return httpx.Response(400, json={"error": {"message": "Invalid appsecret_proof provided in the API argument", "code": 100}})
-        if path == "me" and request.method == "GET":
-            if q.get("access_token") != PAGE_TOKEN:
-                return httpx.Response(400, json={"error": {"message": "Invalid OAuth access token.", "code": 190}})
-            return httpx.Response(200, json={"id": "777", "name": "DOMCH", "category": "Health/beauty"})
+        if path == "debug_token":
+            if q.get("access_token") != f"{APP_ID}|{APP_SECRET}":
+                return httpx.Response(400, json={"error": {"message": "Invalid OAuth access token signature.", "code": 190}})
+            return httpx.Response(200, json={"data": TOKENS.get(q["input_token"], {
+                "is_valid": False, "error": {"code": 190, "message": "Invalid OAuth access token."}})})
+        if request.method == "GET" and path in ("me", "777"):
+            # what a Messenger-only token gets when reading the Page node (the reported error)
+            return httpx.Response(400, json={"error": {"code": 100, "message": PAGES_READ_ERROR}})
         if path == f"{APP_ID}/subscriptions":
             assert q["access_token"] == f"{APP_ID}|{APP_SECRET}"
             return httpx.Response(200, json={"success": True})
@@ -108,7 +122,7 @@ def test_save_connects_and_hides_secrets(client, fb):
     assert res.status_code == 200, res.text
     steps = {s["key"]: s for s in res.json()["steps"]}
     assert all(s["ok"] for s in steps.values()), steps
-    assert "DOMCH" in steps["token"]["message"]
+    assert "777" in steps["token"]["message"] and "хугацаагүй" in steps["token"]["message"]
     cfg = res.json()["config"]
     assert cfg["page_id"] == "777" and cfg["connected_at"]
     assert cfg["webhook_url"] == "https://domch.example/api/messenger/webhook"
@@ -138,7 +152,11 @@ def test_bad_credentials(client, fb):
     steps = bad.json()["steps"]
     assert steps[0]["key"] == "token" and not steps[0]["ok"] and "хүчингүй" in steps[0]["message"]
     wrong_secret = connect(client, app_secret="another-secret-000000000")
-    assert "App Secret" in wrong_secret.json()["steps"][0]["message"]
+    assert "App Secret буруу" in wrong_secret.json()["steps"][0]["message"]
+    for token, text in (("EAAUserToken000000000000000", "USER token"), ("EAAOtherAppToken00000000000", "өөр аппынх"),
+                        ("EAANoScopeToken000000000000", "pages_messaging")):
+        step = connect(client, page_token=token).json()["steps"][0]
+        assert not step["ok"] and text in step["message"], step
     invalid = client.put("/api/admin/messenger", json={"app_id": "abc", "page_token": "short"}, headers=AUTH)
     assert invalid.status_code == 422 and {"app_id", "page_token"} <= set(invalid.json()["fields"])
 
@@ -217,3 +235,25 @@ def test_disconnect(client, fb):
 def test_admin_only(client, fb):
     assert client.get("/api/admin/messenger").status_code == 401
     assert client.put("/api/admin/messenger", json={}).status_code == 401
+
+
+def test_messenger_only_token_without_page_read_permission(client, fb):
+    """The reported case: the Page node cannot be read, but debug_token still identifies the Page."""
+    res = connect(client)
+    steps = res.json()["steps"]
+    assert all(s["ok"] for s in steps), steps
+    assert res.json()["config"]["page_id"] == "777" and res.json()["config"]["page_name"] == ""
+    assert not any(c[0] == "GET" and c[1] == "me" for c in fb.calls)
+
+
+def test_page_name_when_available(client, fb, monkeypatch):
+    original = fb.__call__
+
+    def with_name(request):
+        if request.method == "GET" and request.url.path.endswith("/777"):
+            return httpx.Response(200, json={"id": "777", "name": "DOMCH"})
+        return original(request)
+
+    monkeypatch.setattr(messenger, "http", httpx.Client(transport=httpx.MockTransport(with_name)))
+    res = connect(client)
+    assert res.json()["config"]["page_name"] == "DOMCH" and "DOMCH" in res.json()["steps"][0]["message"]
