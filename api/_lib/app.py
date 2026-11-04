@@ -542,6 +542,12 @@ def clean_row(table: str, payload: dict, partial: bool) -> dict:
         choices = CHOICES.get((table, key))
         if choices and row[key] not in choices:
             errors[key] = "Сонголтоо шалгана уу."
+    image = row.get("image_url")
+    if image and "image_url" not in errors:
+        if re.match(r"https?://(www\.|m\.)?(facebook\.com|fb\.watch|youtube\.com|youtu\.be)/", image, re.I):
+            errors["image_url"] = "Энэ нь видео холбоос байна. Видеог «Видео холбоос» талбарт, энд зураг оруулна уу."
+        elif not re.match(r"(https://\S+|/api/media/[\w-]+\.(webp|jpg|png))$", image):
+            errors["image_url"] = "«Зураг оруулах» товчоор зураг сонгох эсвэл https:// зургийн холбоос оруулна уу."
     for key, limit in (("lat", 90), ("lng", 180)):
         value = row.get(key)
         if value is not None and key not in errors and not -limit <= value <= limit:

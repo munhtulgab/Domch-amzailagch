@@ -244,3 +244,13 @@ def test_old_database_is_upgraded():
     db = dbmod.get_db()
     assert db.one("SELECT image_url FROM tips LIMIT 1") is not None
     assert db.all("SELECT id FROM media") == []
+
+
+def test_image_field_rejects_video_links(client):
+    bad = client.put("/api/admin/t/tips/1", headers=AUTH, json={"image_url": "https://www.facebook.com/reel/2464133197747241"})
+    assert bad.status_code == 422 and "видео холбоос" in bad.json()["fields"]["image_url"]
+    junk = client.put("/api/admin/t/tips/1", headers=AUTH, json={"image_url": "javascript:alert(1)"})
+    assert junk.status_code == 422
+    ok = client.put("/api/admin/t/tips/1", headers=AUTH, json={"image_url": "https://example.com/a.jpg"})
+    assert ok.status_code == 200
+    assert client.put("/api/admin/t/tips/1", headers=AUTH, json={"image_url": ""}).status_code == 200
