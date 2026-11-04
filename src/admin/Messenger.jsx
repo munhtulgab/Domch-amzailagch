@@ -291,6 +291,9 @@ export function MessengerSettings({ call, onChange }) {
         {cfg.last_error && cfg.last_error.message && (
           <p className="a-error a-status__err" role="alert">Сүүлийн алдаа ({timeOf(cfg.last_error.at)}, {cfg.last_error.context}): {cfg.last_error.message}</p>
         )}
+        {cfg.last_decision && cfg.last_decision.reason && (
+          <p className="a-muted a-status__err">Сүүлийн мессеж ({timeOf(cfg.last_decision.at)}): {cfg.last_decision.reason}</p>
+        )}
       </div>
 
       <Steps steps={steps} />
@@ -422,6 +425,15 @@ export function MessengerInbox({ call, onChange, openSettings }) {
     }
   };
 
+  const toggleAi = async (paused) => {
+    try {
+      const res = await call(`/messenger/threads/${encodeURIComponent(active)}/ai`, { method: 'POST', body: { paused } });
+      setConvo((c) => ({ ...c, ai_paused_until: res.ai_paused_until }));
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const sendWelcome = async () => {
     setSending(true);
     setError('');
@@ -478,11 +490,23 @@ export function MessengerInbox({ call, onChange, openSettings }) {
                 <button type="button" className="a-btn a-btn--ghost" onClick={sendWelcome} disabled={sending}>Мэндчилгээ илгээх</button>
               )}
             </div>
+            {convo.ai_on && (
+              <div className={`a-ai-state${convo.ai_paused_until ? ' is-paused' : ''}`}>
+                <span>
+                  {convo.ai_paused_until
+                    ? (convo.ai_paused_until > '2100' ? 'Энэ ярианд AI зогссон.' : `AI ${timeOf(convo.ai_paused_until)} хүртэл түр зогссон (ажилтан хариулсан).`)
+                    : 'AI энэ ярианд автоматаар хариулна.'}
+                </span>
+                <button type="button" className="a-btn a-btn--ghost" onClick={() => toggleAi(!convo.ai_paused_until)} disabled={sending}>
+                  {convo.ai_paused_until ? 'AI-г үргэлжлүүлэх' : 'AI-г зогсоох'}
+                </button>
+              </div>
+            )}
             <ol className="a-msgs">
               {convo.items.map((m) => (
                 <li key={m.id} className={`a-msg a-msg--${m.direction}`}>
                   <span className="a-msg__text">{m.text}</span>
-                  <span className="a-msg__meta">{m.kind === 'auto' ? 'Автомат хариу · ' : m.kind === 'ai' ? 'AI хариу · ' : ''}{timeOf(m.created_at)}</span>
+                  <span className="a-msg__meta">{{ auto: 'Автомат хариу · ', ai: 'AI хариу · ', inbox: 'Page Inbox · ' }[m.kind] || ''}{timeOf(m.created_at)}</span>
                 </li>
               ))}
               <li ref={endRef} aria-hidden="true" />

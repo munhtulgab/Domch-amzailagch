@@ -16,7 +16,9 @@ from .db import DBError, get_db
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta"
 PREFIX = "ai."
-KEYS = ("gemini_key", "model", "enabled", "instructions", "models", "checked_at", "last_error")
+KEYS = ("gemini_key", "model", "enabled", "instructions", "models", "checked_at", "last_error", "pause_minutes")
+PAUSE_CHOICES = (0, 15, 30, 60, 180, 720)
+DEFAULT_PAUSE = 30
 CONTEXT_BUDGET = 24000  # characters of knowledge sent with each question
 SKIP_MODEL = re.compile(r"image|tts|audio|live|embedding|vision|aqa|imagen|veo|robotics|computer|learnlm|gemma|nano", re.I)
 
@@ -44,6 +46,14 @@ def store(db, values: dict) -> None:
             " ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
             (PREFIX + key, "" if value is None else str(value), now_utc()),
         )
+
+
+def pause_minutes(cfg: dict) -> int:
+    try:
+        value = int(cfg.get("pause_minutes") or DEFAULT_PAUSE)
+    except ValueError:
+        value = DEFAULT_PAUSE
+    return value if value in PAUSE_CHOICES else DEFAULT_PAUSE
 
 
 def ready(cfg: dict) -> bool:
@@ -99,13 +109,13 @@ def list_models(key: str) -> list:
 
 
 def _model_rank(name: str):
-    """Stable before preview; newest version first; within a version Flash, then Flash-Lite, then Pro."""
+    """Stable before preview; Flash (fast enough for Messenger), then Flash-Lite, then others; newest first."""
     parts = name.split("-")
     nums = [int(n) for n in re.findall(r"\d+", parts[1] if len(parts) > 1 else "")[:2]]
     version = tuple(nums + [0] * (2 - len(nums)))
     tier = 1 if "flash-lite" in name else 0 if "flash" in name else 2
     unstable = 1 if re.search(r"preview|exp|latest", name) else 0
-    return (unstable, tuple(-v for v in version), tier, name)
+    return (unstable, tier, tuple(-v for v in version), name)
 
 
 def pick_model(models: list) -> str:
@@ -225,7 +235,10 @@ def select(items: list, question: str, budget: int = CONTEXT_BUDGET) -> list:
 def system_prompt(items: list, site: str, extra: str) -> str:
     knowledge = "\n\n".join(f"### [{i['source']}] {i['title']}\n{i['text']}" for i in items) or "(хоосон)"
     rules = f"""Чи ДОМЧ брэндийн (жамц давсны уусмал, спирт агуулаагүй ам зайлагч, үйлдвэрлэгч Жем Интернэшнл ХХК) Facebook Messenger дээрх туслах.
-Хэрэглэгчтэй эелдэг, товч (ихдээ 4–5 өгүүлбэр) монгол хэлээр (кирилл) хариул. Хэрэглэгч өөр хэлээр бичвэл тэр хэлээр хариулж болно.
+Хэрэглэгчтэй эелдэг, товч (ихдээ 4–5 өгүүлбэр) монгол хэлээр (кирилл) хариул. Хэрэглэгч монголоор латин үсгээр бичиж болно
+(жишээ нь "medeelel og" = "мэдээлэл өг", "une hed ve" = "үнэ хэд вэ") — ойлгоод кирилл үсгээр хариул.
+Хэрэглэгч өөр хэлээр (англи, орос) бичвэл тэр хэлээр хариулж болно. Ерөнхий "мэдээлэл өг" гэвэл бүтээгдэхүүний товч
+танилцуулга, найрлага, хаанаас авах тухай хэлээд юу сонирхож байгааг асуу.
 
 Дүрэм:
 1. Зөвхөн доорх МЭДЛЭГ хэсэгт байгаа мэдээлэлд тулгуурла. Тэнд байхгүй үнэ, хаяг, хугацаа, хямдрал, эмчилгээний үр дүнг бүү зохио.
@@ -304,6 +317,7 @@ def view(db, cfg: dict) -> dict:
         "checked_at": cfg["checked_at"],
         "last_error": last_error,
         "counts": {k: int(v or 0) for k, v in counts.items()},
+        "pause_minutes": pause_minutes(cfg),
     }
 
 
@@ -332,6 +346,14 @@ def ai_put(payload: dict = Body(...)):
         changes["enabled"] = "1" if payload.get("enabled") in (True, 1, "1", "true", "on") else "0"
     if "model" in payload:
         changes["model"] = str(payload.get("model") or "").strip()
+    if "pause_minutes" in payload:
+        try:
+            minutes = int(payload.get("pause_minutes"))
+        except (TypeError, ValueError):
+            minutes = -1
+        if minutes not in PAUSE_CHOICES:
+            errors["pause_minutes"] = "Сонголтоос сонгоно уу."
+        changes["pause_minutes"] = minutes
     if errors:
         fail(errors)
     cfg.update(changes)

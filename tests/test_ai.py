@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 from _lib import ai, messenger  # noqa: E402
 from _lib import db as dbmod  # noqa: E402
 from _lib.app import app  # noqa: E402
-from test_messenger import AUTH, HTTPS, FakeGraph, connect, event, signed  # noqa: E402
+from test_messenger import APP_ID, AUTH, HTTPS, FakeGraph, connect, event, signed  # noqa: E402
 
 KEY = "AIzaSyFakeGeminiKey0123456789abcdef"
 MODELS = [
@@ -215,3 +215,63 @@ def test_unsupported_server_location_is_explained(client, monkeypatch):
 def test_function_region_supports_gemini():
     region = json.loads((ROOT / "vercel.json").read_text())["regions"]
     assert region and not any(r.startswith("hkg") for r in region)  # Hong Kong is not a Gemini API region
+
+
+def post(client, ev):
+    raw, headers = signed(ev)
+    return client.post("/api/messenger/webhook", content=raw, headers=headers)
+
+
+def test_reported_case_old_manual_reply_does_not_block_ai(client, gem, fb):
+    """A test reply typed by the admin earlier must not keep the AI silent (it used to for 12 hours)."""
+    connect(client)
+    enable(client)
+    post(client, event(text="Hi", mid="r1"))
+    dbmod.get_db().run("INSERT INTO messenger_messages (psid, direction, kind, text) VALUES ('psid-1', 'out', 'reply', 'хш')")
+    post(client, event(text="Medeelel og", mid="r2"))
+    assert texts(fb)[-1] == gem.reply
+    assert gem.calls[-1][3]["contents"][-1]["parts"][0]["text"] == "Medeelel og"
+    assert "латин" in gem.calls[-1][3]["systemInstruction"]["parts"][0]["text"]
+    decision = client.get("/api/admin/messenger", headers=AUTH).json()["last_decision"]
+    assert decision["reason"].startswith("AI хариулсан")
+
+
+def test_pause_after_admin_reply_is_configurable_and_reversible(client, gem, fb):
+    connect(client)
+    enable(client, pause_minutes=0)
+    post(client, event(text="Үнэ хэд вэ?", mid="p1"))
+    res = client.post("/api/admin/messenger/threads/psid-1/reply", json={"text": "Би туслая."}, headers=AUTH).json()
+    assert res["ai_paused_until"] == ""
+    post(client, event(text="500 мл хэд вэ?", mid="p2"))
+    assert texts(fb)[-1] == gem.reply  # no pause configured
+    client.put("/api/admin/ai", json={"pause_minutes": 30}, headers=AUTH)
+    res = client.post("/api/admin/messenger/threads/psid-1/reply", json={"text": "Салбараас лавлана уу."}, headers=AUTH).json()
+    assert res["ai_paused_until"]
+    post(client, event(text="Баярлалаа, өөр асуулт байна", mid="p3"))
+    assert texts(fb)[-1] == "Салбараас лавлана уу."
+    assert "түр зогссон" in client.get("/api/admin/messenger", headers=AUTH).json()["last_decision"]["reason"]
+    thread = client.get("/api/admin/messenger/threads/psid-1", headers=AUTH).json()
+    assert thread["ai_on"] and thread["ai_paused_until"]
+    assert client.post("/api/admin/messenger/threads/psid-1/ai", json={"paused": False}, headers=AUTH).json()["ai_paused_until"] == ""
+    post(client, event(text="Орц нь юу вэ?", mid="p4"))
+    assert texts(fb)[-1] == gem.reply
+    client.post("/api/admin/messenger/threads/psid-1/ai", json={"paused": True}, headers=AUTH)
+    calls = len(gem.calls)
+    post(client, event(text="Хүргэлт байгаа юу?", mid="p5"))
+    assert len(gem.calls) == calls
+    assert client.put("/api/admin/ai", json={"pause_minutes": 7}, headers=AUTH).status_code == 422
+
+
+def test_page_inbox_reply_pauses_ai_and_own_echo_is_ignored(client, gem, fb):
+    connect(client)
+    enable(client)
+    post(client, event(text="Сайн уу, үнэ?", mid="e1"))
+    own = {"object": "page", "entry": [{"id": "777", "messaging": [{"sender": {"id": "777"}, "recipient": {"id": "psid-1"},
+           "timestamp": 1, "message": {"mid": "echo-own", "is_echo": True, "app_id": int(APP_ID), "text": gem.reply}}]}]}
+    post(client, own)
+    assert client.get("/api/admin/messenger/threads/psid-1", headers=AUTH).json()["ai_paused_until"] == ""
+    human = {"object": "page", "entry": [{"id": "777", "messaging": [{"sender": {"id": "777"}, "recipient": {"id": "psid-1"},
+             "timestamp": 2, "message": {"mid": "echo-human", "is_echo": True, "app_id": 263902037430900, "text": "Ажилтан байна"}}]}]}
+    post(client, human)
+    thread = client.get("/api/admin/messenger/threads/psid-1", headers=AUTH).json()
+    assert thread["ai_paused_until"] and any(m["kind"] == "inbox" and m["text"] == "Ажилтан байна" for m in thread["items"])

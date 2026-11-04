@@ -140,6 +140,7 @@ CREATE TABLE IF NOT EXISTS messenger_contacts (
   psid TEXT PRIMARY KEY,
   name TEXT,
   welcomed_at TEXT,
+  ai_until TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

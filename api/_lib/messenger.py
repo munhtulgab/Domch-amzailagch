@@ -9,7 +9,7 @@ import hmac
 import json
 import re
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
@@ -21,15 +21,15 @@ from .db import DBError, get_db
 
 GRAPH_VERSION = "v26.0"
 GRAPH_URL = f"https://graph.facebook.com/{GRAPH_VERSION}"
-FIELDS = "messages,messaging_postbacks"
+FIELDS = "messages,messaging_postbacks,message_echoes"  # echoes reveal replies typed in the Page Inbox
 PREFIX = "messenger."
 KEYS = ("app_id", "app_secret", "page_token", "verify_token", "page_id", "page_name", "page_link",
         "button", "auto_reply", "connected_at", "webhook_url", "page_subscribed", "last_event_at",
-        "greeting", "faq", "last_error", "profile_synced_at")
+        "greeting", "faq", "last_error", "profile_synced_at", "last_decision")
 SECRETS = ("app_secret", "page_token")
 NEW_CONVERSATION_HOURS = 24  # a person who has been silent this long gets the welcome again
 MAX_FAQ = 4
-HUMAN_PAUSE_HOURS = 12  # the AI stays quiet in a conversation an admin answered recently
+FOREVER_DAYS = 3650  # «AI-г зогсоох» for one conversation
 GREETING = re.compile(r"^(сайн|сн|сайн уу|сайн байна уу|сайхан|мэнд|hi|hello|hey|юу байна|байна уу)[\s!.,?]*$", re.I)
 
 http = httpx.Client(timeout=8.0)  # replaced in tests
@@ -76,22 +76,23 @@ def ensure_schema(db) -> None:
     if _schema_ready:
         return
     try:
-        db.one("SELECT welcomed_at FROM messenger_contacts LIMIT 1")
+        db.one("SELECT welcomed_at, ai_until FROM messenger_contacts LIMIT 1")
     except DBError:
         db.script(
             "CREATE TABLE IF NOT EXISTS integrations (key TEXT PRIMARY KEY, value TEXT,"
             " updated_at TEXT NOT NULL DEFAULT (datetime('now')));"
-            "CREATE TABLE IF NOT EXISTS messenger_contacts (psid TEXT PRIMARY KEY, name TEXT, welcomed_at TEXT,"
+            "CREATE TABLE IF NOT EXISTS messenger_contacts (psid TEXT PRIMARY KEY, name TEXT, welcomed_at TEXT, ai_until TEXT,"
             " created_at TEXT NOT NULL DEFAULT (datetime('now')));"
             "CREATE TABLE IF NOT EXISTS messenger_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, psid TEXT NOT NULL,"
             " direction TEXT NOT NULL CHECK (direction IN ('in', 'out')), kind TEXT NOT NULL DEFAULT 'message', text TEXT,"
             " mid TEXT UNIQUE, is_read INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')));"
             "CREATE INDEX IF NOT EXISTS idx_messenger_psid ON messenger_messages (psid, created_at);"
         )
-        try:
-            db.run("ALTER TABLE messenger_contacts ADD COLUMN welcomed_at TEXT")
-        except DBError:
-            pass
+        for column in ("welcomed_at", "ai_until"):
+            try:
+                db.run(f"ALTER TABLE messenger_contacts ADD COLUMN {column} TEXT")
+            except DBError:
+                pass
     _schema_ready = True
 
 
@@ -170,6 +171,7 @@ def admin_view(cfg: dict, request: Request) -> dict:
         "greeting": cfg["greeting"],
         "faq": parse_faq(cfg),
         "last_error": parse_error(cfg),
+        "last_decision": json.loads(cfg["last_decision"] or "{}") if cfg["last_decision"].startswith("{") else {},
         "profile_synced_at": cfg["profile_synced_at"],
         "site_url": site_url(request),
         "app_id": cfg["app_id"],
@@ -382,17 +384,35 @@ def typing(cfg: dict, psid: str) -> None:
         pass
 
 
-def human_active(db, psid: str) -> bool:
-    row = db.one(
-        "SELECT MAX(created_at) AS at FROM messenger_messages WHERE psid = ? AND direction = 'out' AND kind = 'reply'",
-        (psid,),
-    ) or {}
-    return bool(row.get("at") and row["at"] >= ago(hours=HUMAN_PAUSE_HOURS))
+def ai_paused_until(db, psid: str) -> str:
+    row = db.one("SELECT ai_until FROM messenger_contacts WHERE psid = ?", (psid,)) or {}
+    until = row.get("ai_until") or ""
+    return until if until > now_utc() else ""
+
+
+def pause_ai(db, psid: str, minutes: int) -> None:
+    """A person from the team took over: the AI stays quiet in this conversation for a while."""
+    if minutes <= 0:
+        return
+    until = (datetime.now(timezone.utc) + timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M:%S")
+    db.run("INSERT OR IGNORE INTO messenger_contacts (psid) VALUES (?)", (psid,))
+    db.run("UPDATE messenger_contacts SET ai_until = ? WHERE psid = ? AND (ai_until IS NULL OR ai_until < ?)",
+           (until, psid, until))
+
+
+def decide(db, psid: str, reason: str) -> None:
+    """Remember why the last message was (not) answered automatically, for the admin's diagnostics."""
+    try:
+        store(db, {"last_decision": json.dumps({"at": now_utc(), "psid": psid, "reason": reason}, ensure_ascii=False)})
+    except DBError:
+        pass
 
 
 def ai_reply(db, cfg: dict, psid: str, text: str, site: str) -> None:
     acfg = ai.load(db)
     if not ai.ready(acfg):
+        decide(db, psid, "AI унтраалттай эсвэл тохируулаагүй тул хариулсангүй." if not acfg.get("gemini_key")
+               or acfg.get("enabled") != "1" else "AI загвар сонгогдоогүй.")
         return
     history = list(reversed(db.all(
         "SELECT direction, text FROM messenger_messages WHERE psid = ? ORDER BY created_at DESC, id DESC LIMIT 9",
@@ -405,9 +425,11 @@ def ai_reply(db, cfg: dict, psid: str, text: str, site: str) -> None:
         result = ai.answer(db, acfg, text, history[-8:], site=site, messenger_faq=parse_faq(cfg), timeout=7.0)
     except ai.AIError as exc:
         ai.note_error(db, "Messenger хариулт", exc)
+        decide(db, psid, f"AI алдаа: {exc}")
         send_text(db, cfg, psid, "Таны асуултыг хүлээн авлаа. Манай ажилтан удахгүй хариулна.", kind="auto")
         return
     send_text(db, cfg, psid, result["answer"], kind="ai")
+    decide(db, psid, f"AI хариулсан ({result['model']}, {result['ms']} мс).")
 
 
 def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at, previous_in,
@@ -422,6 +444,7 @@ def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at,
     if index is not None and index < len(faq):
         send_text(db, cfg, psid, faq[index]["a"], kind="auto", quick_replies=faq_buttons(faq, skip=index))
         db.run("UPDATE messenger_contacts SET welcomed_at = ? WHERE psid = ?", (now_utc(), psid))
+        decide(db, psid, f"Асуултын товчны хариулт илгээсэн: {faq[index]['q']}")
         return
     welcome = cfg["auto_reply"].strip()
     window = ago(hours=NEW_CONVERSATION_HOURS)
@@ -432,20 +455,41 @@ def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at,
         db.run("UPDATE messenger_contacts SET welcomed_at = ? WHERE psid = ?", (now_utc(), psid))
         welcomed = True
     if payload == "GET_STARTED" or attachment or not text.strip():
+        decide(db, psid, "Мэндчилгээ илгээсэн." if welcomed else "Хавсралт эсвэл хоосон мессеж тул хариулсангүй.")
         return
     if welcomed and (GREETING.match(text.strip()) or len(text.strip()) < 6):
+        decide(db, psid, "Мэндчилгээ илгээсэн.")
         return  # "сайн байна уу" is answered by the welcome itself
-    if human_active(db, psid):
+    until = ai_paused_until(db, psid)
+    if until:
+        decide(db, psid, f"Энэ ярианд ажилтан хариулж байгаа тул AI {until} (UTC) хүртэл түр зогссон.")
         return
     ai_reply(db, cfg, psid, text, site)
 
 
-def handle_event(db, cfg: dict, event: dict, site: str = "") -> None:
-    psid = str((event.get("sender") or {}).get("id") or "")
+def handle_echo(db, cfg: dict, event: dict, message: dict) -> None:
+    """A copy of a message the Page sent. Our own sends carry our app_id; anything else was typed by a person."""
+    if str(message.get("app_id") or "") == cfg["app_id"]:
+        return
+    psid = str((event.get("recipient") or {}).get("id") or "")
     if not psid or psid == cfg["page_id"]:
         return
+    text = message.get("text") or ("[хавсралт]" if message.get("attachments") else "")
+    db.run(
+        "INSERT OR IGNORE INTO messenger_messages (psid, direction, kind, text, mid, is_read, created_at)"
+        " VALUES (?, 'out', 'inbox', ?, ?, 1, ?)",
+        (psid, text[:2000], message.get("mid"), _stamp_ms(event.get("timestamp"))),
+    )
+    pause_ai(db, psid, ai.pause_minutes(ai.load(db)))
+
+
+def handle_event(db, cfg: dict, event: dict, site: str = "") -> None:
     message = event.get("message") or {}
     if message.get("is_echo"):
+        handle_echo(db, cfg, event, message)
+        return
+    psid = str((event.get("sender") or {}).get("id") or "")
+    if not psid or psid == cfg["page_id"]:
         return
     payload = ""
     attachment = False
@@ -715,7 +759,21 @@ def thread(psid: str, limit: int = Query(200, ge=1, le=500)):
         "name": contact.get("name") or "",
         "items": list(reversed(items)),
         "can_reply": bool(last_in and last_in >= ago(hours=24)),
+        "ai_on": ai.ready(ai.load(db)),
+        "ai_paused_until": ai_paused_until(db, psid),
     }
+
+
+@admin.post("/threads/{psid}/ai")
+def thread_ai(psid: str, payload: dict = Body(...)):
+    db = get_db()
+    db.run("INSERT OR IGNORE INTO messenger_contacts (psid) VALUES (?)", (psid,))
+    if payload.get("paused"):
+        until = (datetime.now(timezone.utc) + timedelta(days=FOREVER_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
+        db.run("UPDATE messenger_contacts SET ai_until = ? WHERE psid = ?", (until, psid))
+    else:
+        db.run("UPDATE messenger_contacts SET ai_until = NULL WHERE psid = ?", (psid,))
+    return {"ok": True, "ai_paused_until": ai_paused_until(db, psid)}
 
 
 @admin.post("/threads/{psid}/reply")
@@ -733,7 +791,8 @@ def reply(psid: str, payload: dict = Body(...)):
         send_text(db, cfg, psid, text)
     except GraphError as exc:
         raise HTTPException(502, friendly(exc))
-    return {"ok": True}
+    pause_ai(db, psid, ai.pause_minutes(ai.load(db)))
+    return {"ok": True, "ai_paused_until": ai_paused_until(db, psid)}
 
 
 @admin.delete("/threads/{psid}")

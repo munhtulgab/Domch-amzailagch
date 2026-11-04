@@ -8,6 +8,7 @@ export function AiSettings({ call, go }) {
   const [model, setModel] = useState('');
   const [enabled, setEnabled] = useState(true);
   const [instructions, setInstructions] = useState('');
+  const [pause, setPause] = useState(30);
   const [errors, setErrors] = useState({});
   const [note, setNote] = useState(null);
   const [busy, setBusy] = useState('');
@@ -19,6 +20,7 @@ export function AiSettings({ call, go }) {
     setModel(c.model || '');
     setEnabled(c.gemini_key.set ? c.enabled : true);
     setInstructions(c.instructions || '');
+    setPause(c.pause_minutes ?? 30);
     setKey('');
   };
 
@@ -31,7 +33,7 @@ export function AiSettings({ call, go }) {
     setBusy(check ? 'check' : 'save');
     setNote(null);
     try {
-      const res = await call('/ai', { method: 'PUT', body: { gemini_key: key, model, enabled, instructions, check } });
+      const res = await call('/ai', { method: 'PUT', body: { gemini_key: key, model, enabled, instructions, pause_minutes: Number(pause), check } });
       apply(res.config);
       setErrors({});
       setNote(res.check || { ok: true, message: 'Хадгаллаа.' });
@@ -88,6 +90,15 @@ export function AiSettings({ call, go }) {
             {models.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
           <p className="a-hint">Хурдан хариулахын тулд «flash» загварыг санал болгоно.</p>
+        </div>
+        <div className={`a-field${errors.pause_minutes ? ' has-error' : ''}`}>
+          <label htmlFor="ai-pause">Ажилтан хариулсны дараа AI чимээгүй байх</label>
+          <select id="ai-pause" value={pause} onChange={(e) => setPause(e.target.value)}>
+            {[[0, 'Чимээгүй болохгүй'], [15, '15 минут'], [30, '30 минут'], [60, '1 цаг'], [180, '3 цаг'], [720, '12 цаг']].map(([v, l]) => (
+              <option key={v} value={v}>{l}</option>
+            ))}
+          </select>
+          <p className="a-hint">Админаас эсвэл Facebook Page Inbox-оос хариулбал тухайн ярианд AI түр зогсоно.</p>
         </div>
         <div className="a-field a-field--check">
           <label htmlFor="ai-on"><input id="ai-on" type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} /> Messenger-т AI-аар хариулах</label>
