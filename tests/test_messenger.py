@@ -33,6 +33,8 @@ TOKENS = {
     "EAAOtherAppToken00000000000": {"app_id": "999", "type": "PAGE", "is_valid": True, "profile_id": "777", "scopes": SCOPES},
     "EAANoScopeToken000000000000": {"app_id": APP_ID, "type": "PAGE", "is_valid": True, "profile_id": "777",
                                     "scopes": ["pages_show_list"]},
+    "EAAMessagingOnlyToken000000": {"app_id": APP_ID, "type": "PAGE", "is_valid": True, "profile_id": "777",
+                                    "scopes": ["pages_messaging", "pages_show_list"]},
 }
 
 
@@ -66,6 +68,8 @@ class FakeGraph:
             assert q["access_token"] == f"{APP_ID}|{APP_SECRET}"
             return httpx.Response(200, json={"success": True})
         if path == "777/subscribed_apps":
+            if q.get("access_token") == "EAAMessagingOnlyToken000000":
+                return httpx.Response(400, json={"error": {"code": 200, "message": "(#200) Requires pages_manage_metadata permission to manage the object"}})
             return httpx.Response(200, json={"success": True})
         if path == "me/messages":
             return httpx.Response(200, json={"recipient_id": body["recipient"]["id"], "message_id": f"m_out_{len(self.calls)}"})
@@ -257,3 +261,18 @@ def test_page_name_when_available(client, fb, monkeypatch):
     monkeypatch.setattr(messenger, "http", httpx.Client(transport=httpx.MockTransport(with_name)))
     res = connect(client)
     assert res.json()["config"]["page_name"] == "DOMCH" and "DOMCH" in res.json()["steps"][0]["message"]
+
+
+def test_token_without_manage_metadata(client, fb):
+    """The second reported case: pages_messaging only. Token and webhook pass; the Page is subscribed by hand."""
+    res = connect(client, page_token="EAAMessagingOnlyToken000000")
+    steps = {st["key"]: st for st in res.json()["steps"]}
+    assert steps["token"]["ok"] and steps["webhook"]["ok"]
+    assert not steps["page"]["ok"] and steps["page"]["warn"] and "Add subscriptions" in steps["page"]["message"]
+    cfg = res.json()["config"]
+    assert cfg["connected_at"] and cfg["page_subscribed"] == "manual" and not cfg["last_event_at"]
+    # once the Page is subscribed in the dashboard, the first event confirms it
+    raw, headers = signed(event())
+    client.post("/api/messenger/webhook", content=raw, headers=headers)
+    assert client.get("/api/admin/messenger", headers=AUTH).json()["last_event_at"]
+    assert client.get("/api/admin/messenger/threads", headers=AUTH).json()["items"][0]["psid"] == "psid-1"

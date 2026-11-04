@@ -169,7 +169,9 @@
 .a-check li { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; align-items: start; font-size: 14px; }
 .a-check__icon { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--tint); color: var(--ok); font-weight: 700; }
 .a-check li.is-bad .a-check__icon { background: var(--danger-bg); color: var(--danger); }
+.a-check li.is-warn .a-check__icon { background: transparent; color: var(--fg); box-shadow: inset 0 0 0 1.5px var(--star); }
 .a-check.is-bad { border-color: var(--danger); }
+.a-check.is-warn { border-color: var(--star); }
 .a-check.is-ok { border-color: var(--ok); }
 .a-check__msg { display: block; color: var(--muted); overflow-wrap: anywhere; }
 .a-copy { display: flex; gap: 8px; }

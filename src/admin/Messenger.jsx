@@ -57,22 +57,34 @@ function SecretField({ id, label, saved, value, onChange, error, hint }) {
   );
 }
 
+function stepState(s) {
+  return s.ok ? 'ok' : s.warn ? 'warn' : 'bad';
+}
+
+const STEP_ICON = { ok: '✓', warn: '!', bad: '✕' };
+const STEP_WORD = { ok: 'амжилттай', warn: 'гараар хийх алхам', bad: 'амжилтгүй' };
+
 function Steps({ steps }) {
   if (!steps || !steps.length) return null;
-  const ok = steps.every((s) => s.ok);
+  const states = steps.map(stepState);
+  const overall = states.includes('bad') ? 'bad' : states.includes('warn') ? 'warn' : 'ok';
+  const title = { ok: 'Messenger холбогдлоо', warn: 'Бараг бэлэн: нэг алхмыг гараар хийнэ', bad: 'Холболт дуусаагүй' }[overall];
   return (
-    <div className={`a-card a-check${ok ? ' is-ok' : ' is-bad'}`} role="status">
-      <h2>{ok ? 'Messenger холбогдлоо' : 'Холболт дуусаагүй'}</h2>
+    <div className={`a-card a-check is-${overall}`} role="status">
+      <h2>{title}</h2>
       <ul>
-        {steps.map((s) => (
-          <li key={s.key} className={s.ok ? 'is-ok' : 'is-bad'}>
-            <span className="a-check__icon" aria-hidden="true">{s.ok ? '✓' : '✕'}</span>
-            <span>
-              <strong>{s.label}</strong><span className="sr"> — {s.ok ? 'амжилттай' : 'амжилтгүй'}. </span>
-              {s.message && <span className="a-check__msg">{s.message}</span>}
-            </span>
-          </li>
-        ))}
+        {steps.map((s) => {
+          const st = stepState(s);
+          return (
+            <li key={s.key} className={`is-${st}`}>
+              <span className="a-check__icon" aria-hidden="true">{STEP_ICON[st]}</span>
+              <span>
+                <strong>{s.label}</strong><span className="sr"> — {STEP_WORD[st]}. </span>
+                {s.message && <span className="a-check__msg">{s.message}</span>}
+              </span>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
@@ -155,9 +167,13 @@ export function MessengerSettings({ call, onChange }) {
         <div>
           <strong>{connected ? `Холбогдсон: ${cfg.page_name || `Page ${cfg.page_id}`}` : hasCreds ? 'Холболт дуусаагүй' : 'Холбогдоогүй'}</strong>
           <p className="a-muted">
-            {connected
-              ? `${formatDate(cfg.connected_at)}-нд холбосон. Page руу бичсэн мессеж «Messenger» цэсэнд ирнэ.`
-              : 'Доорх 3 утгыг оруулаад «Хадгалаад холбох» дарна уу. Webhook автоматаар бүртгэгдэнэ.'}
+            {!connected
+              ? 'Доорх 3 утгыг оруулаад «Хадгалаад холбох» дарна уу. Webhook автоматаар бүртгэгдэнэ.'
+              : cfg.last_event_at
+                ? `Ажиллаж байна. Facebook-ээс сүүлд ${formatDate(cfg.last_event_at)}-нд мэдээлэл ирсэн.`
+                : cfg.page_subscribed === 'manual'
+                  ? 'Meta апп дээр Page-ийн «Add subscriptions»-ийг хийсний дараа Page руу нэг мессеж бичиж шалгаарай. Ирсэн мессеж «Messenger» цэсэнд гарна.'
+                  : `${formatDate(cfg.connected_at)}-нд холбосон. Page руу бичсэн мессеж «Messenger» цэсэнд ирнэ.`}
           </p>
         </div>
         {cfg.link && <a className="a-link" href={cfg.link} target="_blank" rel="noopener noreferrer">{cfg.link.replace('https://', '')}</a>}

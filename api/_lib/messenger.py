@@ -23,7 +23,7 @@ GRAPH_URL = f"https://graph.facebook.com/{GRAPH_VERSION}"
 FIELDS = "messages,messaging_postbacks"
 PREFIX = "messenger."
 KEYS = ("app_id", "app_secret", "page_token", "verify_token", "page_id", "page_name", "page_link",
-        "button", "auto_reply", "connected_at", "webhook_url")
+        "button", "auto_reply", "connected_at", "webhook_url", "page_subscribed", "last_event_at")
 SECRETS = ("app_secret", "page_token")
 AUTO_REPLY_GAP_HOURS = 12
 
@@ -112,6 +112,8 @@ def admin_view(cfg: dict, request: Request) -> dict:
         "button": cfg["button"] == "1",
         "auto_reply": cfg["auto_reply"],
         "connected_at": cfg["connected_at"],
+        "page_subscribed": cfg["page_subscribed"],
+        "last_event_at": cfg["last_event_at"],
         "verify_token": cfg["verify_token"],
         "webhook_url": callback_url(request),
         "link": public_link(cfg),
@@ -137,7 +139,14 @@ def friendly(exc: GraphError) -> str:
 
 # ------------------------------------------------------------------ connecting
 
-REQUIRED_SCOPES = ("pages_messaging", "pages_manage_metadata")
+REQUIRED_SCOPES = ("pages_messaging",)  # without it nothing can be sent
+METADATA_SCOPE = "pages_manage_metadata"  # only needed to subscribe the Page from here; the dashboard can do it too
+MANUAL_SUBSCRIBE = (
+    "Token-д pages_manage_metadata эрх байхгүй тул Page-ийг эндээс холбож чадсангүй. Дараах хоёрын аль нэгийг хийнэ үү:"
+    " (1) Meta апп → Messenger → API Setup → Webhooks хэсэгт Page-ийнхаа мөрөнд «Add subscriptions» дарж messages,"
+    " messaging_postbacks-ийг сонгоно; эсвэл (2) аппын Permissions хэсэгт pages_manage_metadata эрхийг нэмж, token-ийг"
+    " дахин үүсгээд энд оруулна. Эхний мессеж ирэхэд холболт баталгаажна."
+)
 
 
 def _detail(exc: GraphError) -> str:
@@ -163,7 +172,7 @@ def page_id_from(info: dict) -> str:
     if info.get("profile_id"):
         return str(info["profile_id"])
     for item in info.get("granular_scopes") or []:
-        if item.get("scope") in REQUIRED_SCOPES and item.get("target_ids"):
+        if item.get("scope") in (*REQUIRED_SCOPES, METADATA_SCOPE) and item.get("target_ids"):
             return str(item["target_ids"][0])
     return ""
 
@@ -172,8 +181,8 @@ def connect(db, cfg: dict, request: Request) -> list:
     """Check the credentials and wire up the webhook. Returns a checklist for the admin."""
     steps = []
 
-    def step(key, label, ok, message=""):
-        steps.append({"key": key, "label": label, "ok": ok, "message": message})
+    def step(key, label, ok, message="", warn=False):
+        steps.append({"key": key, "label": label, "ok": ok, "warn": warn and not ok, "message": message})
         return ok
 
     if not (cfg["app_id"] and cfg["app_secret"] and cfg["page_token"]):
@@ -229,14 +238,23 @@ def connect(db, cfg: dict, request: Request) -> list:
         except GraphError as exc:
             step("webhook", "Webhook бүртгэх", False, friendly(exc))
 
+    has_metadata = METADATA_SCOPE in (info.get("scopes") or [])
     try:
         graph("POST", f"{cfg['page_id']}/subscribed_apps", cfg["page_token"], {"subscribed_fields": FIELDS},
               app_secret=cfg["app_secret"])
+        cfg["page_subscribed"] = "1"
         step("page", "Page-ийг апптай холбох", True, "messages, messaging_postbacks")
     except GraphError as exc:
-        step("page", "Page-ийг апптай холбох", False, friendly(exc))
+        if not has_metadata or exc.code in (100, 200, 10, 230):
+            cfg["page_subscribed"] = "manual"
+            step("page", "Page-ийг апптай холбох", False, MANUAL_SUBSCRIBE, warn=True)
+        else:
+            cfg["page_subscribed"] = ""
+            step("page", "Page-ийг апптай холбох", False, friendly(exc))
+    store(db, {"page_subscribed": cfg["page_subscribed"]})
 
-    if all(s["ok"] for s in steps):
+    # connected = nothing failed outright; a Page subscription done by hand in the Meta dashboard still counts
+    if all(s["ok"] or s["warn"] for s in steps):
         cfg["connected_at"] = now_utc()
         store(db, {"connected_at": cfg["connected_at"]})
     return steps
@@ -343,6 +361,10 @@ async def receive(request: Request):
     except ValueError:
         raise HTTPException(400, "JSON буруу байна.")
     if data.get("object") == "page":
+        try:
+            store(db, {"last_event_at": now_utc()})
+        except DBError:
+            pass
         for entry in data.get("entry") or []:
             for event in entry.get("messaging") or []:
                 try:
@@ -392,7 +414,7 @@ def admin_put(request: Request, payload: dict = Body(...)):
     if not cfg["verify_token"]:
         changes["verify_token"] = secrets.token_urlsafe(24)
     if credentials_changed:
-        changes.update(connected_at="", page_id="", page_name="")
+        changes.update(connected_at="", page_id="", page_name="", page_subscribed="")
     store(db, changes)
     cfg.update(changes)
     steps = connect(db, cfg, request) if (credentials_changed or payload.get("connect")) else []
@@ -404,7 +426,7 @@ def admin_test(request: Request):
     db = get_db()
     cfg = load(db)
     steps = connect(db, cfg, request)
-    return {"ok": all(s["ok"] for s in steps), "steps": steps, "config": admin_view(load(db), request)}
+    return {"ok": all(s["ok"] or s["warn"] for s in steps), "steps": steps, "config": admin_view(load(db), request)}
 
 
 @admin.delete("")
