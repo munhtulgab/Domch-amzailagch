@@ -215,3 +215,33 @@
   .a-chat__back { display: inline-flex; }
   .a-msg { max-width: 88%; }
 }
+
+/* Messenger welcome editor + preview */
+.a-status__err { flex-basis: 100%; margin: 4px 0 0; font-weight: 500; }
+.a-welcome { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 24px; align-items: start; }
+.a-welcome__form { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.a-welcome__form > .a-btn { align-self: flex-start; }
+.a-faq { margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 12px; }
+.a-faq legend { margin-bottom: 8px; font-size: 14px; font-weight: 600; }
+.a-faq > .a-btn { align-self: flex-start; }
+.a-faq__row { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.6fr) auto; gap: 10px; align-items: start; padding: 12px; border-radius: 14px; background: var(--tint-2); }
+.a-faq__row textarea { min-height: 42px; }
+.a-faq__del { margin-top: 25px; }
+.a-welcome__preview { position: sticky; top: 80px; }
+.a-phone { display: flex; flex-direction: column; gap: 10px; min-height: 360px; padding: 18px 14px; border: 1px solid var(--line); border-radius: 26px; background: var(--bg); }
+.a-phone__page { margin: 0 0 4px; text-align: center; font-weight: 700; font-size: 14px; }
+.a-phone__greet { margin: 0; text-align: center; color: var(--muted); font-size: 13px; }
+.a-phone__ice { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.a-phone__bubble { margin: 8px 0 0; align-self: flex-start; max-width: 88%; padding: 9px 12px; border-radius: 16px 16px 16px 4px; background: var(--tint-2); font-size: 13px; white-space: pre-wrap; }
+.a-phone__quick { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin-top: auto; }
+.a-chip { display: inline-block; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 12px; font-weight: 600; }
+.a-chip--accent { border-color: var(--accent); color: var(--accent); }
+@media (max-width: 1000px) {
+  .a-welcome { grid-template-columns: minmax(0, 1fr); }
+  .a-welcome__preview { position: static; }
+  .a-phone { min-height: 0; }
+}
+@media (max-width: 640px) {
+  .a-faq__row { grid-template-columns: minmax(0, 1fr); }
+  .a-faq__del { margin-top: 0; justify-self: start; }
+}

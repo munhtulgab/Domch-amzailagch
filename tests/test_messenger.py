@@ -73,6 +73,8 @@ class FakeGraph:
             return httpx.Response(200, json={"success": True})
         if path == "me/messages":
             return httpx.Response(200, json={"recipient_id": body["recipient"]["id"], "message_id": f"m_out_{len(self.calls)}"})
+        if path == "me/messenger_profile":
+            return httpx.Response(200, json={"result": "success"})
         if path.startswith("psid"):
             return httpx.Response(200, json={"first_name": "Бат", "last_name": "Дорж"})
         return httpx.Response(404, json={"error": {"message": "unknown " + path, "code": 803}})
@@ -276,3 +278,92 @@ def test_token_without_manage_metadata(client, fb):
     client.post("/api/messenger/webhook", content=raw, headers=headers)
     assert client.get("/api/admin/messenger", headers=AUTH).json()["last_event_at"]
     assert client.get("/api/admin/messenger/threads", headers=AUTH).json()["items"][0]["psid"] == "psid-1"
+
+
+FAQ = [
+    {"q": "Үнэ хэд вэ?", "a": "Үнийг ойрын салбараас лавлана уу."},
+    {"q": "Хаанаас авах вэ?", "a": "Салбаруудыг сайтаас харна уу."},
+]
+
+
+def post_event(client, ev):
+    raw, headers = signed(ev)
+    return client.post("/api/messenger/webhook", content=raw, headers=headers)
+
+
+def sent_texts(fb):
+    return [c[3]["message"] for c in fb.calls if c[1] == "me/messages"]
+
+
+def save_welcome(client, **body):
+    data = {"greeting": "ДОМЧ — спиртгүй ам зайлагч.", "auto_reply": "Сайн байна уу! Доороос сонгоно уу.", "faq": FAQ}
+    data.update(body)
+    return client.put("/api/admin/messenger/welcome", json=data, headers={**AUTH, **HTTPS})
+
+
+def test_reported_case_first_message_before_auto_reply_was_set(client, fb):
+    """A person wrote before the auto reply existed; once it is saved, their next message gets it."""
+    connect(client)
+    post_event(client, event(text="Сн", mid="a1"))
+    assert sent_texts(fb) == []
+    assert save_welcome(client).json()["sync"]["ok"]
+    post_event(client, event(text="Сн", mid="a2"))
+    msgs = sent_texts(fb)
+    assert len(msgs) == 1 and msgs[0]["text"].startswith("Сайн байна уу!")
+    assert [q["title"] for q in msgs[0]["quick_replies"]] == ["Үнэ хэд вэ?", "Хаанаас авах вэ?"]
+    post_event(client, event(text="Баярлалаа", mid="a3"))
+    assert len(sent_texts(fb)) == 1  # same conversation: no second welcome
+
+
+def test_welcome_syncs_messenger_profile(client, fb):
+    connect(client)
+    res = save_welcome(client)
+    assert res.status_code == 200 and res.json()["sync"]["ok"]
+    prof = next(c for c in fb.calls if c[0] == "POST" and c[1] == "me/messenger_profile")[3]
+    assert prof["greeting"] == [{"locale": "default", "text": "ДОМЧ — спиртгүй ам зайлагч."}]
+    assert prof["get_started"] == {"payload": "GET_STARTED"}
+    assert [c["payload"] for c in prof["ice_breakers"][0]["call_to_actions"]] == ["FAQ_0", "FAQ_1"]
+    cfg = res.json()["config"]
+    assert cfg["faq"] == FAQ and cfg["profile_synced_at"]
+    bad = client.put("/api/admin/messenger/welcome", json={"greeting": "x" * 161, "faq": [{"q": "x" * 21, "a": ""}]},
+                     headers=AUTH)
+    assert bad.status_code == 422 and {"greeting", "faq.0.q", "faq.0.a"} <= set(bad.json()["fields"])
+
+
+def test_quick_questions_are_answered(client, fb):
+    connect(client)
+    save_welcome(client)
+    quick = event(text="Хаанаас авах вэ?", mid="q1")
+    quick["entry"][0]["messaging"][0]["message"]["quick_reply"] = {"payload": "FAQ_1"}
+    post_event(client, quick)
+    msgs = sent_texts(fb)
+    assert msgs[-1]["text"] == "Салбаруудыг сайтаас харна уу."
+    assert [q["payload"] for q in msgs[-1]["quick_replies"]] == ["FAQ_0"]
+    post_event(client, event(text="үнэ хэд вэ", mid="q2"))  # typed text matching a question
+    assert sent_texts(fb)[-1]["text"] == "Үнийг ойрын салбараас лавлана уу."
+    ice = {"object": "page", "entry": [{"id": "777", "messaging": [{"sender": {"id": "psid-9"}, "recipient": {"id": "777"},
+           "timestamp": int(time.time() * 1000), "postback": {"title": "Үнэ хэд вэ?", "payload": "FAQ_0", "mid": "pb1"}}]}]}
+    post_event(client, ice)
+    assert sent_texts(fb)[-1]["text"] == "Үнийг ойрын салбараас лавлана уу."
+    start = {"object": "page", "entry": [{"id": "777", "messaging": [{"sender": {"id": "psid-9"}, "recipient": {"id": "777"},
+             "timestamp": int(time.time() * 1000), "postback": {"title": "Эхлэх", "payload": "GET_STARTED", "mid": "pb2"}}]}]}
+    post_event(client, start)
+    assert sent_texts(fb)[-1]["text"].startswith("Сайн байна уу!")
+
+
+def test_failed_auto_reply_is_visible_to_admin(client, fb):
+    connect(client)
+    save_welcome(client)
+    fb.fail["me/messages"] = (10, None, "(#10) Application does not have permission for this action")
+    post_event(client, event(mid="f1"))
+    err = client.get("/api/admin/messenger", headers=AUTH).json()["last_error"]
+    assert err["context"] == "Автомат хариу илгээх" and "Эрх" in err["message"]
+    assert len(client.get("/api/admin/messenger/threads", headers=AUTH).json()["items"]) == 1  # message still stored
+
+
+def test_send_welcome_manually(client, fb):
+    connect(client)
+    post_event(client, event(mid="w1"))
+    save_welcome(client)
+    assert client.post("/api/admin/messenger/threads/psid-1/welcome", headers=AUTH).status_code == 200
+    assert sent_texts(fb)[-1]["text"].startswith("Сайн байна уу!")

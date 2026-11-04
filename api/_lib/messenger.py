@@ -23,9 +23,11 @@ GRAPH_URL = f"https://graph.facebook.com/{GRAPH_VERSION}"
 FIELDS = "messages,messaging_postbacks"
 PREFIX = "messenger."
 KEYS = ("app_id", "app_secret", "page_token", "verify_token", "page_id", "page_name", "page_link",
-        "button", "auto_reply", "connected_at", "webhook_url", "page_subscribed", "last_event_at")
+        "button", "auto_reply", "connected_at", "webhook_url", "page_subscribed", "last_event_at",
+        "greeting", "faq", "last_error", "profile_synced_at")
 SECRETS = ("app_secret", "page_token")
-AUTO_REPLY_GAP_HOURS = 12
+NEW_CONVERSATION_HOURS = 24  # a person who has been silent this long gets the welcome again
+MAX_FAQ = 4
 
 http = httpx.Client(timeout=8.0)  # replaced in tests
 
@@ -62,7 +64,36 @@ def graph(method: str, path: str, token: str = "", params: dict | None = None, b
 
 # ------------------------------------------------------------------ config
 
+_schema_ready = False
+
+
+def ensure_schema(db) -> None:
+    """Add the Messenger tables/columns to databases created before they existed (once per process)."""
+    global _schema_ready
+    if _schema_ready:
+        return
+    try:
+        db.one("SELECT welcomed_at FROM messenger_contacts LIMIT 1")
+    except DBError:
+        db.script(
+            "CREATE TABLE IF NOT EXISTS integrations (key TEXT PRIMARY KEY, value TEXT,"
+            " updated_at TEXT NOT NULL DEFAULT (datetime('now')));"
+            "CREATE TABLE IF NOT EXISTS messenger_contacts (psid TEXT PRIMARY KEY, name TEXT, welcomed_at TEXT,"
+            " created_at TEXT NOT NULL DEFAULT (datetime('now')));"
+            "CREATE TABLE IF NOT EXISTS messenger_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, psid TEXT NOT NULL,"
+            " direction TEXT NOT NULL CHECK (direction IN ('in', 'out')), kind TEXT NOT NULL DEFAULT 'message', text TEXT,"
+            " mid TEXT UNIQUE, is_read INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')));"
+            "CREATE INDEX IF NOT EXISTS idx_messenger_psid ON messenger_messages (psid, created_at);"
+        )
+        try:
+            db.run("ALTER TABLE messenger_contacts ADD COLUMN welcomed_at TEXT")
+        except DBError:
+            pass
+    _schema_ready = True
+
+
 def load(db) -> dict:
+    ensure_schema(db)
     rows = db.all("SELECT key, value FROM integrations WHERE key LIKE 'messenger.%'")
     cfg = {key: "" for key in KEYS}
     for row in rows:
@@ -101,8 +132,43 @@ def callback_url(request: Request) -> str:
     return f"{proto.split(',')[0].strip()}://{host.split(',')[0].strip()}/api/messenger/webhook"
 
 
+def parse_faq(cfg: dict) -> list:
+    try:
+        items = json.loads(cfg.get("faq") or "[]")
+    except ValueError:
+        return []
+    return [{"q": str(i.get("q", "")), "a": str(i.get("a", ""))} for i in items if isinstance(i, dict)][:MAX_FAQ]
+
+
+def parse_error(cfg: dict) -> dict:
+    try:
+        return json.loads(cfg.get("last_error") or "{}") or {}
+    except ValueError:
+        return {}
+
+
+def note_error(db, context: str, exc: Exception) -> None:
+    """Remember the last failure so the admin can see why an automatic reply did not go out."""
+    message = friendly(exc) if isinstance(exc, GraphError) else str(exc)
+    print(f"[messenger] {context}: {message}", flush=True)
+    try:
+        store(db, {"last_error": json.dumps({"at": now_utc(), "context": context, "message": message[:500]},
+                                            ensure_ascii=False)})
+    except DBError:
+        pass
+
+
+def site_url(request: Request) -> str:
+    return callback_url(request).rsplit("/api/", 1)[0]
+
+
 def admin_view(cfg: dict, request: Request) -> dict:
     return {
+        "greeting": cfg["greeting"],
+        "faq": parse_faq(cfg),
+        "last_error": parse_error(cfg),
+        "profile_synced_at": cfg["profile_synced_at"],
+        "site_url": site_url(request),
         "app_id": cfg["app_id"],
         "app_secret": mask(cfg["app_secret"]),
         "page_token": mask(cfg["page_token"]),
@@ -275,15 +341,27 @@ def save_contact(db, cfg: dict, psid: str) -> None:
     db.run("INSERT OR IGNORE INTO messenger_contacts (psid, name) VALUES (?, ?)", (psid, name or None))
 
 
-def send_text(db, cfg: dict, psid: str, text: str, kind: str = "reply") -> dict:
+def send_text(db, cfg: dict, psid: str, text: str, kind: str = "reply", quick_replies: list | None = None) -> dict:
+    message = {"text": text}
+    if quick_replies:
+        message["quick_replies"] = quick_replies
     res = graph("POST", "me/messages", cfg["page_token"], body={
-        "recipient": {"id": psid}, "messaging_type": "RESPONSE", "message": {"text": text},
+        "recipient": {"id": psid}, "messaging_type": "RESPONSE", "message": message,
     }, app_secret=cfg["app_secret"])
     db.run(
         "INSERT OR IGNORE INTO messenger_messages (psid, direction, kind, text, mid, is_read) VALUES (?, 'out', ?, ?, ?, 1)",
         (psid, kind, text, res.get("message_id")),
     )
     return res
+
+
+def faq_buttons(faq: list, skip: int | None = None) -> list:
+    return [{"content_type": "text", "title": item["q"][:20], "payload": f"FAQ_{i}"}
+            for i, item in enumerate(faq) if i != skip]
+
+
+def _norm(text: str) -> str:
+    return re.sub(r"[\s?!.,]+", " ", str(text or "")).strip().casefold()
 
 
 def _stamp_ms(ms) -> str:
@@ -293,6 +371,28 @@ def _stamp_ms(ms) -> str:
         return now_utc()
 
 
+def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at, previous_in) -> None:
+    """Answer a quick question, or greet a person who starts a new conversation."""
+    faq = parse_faq(cfg)
+    index = None
+    if payload.startswith("FAQ_") and payload[4:].isdigit():
+        index = int(payload[4:])
+    elif text:
+        index = next((i for i, item in enumerate(faq) if _norm(item["q"]) == _norm(text)), None)
+    if index is not None and index < len(faq):
+        send_text(db, cfg, psid, faq[index]["a"], kind="auto", quick_replies=faq_buttons(faq, skip=index))
+        db.run("UPDATE messenger_contacts SET welcomed_at = ? WHERE psid = ?", (now_utc(), psid))
+        return
+    welcome = cfg["auto_reply"].strip()
+    if not welcome:
+        return
+    window = ago(hours=NEW_CONVERSATION_HOURS)
+    new_conversation = not welcomed_at or (welcomed_at < window and (not previous_in or previous_in < window))
+    if payload == "GET_STARTED" or new_conversation:
+        send_text(db, cfg, psid, welcome, kind="auto", quick_replies=faq_buttons(faq))
+        db.run("UPDATE messenger_contacts SET welcomed_at = ? WHERE psid = ?", (now_utc(), psid))
+
+
 def handle_event(db, cfg: dict, event: dict) -> None:
     psid = str((event.get("sender") or {}).get("id") or "")
     if not psid or psid == cfg["page_id"]:
@@ -300,22 +400,24 @@ def handle_event(db, cfg: dict, event: dict) -> None:
     message = event.get("message") or {}
     if message.get("is_echo"):
         return
+    payload = ""
     if message:
         text = message.get("text") or ""
+        payload = str((message.get("quick_reply") or {}).get("payload") or "")
         if not text and message.get("attachments"):
             kinds = {a.get("type", "file") for a in message["attachments"]}
             text = "[" + ", ".join(sorted(kinds)) + " хавсралт]"
         mid = message.get("mid")
     elif event.get("postback"):
-        text = event["postback"].get("title") or event["postback"].get("payload") or "[товч]"
-        mid = event["postback"].get("mid")
+        payload = str(event["postback"].get("payload") or "")
+        text = event["postback"].get("title") or payload or "[товч]"
+        mid = event["postback"].get("mid") or f"pb.{psid}.{event.get('timestamp')}"
     else:
         return
     when = _stamp_ms(event.get("timestamp"))
-    recent = db.one(
-        "SELECT COUNT(*) AS n FROM messenger_messages WHERE psid = ? AND direction = 'in' AND created_at >= ?",
-        (psid, ago(hours=AUTO_REPLY_GAP_HOURS)),
-    )
+    previous = db.one(
+        "SELECT MAX(created_at) AS at FROM messenger_messages WHERE psid = ? AND direction = 'in'", (psid,)
+    ) or {}
     res = db.run(
         "INSERT OR IGNORE INTO messenger_messages (psid, direction, kind, text, mid, created_at) VALUES (?, 'in', 'message', ?, ?, ?)",
         (psid, text[:2000], mid, when),
@@ -323,11 +425,41 @@ def handle_event(db, cfg: dict, event: dict) -> None:
     if not res.get("changes"):
         return  # a retried delivery
     save_contact(db, cfg, psid)
-    if cfg["auto_reply"].strip() and not int((recent or {}).get("n") or 0):
-        try:
-            send_text(db, cfg, psid, cfg["auto_reply"].strip(), kind="auto")
-        except GraphError:
-            pass
+    contact = db.one("SELECT welcomed_at FROM messenger_contacts WHERE psid = ?", (psid,)) or {}
+    try:
+        auto_respond(db, cfg, psid, text, payload, contact.get("welcomed_at"), previous.get("at"))
+    except GraphError as exc:
+        note_error(db, "Автомат хариу илгээх", exc)
+
+
+def sync_profile(db, cfg: dict) -> dict:
+    """Push the greeting, quick questions (ice breakers) and Get Started button to the Page's Messenger profile."""
+    faq = parse_faq(cfg)
+    body = {"get_started": {"payload": "GET_STARTED"}}
+    remove = []
+    if cfg["greeting"].strip():
+        body["greeting"] = [{"locale": "default", "text": cfg["greeting"].strip()}]
+    else:
+        remove.append("greeting")
+    if faq:
+        body["ice_breakers"] = [{"locale": "default", "call_to_actions": [
+            {"question": item["q"], "payload": f"FAQ_{i}"} for i, item in enumerate(faq)]}]
+    else:
+        remove.append("ice_breakers")
+    try:
+        graph("POST", "me/messenger_profile", cfg["page_token"], body=body, app_secret=cfg["app_secret"])
+        if remove:
+            try:
+                graph("DELETE", "me/messenger_profile", cfg["page_token"], body={"fields": remove},
+                      app_secret=cfg["app_secret"])
+            except GraphError:
+                pass
+    except GraphError as exc:
+        note_error(db, "Мэндчилгээний дэлгэц шинэчлэх", exc)
+        return {"ok": False, "message": friendly(exc)}
+    cfg["profile_synced_at"] = now_utc()
+    store(db, {"profile_synced_at": cfg["profile_synced_at"]})
+    return {"ok": True, "message": "Messenger-ийн мэндчилгээний дэлгэц шинэчлэгдлээ."}
 
 
 # ------------------------------------------------------------------ routes
@@ -427,6 +559,54 @@ def admin_test(request: Request):
     cfg = load(db)
     steps = connect(db, cfg, request)
     return {"ok": all(s["ok"] or s["warn"] for s in steps), "steps": steps, "config": admin_view(load(db), request)}
+
+
+@admin.put("/welcome")
+def admin_welcome(request: Request, payload: dict = Body(...)):
+    db = get_db()
+    cfg = load(db)
+    errors = {}
+    greeting = str(payload.get("greeting") or "").strip()
+    if len(greeting) > 160:
+        errors["greeting"] = "Хамгийн ихдээ 160 тэмдэгт байна."
+    welcome = str(payload.get("auto_reply") or "").strip()
+    if len(welcome) > 640:
+        errors["auto_reply"] = "Хамгийн ихдээ 640 тэмдэгт байна."
+    faq = []
+    for i, item in enumerate((payload.get("faq") or [])[:MAX_FAQ + 2]):
+        q = str((item or {}).get("q") or "").strip()
+        a = str((item or {}).get("a") or "").strip()
+        if not q and not a:
+            continue
+        if not q or len(q) > 20:
+            errors[f"faq.{i}.q"] = "Асуултыг 20 хүртэл тэмдэгтээр бичнэ үү."
+        if not a or len(a) > 640:
+            errors[f"faq.{i}.a"] = "Хариултыг 1–640 тэмдэгтээр бичнэ үү."
+        faq.append({"q": q, "a": a})
+    if len(faq) > MAX_FAQ:
+        errors["faq"] = f"Хамгийн ихдээ {MAX_FAQ} асуулт байна."
+    if errors:
+        fail(errors)
+    store(db, {"greeting": greeting, "auto_reply": welcome, "faq": json.dumps(faq, ensure_ascii=False), "last_error": ""})
+    cfg.update(greeting=greeting, auto_reply=welcome, faq=json.dumps(faq, ensure_ascii=False))
+    # everyone gets the new welcome on their next message (also makes it easy to test right away)
+    db.run("UPDATE messenger_contacts SET welcomed_at = NULL")
+    sync = sync_profile(db, cfg) if cfg["page_token"] else {"ok": False, "message": "Эхлээд token-уудаа оруулж холбоно уу."}
+    return {"ok": True, "sync": sync, "config": admin_view(load(db), request)}
+
+
+@admin.post("/threads/{psid}/welcome")
+def send_welcome(psid: str):
+    db = get_db()
+    cfg = load(db)
+    if not cfg["page_token"] or not cfg["auto_reply"].strip():
+        raise HTTPException(409, "Мэндчилгээ мессеж тохируулагдаагүй байна.")
+    try:
+        send_text(db, cfg, psid, cfg["auto_reply"].strip(), kind="auto", quick_replies=faq_buttons(parse_faq(cfg)))
+    except GraphError as exc:
+        raise HTTPException(502, friendly(exc))
+    db.run("UPDATE messenger_contacts SET welcomed_at = ? WHERE psid = ?", (now_utc(), psid))
+    return {"ok": True}
 
 
 @admin.delete("")

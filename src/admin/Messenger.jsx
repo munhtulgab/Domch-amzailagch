@@ -90,7 +90,119 @@ function Steps({ steps }) {
   );
 }
 
-const EMPTY = { app_id: '', app_secret: '', page_token: '', page_link: '', button: true, auto_reply: '' };
+const EMPTY = { app_id: '', app_secret: '', page_token: '', page_link: '', button: true };
+
+const DEFAULT_GREETING = 'ДОМЧ — Монгол жамц давстай, спирт агуулаагүй ам зайлагч. Асуух зүйлээ бичээрэй!';
+const DEFAULT_WELCOME = 'Сайн байна уу! ДОМЧ ам зайлагчийн хуудсанд тавтай морил. Доорх асуултаас сонгох эсвэл асуултаа бичээрэй, бид удахгүй хариулна.';
+const defaultFaq = (site) => [
+  { q: 'Хаанаас авах вэ?', a: `Худалдаалах цэгүүдийг газрын зурагтай нь эндээс харна уу: ${site}/#where` },
+  { q: 'Үнэ хэд вэ?', a: `Домч 250 мл болон 500 мл савлагаатай. Үнийг ойрын салбараас лавлана уу: ${site}/#where` },
+  { q: 'Орц найрлага', a: `Шүүсэн ус, жамц давс, хадаасан цэцгийн ханд (башир цэцэг), гаа, глицерин, FD&C Blue No.1. Спирт агуулаагүй. Дэлгэрэнгүй: ${site}/#ingredients` },
+  { q: 'Хэрэглэх заавар', a: `Шошгонд заасан хэмжээгээр хэмжиж, амаа сайтар зайлаад нулимна, залгихгүй. Хүүхэд эцэг эхийн хяналтан дор хэрэглэнэ. Дэлгэрэнгүй: ${site}/#usage` },
+];
+
+function WelcomeSettings({ cfg, call, onSaved }) {
+  const [greeting, setGreeting] = useState(cfg.greeting || '');
+  const [welcome, setWelcome] = useState(cfg.auto_reply || '');
+  const [faq, setFaq] = useState(cfg.faq && cfg.faq.length ? cfg.faq : []);
+  const [errors, setErrors] = useState({});
+  const [result, setResult] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const empty = !greeting.trim() && !welcome.trim() && faq.length === 0;
+
+  const fillDefaults = () => {
+    setGreeting(DEFAULT_GREETING);
+    setWelcome(DEFAULT_WELCOME);
+    setFaq(defaultFaq(cfg.site_url));
+    setResult(null);
+  };
+  const setItem = (i, key, value) => {
+    setFaq((list) => list.map((item, j) => (j === i ? { ...item, [key]: value } : item)));
+    setErrors((e) => ({ ...e, [`faq.${i}.${key}`]: undefined }));
+  };
+  const save = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setResult(null);
+    try {
+      const res = await call('/messenger/welcome', { method: 'PUT', body: { greeting, auto_reply: welcome, faq } });
+      setErrors({});
+      setResult(res.sync);
+      onSaved(res.config);
+    } catch (err) {
+      setErrors(err.fields || {});
+      setResult({ ok: false, message: err.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const shown = faq.filter((f) => f.q.trim());
+  return (
+    <form className="a-card a-welcome" onSubmit={save} noValidate>
+      <div className="a-welcome__form">
+        <h2>Мэндчилгээ ба автомат хариу</h2>
+        <p className="a-muted">
+          Хэн нэгэн Page руу анх бичихэд (эсвэл 24 цагаас дээш завсарлаад дахин бичихэд) мэндчилгээ болон асуултын товчнууд
+          автоматаар очно. Товч дарахад тухайн хариулт шууд илгээгдэнэ.
+        </p>
+        {empty && (
+          <button type="button" className="a-btn a-btn--ghost" onClick={fillDefaults}>ДОМЧ-ийн жишээ мэдээллээр бөглөх</button>
+        )}
+        <div className={`a-field${errors.greeting ? ' has-error' : ''}`}>
+          <label htmlFor="w-greet">Эхлэх дэлгэцийн текст</label>
+          <input id="w-greet" maxLength={160} value={greeting} onChange={(e) => setGreeting(e.target.value)} placeholder={DEFAULT_GREETING} />
+          {errors.greeting ? <p className="a-error">{errors.greeting}</p> : <p className="a-hint">Шинэ хүн чат нээхэд мессеж бичихээс өмнө харагдана. {greeting.length}/160</p>}
+        </div>
+        <div className={`a-field${errors.auto_reply ? ' has-error' : ''}`}>
+          <label htmlFor="w-text">Мэндчилгээ мессеж</label>
+          <textarea id="w-text" rows={3} maxLength={640} value={welcome} onChange={(e) => setWelcome(e.target.value)} placeholder={DEFAULT_WELCOME} />
+          {errors.auto_reply ? <p className="a-error">{errors.auto_reply}</p> : <p className="a-hint">Анх бичсэн хүнд автоматаар очно. {welcome.length}/640</p>}
+        </div>
+        <fieldset className="a-faq">
+          <legend>Түгээмэл асуулт, хариулт (4 хүртэл)</legend>
+          {faq.map((item, i) => (
+            <div className="a-faq__row" key={i}>
+              <div className={`a-field${errors[`faq.${i}.q`] ? ' has-error' : ''}`}>
+                <label htmlFor={`w-q${i}`}>Асуулт {i + 1}</label>
+                <input id={`w-q${i}`} maxLength={20} value={item.q} onChange={(e) => setItem(i, 'q', e.target.value)} placeholder="Хаанаас авах вэ?" />
+                {errors[`faq.${i}.q`] ? <p className="a-error">{errors[`faq.${i}.q`]}</p> : <p className="a-hint">Товчны бичиг. {item.q.length}/20</p>}
+              </div>
+              <div className={`a-field${errors[`faq.${i}.a`] ? ' has-error' : ''}`}>
+                <label htmlFor={`w-a${i}`}>Хариулт {i + 1}</label>
+                <textarea id={`w-a${i}`} rows={2} maxLength={640} value={item.a} onChange={(e) => setItem(i, 'a', e.target.value)} />
+                {errors[`faq.${i}.a`] && <p className="a-error">{errors[`faq.${i}.a`]}</p>}
+              </div>
+              <button type="button" className="a-btn a-btn--ghost a-faq__del" onClick={() => setFaq((list) => list.filter((_, j) => j !== i))}
+                aria-label={`Асуулт ${i + 1}-ийг хасах`}>Хасах</button>
+            </div>
+          ))}
+          {faq.length < 4 && (
+            <button type="button" className="a-btn a-btn--ghost" onClick={() => setFaq((list) => [...list, { q: '', a: '' }])}>Асуулт нэмэх</button>
+          )}
+        </fieldset>
+        {result && <p className={result.ok ? 'a-note' : 'a-error'} role="status">{result.ok ? `Хадгаллаа. ${result.message} Туршихын тулд Page руу бичээд үзээрэй.` : result.message}</p>}
+        <div className="a-form__actions">
+          <button type="submit" className="a-btn" disabled={busy}>{busy ? 'Хадгалж байна…' : 'Хадгалах'}</button>
+        </div>
+      </div>
+      <div className="a-welcome__preview" aria-label="Messenger дээр харагдах байдал">
+        <p className="a-hint">Урьдчилан харах</p>
+        <div className="a-phone">
+          <p className="a-phone__page">{cfg.page_name || 'ДОМЧ'}</p>
+          {greeting.trim() && <p className="a-phone__greet">{greeting}</p>}
+          {shown.length > 0 && (
+            <div className="a-phone__ice">{shown.map((f, i) => <span key={i} className="a-chip">{f.q}</span>)}</div>
+          )}
+          {welcome.trim() && <p className="a-phone__bubble">{welcome}</p>}
+          {welcome.trim() && shown.length > 0 && (
+            <div className="a-phone__quick">{shown.map((f, i) => <span key={i} className="a-chip a-chip--accent">{f.q}</span>)}</div>
+          )}
+          {!greeting.trim() && !welcome.trim() && shown.length === 0 && <p className="a-phone__greet">Мэндчилгээ тохируулаагүй байна.</p>}
+        </div>
+      </div>
+    </form>
+  );
+}
 
 export function MessengerSettings({ call, onChange }) {
   const [cfg, setCfg] = useState(null);
@@ -109,7 +221,6 @@ export function MessengerSettings({ call, onChange }) {
       page_token: '',
       page_link: c.page_link || '',
       button: c.page_token.set ? Boolean(c.button) : true,
-      auto_reply: c.auto_reply || '',
     });
   }, []);
 
@@ -177,6 +288,9 @@ export function MessengerSettings({ call, onChange }) {
           </p>
         </div>
         {cfg.link && <a className="a-link" href={cfg.link} target="_blank" rel="noopener noreferrer">{cfg.link.replace('https://', '')}</a>}
+        {cfg.last_error && cfg.last_error.message && (
+          <p className="a-error a-status__err" role="alert">Сүүлийн алдаа ({timeOf(cfg.last_error.at)}, {cfg.last_error.context}): {cfg.last_error.message}</p>
+        )}
       </div>
 
       <Steps steps={steps} />
@@ -197,12 +311,6 @@ export function MessengerSettings({ call, onChange }) {
             placeholder={cfg.page_id ? `https://m.me/${cfg.page_id}` : 'https://m.me/domch.mn'} />
           {errors.page_link ? <p className="a-error">{errors.page_link}</p> : <p className="a-hint">Хоосон бол Page ID-гаар автоматаар үүснэ.</p>}
         </div>
-        <div className={`a-field a-field--wide${errors.auto_reply ? ' has-error' : ''}`}>
-          <label htmlFor="m-auto">Автомат хариу (заавал биш)</label>
-          <textarea id="m-auto" rows={3} maxLength={640} value={form.auto_reply} onChange={(e) => set('auto_reply')(e.target.value)}
-            placeholder="Сайн байна уу! Мессежийг тань хүлээн авлаа, удахгүй хариулна." />
-          {errors.auto_reply ? <p className="a-error">{errors.auto_reply}</p> : <p className="a-hint">Хүн анх бичихэд нэг удаа илгээгдэнэ (12 цагт нэг удаа). {form.auto_reply.length}/640</p>}
-        </div>
         <div className="a-field a-field--check">
           <label htmlFor="m-btn"><input id="m-btn" type="checkbox" checked={form.button} onChange={(e) => set('button')(e.target.checked)} /> Сайт дээр «Messenger-ээр бичих» товч харуулах</label>
         </div>
@@ -217,6 +325,8 @@ export function MessengerSettings({ call, onChange }) {
           ))}
         </div>
       </form>
+
+      {hasCreds && <WelcomeSettings cfg={cfg} call={call} onSaved={setCfg} />}
 
       <details className="a-card a-details">
         <summary>Webhook-ийг гараар тохируулах бол</summary>
@@ -312,6 +422,20 @@ export function MessengerInbox({ call, onChange, openSettings }) {
     }
   };
 
+  const sendWelcome = async () => {
+    setSending(true);
+    setError('');
+    try {
+      await call(`/messenger/threads/${encodeURIComponent(active)}/welcome`, { method: 'POST', body: {} });
+      await loadConvo(active, true);
+      loadThreads();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
   if (!cfg || threads === null) return error ? <p className="a-error">{error}</p> : <p className="a-muted">Ачаалж байна…</p>;
   if (!cfg.connected_at && threads.length === 0) {
     return (
@@ -350,6 +474,9 @@ export function MessengerInbox({ call, onChange, openSettings }) {
             <div className="a-chat__bar">
               <button type="button" className="a-btn a-btn--ghost a-chat__back" onClick={() => { setActive(null); setConvo(null); }}>← Буцах</button>
               <strong>{convo.name || label({ psid: convo.psid })}</strong>
+              {convo.can_reply && cfg.auto_reply && (
+                <button type="button" className="a-btn a-btn--ghost" onClick={sendWelcome} disabled={sending}>Мэндчилгээ илгээх</button>
+              )}
             </div>
             <ol className="a-msgs">
               {convo.items.map((m) => (
