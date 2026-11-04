@@ -15,6 +15,7 @@ import httpx
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 
+from . import ai
 from .common import ago, fail, now_utc, require_admin
 from .db import DBError, get_db
 
@@ -28,6 +29,8 @@ KEYS = ("app_id", "app_secret", "page_token", "verify_token", "page_id", "page_n
 SECRETS = ("app_secret", "page_token")
 NEW_CONVERSATION_HOURS = 24  # a person who has been silent this long gets the welcome again
 MAX_FAQ = 4
+HUMAN_PAUSE_HOURS = 12  # the AI stays quiet in a conversation an admin answered recently
+GREETING = re.compile(r"^(сайн|сн|сайн уу|сайн байна уу|сайхан|мэнд|hi|hello|hey|юу байна|байна уу)[\s!.,?]*$", re.I)
 
 http = httpx.Client(timeout=8.0)  # replaced in tests
 
@@ -371,29 +374,73 @@ def _stamp_ms(ms) -> str:
         return now_utc()
 
 
-def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at, previous_in) -> None:
-    """Answer a quick question, or greet a person who starts a new conversation."""
+def typing(cfg: dict, psid: str) -> None:
+    try:
+        graph("POST", "me/messages", cfg["page_token"], body={"recipient": {"id": psid}, "sender_action": "typing_on"},
+              app_secret=cfg["app_secret"], timeout=2.0)
+    except GraphError:
+        pass
+
+
+def human_active(db, psid: str) -> bool:
+    row = db.one(
+        "SELECT MAX(created_at) AS at FROM messenger_messages WHERE psid = ? AND direction = 'out' AND kind = 'reply'",
+        (psid,),
+    ) or {}
+    return bool(row.get("at") and row["at"] >= ago(hours=HUMAN_PAUSE_HOURS))
+
+
+def ai_reply(db, cfg: dict, psid: str, text: str, site: str) -> None:
+    acfg = ai.load(db)
+    if not ai.ready(acfg):
+        return
+    history = list(reversed(db.all(
+        "SELECT direction, text FROM messenger_messages WHERE psid = ? ORDER BY created_at DESC, id DESC LIMIT 9",
+        (psid,),
+    )))
+    if history and history[-1]["direction"] == "in" and history[-1]["text"] == text:
+        history = history[:-1]  # the current message is passed separately
+    typing(cfg, psid)
+    try:
+        result = ai.answer(db, acfg, text, history[-8:], site=site, messenger_faq=parse_faq(cfg), timeout=7.0)
+    except ai.AIError as exc:
+        ai.note_error(db, "Messenger хариулт", exc)
+        send_text(db, cfg, psid, "Таны асуултыг хүлээн авлаа. Манай ажилтан удахгүй хариулна.", kind="auto")
+        return
+    send_text(db, cfg, psid, result["answer"], kind="ai")
+
+
+def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at, previous_in,
+                 site: str = "", attachment: bool = False) -> None:
+    """Quick-question buttons first, then the welcome for a new conversation, then the AI assistant."""
     faq = parse_faq(cfg)
     index = None
     if payload.startswith("FAQ_") and payload[4:].isdigit():
         index = int(payload[4:])
-    elif text:
+    elif text and not attachment:
         index = next((i for i, item in enumerate(faq) if _norm(item["q"]) == _norm(text)), None)
     if index is not None and index < len(faq):
         send_text(db, cfg, psid, faq[index]["a"], kind="auto", quick_replies=faq_buttons(faq, skip=index))
         db.run("UPDATE messenger_contacts SET welcomed_at = ? WHERE psid = ?", (now_utc(), psid))
         return
     welcome = cfg["auto_reply"].strip()
-    if not welcome:
-        return
     window = ago(hours=NEW_CONVERSATION_HOURS)
     new_conversation = not welcomed_at or (welcomed_at < window and (not previous_in or previous_in < window))
-    if payload == "GET_STARTED" or new_conversation:
+    welcomed = False
+    if welcome and (payload == "GET_STARTED" or new_conversation):
         send_text(db, cfg, psid, welcome, kind="auto", quick_replies=faq_buttons(faq))
         db.run("UPDATE messenger_contacts SET welcomed_at = ? WHERE psid = ?", (now_utc(), psid))
+        welcomed = True
+    if payload == "GET_STARTED" or attachment or not text.strip():
+        return
+    if welcomed and (GREETING.match(text.strip()) or len(text.strip()) < 6):
+        return  # "сайн байна уу" is answered by the welcome itself
+    if human_active(db, psid):
+        return
+    ai_reply(db, cfg, psid, text, site)
 
 
-def handle_event(db, cfg: dict, event: dict) -> None:
+def handle_event(db, cfg: dict, event: dict, site: str = "") -> None:
     psid = str((event.get("sender") or {}).get("id") or "")
     if not psid or psid == cfg["page_id"]:
         return
@@ -401,12 +448,14 @@ def handle_event(db, cfg: dict, event: dict) -> None:
     if message.get("is_echo"):
         return
     payload = ""
+    attachment = False
     if message:
         text = message.get("text") or ""
         payload = str((message.get("quick_reply") or {}).get("payload") or "")
         if not text and message.get("attachments"):
             kinds = {a.get("type", "file") for a in message["attachments"]}
             text = "[" + ", ".join(sorted(kinds)) + " хавсралт]"
+            attachment = True
         mid = message.get("mid")
     elif event.get("postback"):
         payload = str(event["postback"].get("payload") or "")
@@ -427,7 +476,8 @@ def handle_event(db, cfg: dict, event: dict) -> None:
     save_contact(db, cfg, psid)
     contact = db.one("SELECT welcomed_at FROM messenger_contacts WHERE psid = ?", (psid,)) or {}
     try:
-        auto_respond(db, cfg, psid, text, payload, contact.get("welcomed_at"), previous.get("at"))
+        auto_respond(db, cfg, psid, text, payload, contact.get("welcomed_at"), previous.get("at"), site=site,
+                     attachment=attachment)
     except GraphError as exc:
         note_error(db, "Автомат хариу илгээх", exc)
 
@@ -500,7 +550,7 @@ async def receive(request: Request):
         for entry in data.get("entry") or []:
             for event in entry.get("messaging") or []:
                 try:
-                    handle_event(db, cfg, event)
+                    handle_event(db, cfg, event, site=site_url(request))
                 except DBError:
                     pass
     return PlainTextResponse("EVENT_RECEIVED")

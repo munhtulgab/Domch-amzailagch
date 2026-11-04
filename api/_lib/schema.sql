@@ -154,3 +154,15 @@ CREATE TABLE IF NOT EXISTS messenger_messages (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_messenger_psid ON messenger_messages (psid, created_at);
+
+-- Knowledge base used by the Messenger AI assistant (with doctor tips and FAQs)
+CREATE TABLE IF NOT EXISTS knowledge (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  topic TEXT NOT NULL DEFAULT 'general',
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  keywords TEXT,
+  active INTEGER NOT NULL DEFAULT 1,
+  sort INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);

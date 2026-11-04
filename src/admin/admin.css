@@ -245,3 +245,9 @@
   .a-faq__row { grid-template-columns: minmax(0, 1fr); }
   .a-faq__del { margin-top: 0; justify-self: start; }
 }
+
+/* AI */
+.a-ai-answer { display: flex; flex-direction: column; gap: 6px; }
+.a-ai-answer .a-msg__text { align-self: flex-start; max-width: 100%; background: var(--tint-2); border-bottom-left-radius: 4px; }
+.a-ai-answer details { font-size: 13px; }
+.a-ai-answer summary { cursor: pointer; }

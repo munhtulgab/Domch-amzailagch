@@ -4,6 +4,7 @@ import { CITIES } from '../data/static.js';
 import { formatDate } from '../lib/util.js';
 import { Modal } from '../components/Modal.jsx';
 import { MessengerInbox, MessengerSettings } from './Messenger.jsx';
+import { AiSettings } from './Ai.jsx';
 import './admin.css';
 
 const KEY = 'domch_admin_token';
@@ -18,6 +19,7 @@ const TABS = [
   { id: 'branches', label: 'Салбарууд', table: true },
   { id: 'products', label: 'Бүтээгдэхүүн, үнэ', table: true },
   { id: 'tips', label: 'Эмчийн зөвлөгөө', table: true },
+  { id: 'knowledge', label: 'Мэдлэгийн сан', table: true },
   { id: 'videos', label: 'Видео', table: true },
   { id: 'faqs', label: 'Түгээмэл асуулт', table: true },
   { id: 'settings', label: 'Тохиргоо' },
@@ -37,6 +39,9 @@ const EVENT_LABEL = {
   messenger_click: 'Messenger товч дарсан',
 };
 
+const KNOWLEDGE_TOPICS = [['product', 'Бүтээгдэхүүн'], ['ingredients', 'Орц найрлага'], ['usage', 'Хэрэглээ'],
+  ['buy', 'Худалдан авах'], ['health', 'Эрүүл мэнд'], ['company', 'Компани, хамтын ажиллагаа'], ['general', 'Бусад']];
+const TOPIC_LABEL = Object.fromEntries(KNOWLEDGE_TOPICS);
 const ACTIVE = { k: 'active', l: 'Сайтад харуулах', type: 'checkbox', def: true };
 const SORT = { k: 'sort', l: 'Эрэмбэ', type: 'number', hint: 'Бага тоо түрүүлж харагдана.' };
 const SCHEMAS = {
@@ -102,6 +107,19 @@ const SCHEMAS = {
       { k: 'sponsored', l: 'Хамтарсан контент (тэмдэглэгээ харагдана)', type: 'checkbox', def: true },
       SORT,
       ACTIVE,
+    ],
+  },
+  knowledge: {
+    title: 'Мэдлэгийн сан',
+    cols: [['title', 'Гарчиг'], ['topic', 'Ангилал'], ['updated_at', 'Шинэчилсэн']],
+    fields: [
+      { k: 'topic', l: 'Ангилал', type: 'select', options: KNOWLEDGE_TOPICS, def: 'general' },
+      { k: 'title', l: 'Гарчиг (асуулт эсвэл сэдэв)', req: true, hint: 'Жишээ: Жирэмсэн үед хэрэглэж болох уу?' },
+      { k: 'body', l: 'Мэдээлэл', type: 'textarea', rows: 8, req: true,
+        hint: 'Messenger-ийн AI зөвхөн энд бичсэн баталгаатай мэдээллээр хариулна. Тодорхой, бүтэн өгүүлбэрээр бичнэ үү.' },
+      { k: 'keywords', l: 'Түлхүүр үгс', hint: 'Таслалаар. Хүмүүс өөрөөр асуухад тохирох хариултыг олоход тусална.' },
+      SORT,
+      { k: 'active', l: 'AI хариултад ашиглах', type: 'checkbox', def: true },
     ],
   },
   faqs: {
@@ -571,6 +589,8 @@ function TableView({ table, call }) {
   const cell = (row, key) => {
     const v = row[key];
     if (key === 'featured') return v ? 'Тийм' : '';
+    if (key === 'topic') return TOPIC_LABEL[v] || v;
+    if (key === 'updated_at') return formatDate(v);
     if (key === 'kind') return { advice: 'Зөвлөгөө', minute: '1 минут', myth: 'Үнэн үү?', creator: 'Бүтээгч', family: 'Гэр бүл' }[v] || v;
     if (key === 'price') return v == null ? '—' : Number(v).toLocaleString('en-US');
     return v == null || v === '' ? '—' : String(v);
@@ -654,9 +674,9 @@ function ContactSettings({ call }) {
   );
 }
 
-const SETTING_TABS = [['contact', 'Холбоо барих'], ['messenger', 'Facebook Messenger']];
+const SETTING_TABS = [['contact', 'Холбоо барих'], ['messenger', 'Facebook Messenger'], ['ai', 'AI']];
 
-function Settings({ call, tab, onTab, onChange }) {
+function Settings({ call, tab, onTab, onChange, go }) {
   return (
     <div className="a-stack">
       <div className="a-tabs" role="tablist" aria-label="Тохиргоо">
@@ -667,7 +687,9 @@ function Settings({ call, tab, onTab, onChange }) {
         ))}
       </div>
       <div role="tabpanel" id={`st-panel-${tab}`} aria-labelledby={`st-tab-${tab}`}>
-        {tab === 'messenger' ? <MessengerSettings call={call} onChange={onChange} /> : <ContactSettings call={call} />}
+        {tab === 'messenger' && <MessengerSettings call={call} onChange={onChange} />}
+        {tab === 'ai' && <AiSettings call={call} go={go} />}
+        {tab === 'contact' && <ContactSettings call={call} />}
       </div>
     </div>
   );
@@ -747,7 +769,7 @@ export default function Admin() {
           {tab === 'messenger' && (
             <MessengerInbox call={call} onChange={loadSummary} openSettings={() => { setSettingsTab('messenger'); setTab('settings'); }} />
           )}
-          {tab === 'settings' && <Settings call={call} tab={settingsTab} onTab={setSettingsTab} onChange={loadSummary} />}
+          {tab === 'settings' && <Settings call={call} tab={settingsTab} onTab={setSettingsTab} onChange={loadSummary} go={setTab} />}
         </main>
       </div>
     </div>

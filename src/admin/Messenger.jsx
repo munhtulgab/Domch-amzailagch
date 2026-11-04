@@ -35,7 +35,7 @@ function CopyField({ id, label, value }) {
   );
 }
 
-function SecretField({ id, label, saved, value, onChange, error, hint }) {
+export function SecretField({ id, label, saved, value, onChange, error, hint }) {
   const [show, setShow] = useState(false);
   return (
     <div className={`a-field a-field--wide${error ? ' has-error' : ''}`}>
@@ -482,7 +482,7 @@ export function MessengerInbox({ call, onChange, openSettings }) {
               {convo.items.map((m) => (
                 <li key={m.id} className={`a-msg a-msg--${m.direction}`}>
                   <span className="a-msg__text">{m.text}</span>
-                  <span className="a-msg__meta">{m.kind === 'auto' ? 'Автомат хариу · ' : ''}{timeOf(m.created_at)}</span>
+                  <span className="a-msg__meta">{m.kind === 'auto' ? 'Автомат хариу · ' : m.kind === 'ai' ? 'AI хариу · ' : ''}{timeOf(m.created_at)}</span>
                 </li>
               ))}
               <li ref={endRef} aria-hidden="true" />

@@ -13,7 +13,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .common import FieldErrors, ago, fail, now_utc, require_admin
 from .db import SCHEMA_PATH, DBError, NotConfigured, get_db
-from . import messenger
+from . import ai, messenger
 
 app = FastAPI(
     title="DOMCH API",
@@ -468,10 +468,16 @@ TABLES = {
                    "sponsored": "bool", "active": "bool", "sort": "int"},
         "required": ("title",), "order": "sort, id", "sample": True,
     },
+    "knowledge": {
+        "fields": {"topic": "text", "title": "text", "body": "text", "keywords": "text", "active": "bool", "sort": "int"},
+        "required": ("title", "body"), "order": "sort, id",
+    },
 }
-CHOICES = {("tips", "kind"): ("advice", "minute", "myth"), ("videos", "kind"): ("creator", "family")}
+KNOWLEDGE_TOPICS = ("product", "ingredients", "usage", "buy", "health", "company", "general")
+CHOICES = {("tips", "kind"): ("advice", "minute", "myth"), ("videos", "kind"): ("creator", "family"),
+           ("knowledge", "topic"): KNOWLEDGE_TOPICS}
 # NOT NULL columns that fall back to their default when the admin leaves them empty
-DEFAULTS = {"sort": 0, ("tips", "kind"): "advice", ("videos", "kind"): "creator"}
+DEFAULTS = {"sort": 0, ("tips", "kind"): "advice", ("videos", "kind"): "creator", ("knowledge", "topic"): "general"}
 INBOX = {
     "reviews": {"table": "reviews", "statuses": ("pending", "approved", "rejected")},
     "questions": {"table": "questions", "statuses": ("new", "answered", "archived")},
@@ -608,7 +614,7 @@ def admin_update(table: str, row_id: int, payload: dict = Body(...)):
         fail({"form": "Өөрчлөх утга алга."})
     if spec.get("sample"):
         row["is_sample"] = 0
-    if table == "products":
+    if table in ("products", "knowledge"):
         row["updated_at"] = now_utc()
     try:
         res = get_db().run(
@@ -711,4 +717,5 @@ def admin_migrate():
 
 app.include_router(admin)
 app.include_router(messenger.admin)
+app.include_router(ai.admin)
 app.include_router(messenger.public)
