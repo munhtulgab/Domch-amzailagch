@@ -199,3 +199,19 @@ def test_select_prefers_matching_entries():
     items.append({"source": "s", "title": "Хүүхдийн хэрэглээ", "text": "Хүүхэд эцэг эхийн хяналтан дор.", "keys": "хүүхэд"})
     chosen = ai.select(items, "Хүүхдэд хэрэглэж болох уу?", budget=3000)
     assert chosen[0]["title"] == "Хүүхдийн хэрэглээ" and len(chosen) < len(items)
+
+
+def test_unsupported_server_location_is_explained(client, monkeypatch):
+    def blocked(request):
+        return httpx.Response(400, json={"error": {"code": 400, "status": "FAILED_PRECONDITION",
+                                                   "message": "User location is not supported for the API use."}})
+    monkeypatch.setattr(ai, "http", httpx.Client(transport=httpx.MockTransport(blocked)))
+    monkeypatch.setenv("VERCEL_REGION", "hkg1")
+    res = client.put("/api/admin/ai", json={"gemini_key": KEY}, headers=AUTH).json()
+    assert not res["check"]["ok"] and "hkg1" in res["check"]["message"] and "Япон" in res["check"]["message"]
+    assert res["config"]["gemini_key"]["set"]  # the key is kept, so «Key шалгах» works after a redeploy
+
+
+def test_function_region_supports_gemini():
+    region = json.loads((ROOT / "vercel.json").read_text())["regions"]
+    assert region and not any(r.startswith("hkg") for r in region)  # Hong Kong is not a Gemini API region

@@ -4,6 +4,7 @@ The admin saves a Gemini API key under Settings → AI. Messenger then answers q
 buttons do not cover, using only what the site knows about DOMCH.
 """
 import json
+import os
 import re
 import time
 
@@ -74,7 +75,11 @@ def _request(method: str, path: str, key: str, body: dict | None = None, timeout
     if res.status_code >= 400:
         err = (data or {}).get("error") or {}
         message = err.get("message") or f"Gemini алдаа ({res.status_code})"
-        if res.status_code in (400, 401, 403) and re.search(r"api key|API_KEY|permission", message, re.I):
+        if re.search(r"location is not supported", message, re.I):
+            region = os.getenv("VERCEL_REGION", "")
+            message = ("Gemini API энэ серверийн байршлаас" + (f" ({region})" if region else "") + " ажиллахгүй байна."
+                       " Сервер Gemini дэмждэг бүсэд (жишээ нь Япон, Сингапур) байх ёстой. " + message)
+        elif res.status_code in (400, 401, 403) and re.search(r"api key|API_KEY|permission", message, re.I):
             message = "Gemini API key буруу эсвэл идэвхгүй байна. " + message
         elif res.status_code == 429:
             message = "Gemini-ийн хязгаарт хүрсэн (quota). Түр хүлээгээд дахин оролдоно уу. " + message
