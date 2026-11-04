@@ -422,7 +422,7 @@ def ai_reply(db, cfg: dict, psid: str, text: str, site: str) -> None:
         history = history[:-1]  # the current message is passed separately
     typing(cfg, psid)
     try:
-        result = ai.answer(db, acfg, text, history[-8:], site=site, messenger_faq=parse_faq(cfg), timeout=7.0)
+        result = ai.answer(db, acfg, text, history[-8:], site=site, messenger_faq=parse_faq(cfg), timeout=11.0)
     except ai.AIError as exc:
         ai.note_error(db, "Messenger хариулт", exc)
         decide(db, psid, f"AI алдаа: {exc}")

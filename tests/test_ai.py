@@ -31,6 +31,7 @@ class FakeGemini:
         self.calls = []
         self.reply = "Домч спирт агуулаагүй. Хүүхэд эцэг эхийн хяналтан дор хэрэглэнэ."
         self.status = 200
+        self.overloaded = []
 
     def __call__(self, request: httpx.Request):
         body = json.loads(request.content) if request.content else None
@@ -41,6 +42,9 @@ class FakeGemini:
             return httpx.Response(200, json={"models": MODELS})
         if self.status != 200:
             return httpx.Response(self.status, json={"error": {"message": "Resource has been exhausted"}})
+        if any(m in request.url.path for m in self.overloaded):
+            return httpx.Response(503, json={"error": {"code": 503, "status": "UNAVAILABLE", "message":
+                                  "This model is currently experiencing high demand. Spikes in demand are usually temporary."}})
         return httpx.Response(200, json={"candidates": [{"content": {"parts": [
             {"text": "thinking...", "thought": True}, {"text": f"**{self.reply}**"}]}, "finishReason": "STOP"}]})
 
@@ -275,3 +279,33 @@ def test_page_inbox_reply_pauses_ai_and_own_echo_is_ignored(client, gem, fb):
     post(client, human)
     thread = client.get("/api/admin/messenger/threads/psid-1", headers=AUTH).json()
     assert thread["ai_paused_until"] and any(m["kind"] == "inbox" and m["text"] == "Ажилтан байна" for m in thread["items"])
+
+
+def test_reported_case_overloaded_model_falls_back(client, gem, fb):
+    """«This model is currently experiencing high demand» on the chosen model: the next stable Flash answers."""
+    connect(client)
+    enable(client)
+    client.put("/api/admin/ai", json={"model": "gemini-3.5-flash-lite"}, headers=AUTH)
+    gem.overloaded = ["gemini-3.5-flash-lite:"]
+    post(client, event(text="💰 Үнэ хэд вэ?", mid="o1"))
+    assert texts(fb) == [gem.reply]
+    tried = [c[1].rsplit("/", 1)[-1] for c in gem.calls if c[1].endswith(":generateContent")]
+    assert tried == ["gemini-3.5-flash-lite:generateContent", "gemini-3.5-flash:generateContent"]
+    decision = client.get("/api/admin/messenger", headers=AUTH).json()["last_decision"]["reason"]
+    assert "gemini-3.5-flash," in decision
+
+
+def test_all_models_overloaded_sends_the_holding_reply(client, gem, fb):
+    connect(client)
+    enable(client)
+    gem.overloaded = ["gemini-"]
+    post(client, event(text="Орц нь юу вэ?", mid="o2"))
+    assert texts(fb) == ["Таны асуултыг хүлээн авлаа. Манай ажилтан удахгүй хариулна."]
+    assert "ачаалалтай" in client.get("/api/admin/ai", headers=AUTH).json()["last_error"]["message"]
+
+
+def test_fallback_chain_skips_previews_and_aliases():
+    cfg = {"model": "gemini-flash-lite-latest", "models": json.dumps(
+        ["gemini-4-argon", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash-lite", "gemini-3.5-transcribe",
+         "gemini-3-flash-preview", "gemini-flash-latest", "gemini-omni-flash-preview", "gemini-flash-lite-latest"])}
+    assert ai.fallback_chain(cfg) == ["gemini-flash-lite-latest", "gemini-3.8-flash", "gemini-3.7-flash"]

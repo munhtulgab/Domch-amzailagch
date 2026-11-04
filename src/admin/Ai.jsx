@@ -87,9 +87,9 @@ export function AiSettings({ call, go }) {
           <label htmlFor="ai-model">Загвар</label>
           <select id="ai-model" value={model} onChange={(e) => setModel(e.target.value)} disabled={!models.length}>
             {!models.length && <option value="">Key хадгалсны дараа гарна</option>}
-            {models.map((m) => <option key={m} value={m}>{m}</option>)}
+            {models.map((m) => <option key={m} value={m}>{m}{/preview|exp|latest/.test(m) ? ' (туршилтын, ачаалал ихтэй байж болно)' : ''}</option>)}
           </select>
-          <p className="a-hint">Хурдан хариулахын тулд «flash» загварыг санал болгоно.</p>
+          <p className="a-hint">Тогтвортой «flash» загварыг санал болгоно. Сонгосон загвар ачаалалтай бол дараагийн тогтвортой flash загвар автоматаар хариулна.</p>
         </div>
         <div className={`a-field${errors.pause_minutes ? ' has-error' : ''}`}>
           <label htmlFor="ai-pause">Ажилтан хариулсны дараа AI чимээгүй байх</label>

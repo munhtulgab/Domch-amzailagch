@@ -26,7 +26,14 @@ http = httpx.Client(timeout=10.0)  # replaced in tests
 
 
 class AIError(Exception):
-    pass
+    def __init__(self, message: str, status: int = 0, transient: bool = False):
+        super().__init__(message)
+        self.status = status
+        self.transient = transient  # overloaded / quota / timeout: another model may still answer
+
+
+TRANSIENT_STATUS = (429, 500, 502, 503, 504)
+TRANSIENT_TEXT = re.compile(r"high demand|overloaded|unavailable|try again later|exhausted|deadline|internal error", re.I)
 
 
 # ------------------------------------------------------------------ config
@@ -75,9 +82,9 @@ def _request(method: str, path: str, key: str, body: dict | None = None, timeout
     try:
         res = http.request(method, f"{GEMINI_URL}/{path}", headers={"x-goog-api-key": key}, json=body, timeout=timeout)
     except httpx.TimeoutException as exc:
-        raise AIError("Gemini хугацаандаа хариулсангүй.") from exc
+        raise AIError("Gemini хугацаандаа хариулсангүй.", transient=True) from exc
     except httpx.HTTPError as exc:
-        raise AIError(f"Gemini-тэй холбогдож чадсангүй: {exc}") from exc
+        raise AIError(f"Gemini-тэй холбогдож чадсангүй: {exc}", transient=True) from exc
     try:
         data = res.json()
     except ValueError:
@@ -93,7 +100,10 @@ def _request(method: str, path: str, key: str, body: dict | None = None, timeout
             message = "Gemini API key буруу эсвэл идэвхгүй байна. " + message
         elif res.status_code == 429:
             message = "Gemini-ийн хязгаарт хүрсэн (quota). Түр хүлээгээд дахин оролдоно уу. " + message
-        raise AIError(message)
+        elif res.status_code == 503 or TRANSIENT_TEXT.search(message):
+            message = "Gemini-ийн загвар түр ачаалалтай байна. " + message
+        transient = res.status_code in TRANSIENT_STATUS or bool(TRANSIENT_TEXT.search(message))
+        raise AIError(message, status=res.status_code, transient=transient)
     return data if isinstance(data, dict) else {}
 
 
@@ -269,14 +279,45 @@ def to_contents(history: list, question: str) -> list:
     return turns
 
 
+def fallback_chain(cfg: dict, limit: int = 3) -> list:
+    """The chosen model first, then the best stable Flash models this key can use."""
+    try:
+        models = json.loads(cfg.get("models") or "[]")
+    except ValueError:
+        models = []
+    chain = [cfg["model"]] if cfg.get("model") else []
+    for name in sorted(models, key=_model_rank):
+        if name not in chain and "flash" in name and not re.search(r"preview|exp|latest|transcribe|omni", name):
+            chain.append(name)
+    return chain[:limit]
+
+
+def generate_any(cfg: dict, system: str, contents: list, budget: float = 10.0):
+    """Try the chosen model; when it is overloaded or out of quota, the next one. Returns (text, model)."""
+    started = time.monotonic()
+    last = AIError("Gemini загвар сонгогдоогүй байна.")
+    for model in fallback_chain(cfg):
+        left = budget - (time.monotonic() - started)
+        if left < 1.5:
+            break
+        try:
+            return generate(cfg["gemini_key"], model, system, contents, timeout=min(7.0, left)), model
+        except AIError as exc:
+            last = exc
+            print(f"[ai] {model}: {exc}", flush=True)
+            if not exc.transient:
+                raise
+    raise last
+
+
 def answer(db, cfg: dict, question: str, history: list | None = None, site: str = "",
-           messenger_faq: list | None = None, timeout: float = 8.0) -> dict:
+           messenger_faq: list | None = None, timeout: float = 10.0) -> dict:
     items = select(knowledge_items(db, messenger_faq), question)
     started = time.monotonic()
-    text = generate(cfg["gemini_key"], cfg["model"], system_prompt(items, site, cfg.get("instructions") or ""),
-                    to_contents(history or [], question), timeout=timeout)
+    text, model = generate_any(cfg, system_prompt(items, site, cfg.get("instructions") or ""),
+                               to_contents(history or [], question), budget=timeout)
     return {"answer": text, "sources": [f"{i['source']}: {i['title']}" for i in items],
-            "ms": int((time.monotonic() - started) * 1000), "model": cfg["model"]}
+            "ms": int((time.monotonic() - started) * 1000), "model": model}
 
 
 # ------------------------------------------------------------------ admin routes

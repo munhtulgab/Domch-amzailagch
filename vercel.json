@@ -9,7 +9,7 @@
   ],
   "functions": {
     "api/index.py": {
-      "maxDuration": 15,
+      "maxDuration": 30,
       "excludeFiles": "{node_modules/**,src/**,public/**,dist/**,tests/**,.local/**,**/__pycache__/**}"
     }
   },
