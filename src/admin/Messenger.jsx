@@ -300,6 +300,12 @@ export function MessengerSettings({ call, onChange }) {
                 : 'Instagram холбогдоогүй. Доорх «Instagram-ийг холбох» зааврыг харна уу.'}
           </p>
         )}
+        {connected && cfg.webhook_saved && cfg.webhook_saved !== cfg.webhook_url && (
+          <p className="a-muted a-status__err">
+            Webhook одоогоор хуучин хаяг дээр бүртгэлтэй ({cfg.webhook_saved.replace('https://', '').replace('/api/messenger/webhook', '')}).
+            Дараагийн мессеж ирэхэд {cfg.webhook_url.replace('https://', '').replace('/api/messenger/webhook', '')} руу автоматаар шилжинэ, эсвэл «Холболт шалгах» дарна уу.
+          </p>
+        )}
         {cfg.last_decision && cfg.last_decision.reason && (
           <p className="a-muted a-status__err">Сүүлийн мессеж ({timeOf(cfg.last_decision.at)}): {cfg.last_decision.reason}</p>
         )}

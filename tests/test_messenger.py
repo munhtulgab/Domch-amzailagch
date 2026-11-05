@@ -142,7 +142,7 @@ def test_save_connects_and_hides_secrets(client, fb):
     assert "777" in steps["token"]["message"] and "хугацаагүй" in steps["token"]["message"]
     cfg = res.json()["config"]
     assert cfg["page_id"] == "777" and cfg["connected_at"]
-    assert cfg["webhook_url"] == "https://domch.example/api/messenger/webhook"
+    assert cfg["webhook_url"] == "https://domch.gem.mn/api/messenger/webhook"  # always the primary domain
     assert cfg["app_secret"] == {"set": True, "hint": "…6789"}
     assert PAGE_TOKEN not in json.dumps(cfg) and APP_SECRET not in json.dumps(cfg)
     sub = next(c for c in fb.calls if c[1] == f"{APP_ID}/subscriptions")
@@ -432,3 +432,88 @@ def test_instagram_ice_breakers_follow_the_welcome(client, fb):
     assert "Instagram" in res.json()["sync"]["message"]
     ig = [c for c in fb.calls if c[1] == "me/messenger_profile" and c[2].get("platform") == "instagram"]
     assert ig and ig[0][3]["ice_breakers"][0]["call_to_actions"][0]["payload"] == "FAQ_0"
+
+
+# ------------------------------------------------------------------ primary domain (domch.gem.mn)
+
+OLD = "https://domchamzailagch.vercel.app"
+OLD_HOST = {"x-forwarded-proto": "https", "x-forwarded-host": "domchamzailagch.vercel.app"}
+
+
+def post_event_via(client, ev, host_headers):
+    raw, headers = signed(ev)
+    return client.post("/api/messenger/webhook", content=raw, headers={**headers, **host_headers})
+
+
+def subscriptions(fb):
+    return [c for c in fb.calls if c[1] == f"{APP_ID}/subscriptions"]
+
+
+def test_primary_domain_is_used_everywhere_but_locally(client, monkeypatch):
+    from _lib import common
+
+    class Req:
+        def __init__(self, headers, scheme="http", netloc="testserver"):
+            self.headers = headers
+            self.url = type("U", (), {"scheme": scheme, "netloc": netloc})()
+
+    assert common.site_url(Req(OLD_HOST)) == "https://domch.gem.mn"
+    assert common.site_url(Req({"host": "domch.gem.mn"}, scheme="https")) == "https://domch.gem.mn"
+    assert common.site_url(Req({"host": "localhost:5173"})) == "http://localhost:5173"
+    assert common.site_url(Req({"host": "127.0.0.1:8000"})) == "http://127.0.0.1:8000"
+    assert common.site_url(Req({"x-forwarded-proto": "https", "x-forwarded-host": "test.local"})) == "https://test.local"
+    assert common.public_links(f"Салбарууд: {OLD}/#where, https://domch-amzailagch.vercel.app") == \
+        "Салбарууд: https://domch.gem.mn/#where, https://domch.gem.mn"
+    assert common.public_links("https://other-site.vercel.app/x") == "https://other-site.vercel.app/x"
+    monkeypatch.setenv("SITE_URL", "https://www.domch.mn/")
+    assert common.site_url(Req(OLD_HOST)) == "https://www.domch.mn"
+
+
+def test_replies_never_link_to_the_old_address(client, fb):
+    connect(client)
+    save_welcome(client, faq=[{"q": "Хаанаас авах вэ?", "a": f"Салбаруудыг эндээс харна уу: {OLD}/#where"}])
+    quick = event(text="Хаанаас авах вэ?", mid="l1")
+    quick["entry"][0]["messaging"][0]["message"]["quick_reply"] = {"payload": "FAQ_0"}
+    post_event_via(client, quick, OLD_HOST)
+    text = sent_texts(fb)[-1]["text"]
+    assert text == "Салбаруудыг эндээс харна уу: https://domch.gem.mn/#where"
+    thread = client.get("/api/admin/messenger/threads/psid-1", headers=AUTH).json()
+    assert all("vercel.app" not in (m["text"] or "") for m in thread["items"])
+
+
+def test_webhook_moves_to_the_primary_domain(client, fb):
+    connect(client)
+    messenger.store(dbmod.get_db(), {"webhook_url": f"{OLD}/api/messenger/webhook"})  # registered before the move
+    view = client.get("/api/admin/messenger", headers={**AUTH, **HTTPS}).json()
+    assert view["webhook_saved"] != view["webhook_url"] == "https://domch.gem.mn/api/messenger/webhook"
+
+    fb.calls.clear()
+    post_event_via(client, event(text="Сайн уу", mid="w1"), OLD_HOST)  # Facebook still calls the old address
+    subs = subscriptions(fb)
+    assert [s[2]["object"] for s in subs] == ["page"]
+    assert subs[0][2]["callback_url"] == "https://domch.gem.mn/api/messenger/webhook"
+    cfg = messenger.load(dbmod.get_db())
+    assert cfg["webhook_url"] == "https://domch.gem.mn/api/messenger/webhook"
+
+    fb.calls.clear()
+    post_event_via(client, event(text="Баярлалаа", mid="w2"), OLD_HOST)
+    assert subscriptions(fb) == []  # already moved
+
+
+def test_failed_webhook_move_keeps_the_old_one_and_waits(client, fb):
+    connect(client, page_token="EAAWithInstagramToken000000")
+    messenger.store(dbmod.get_db(), {"webhook_url": f"{OLD}/api/messenger/webhook"})
+    fb.calls.clear()
+    fb.fail[f"{APP_ID}/subscriptions"] = (2200, None, "Callback verification failed")
+    post_event_via(client, event(text="Сайн уу", mid="f1"), OLD_HOST)
+    cfg = messenger.load(dbmod.get_db())
+    assert cfg["webhook_url"] == f"{OLD}/api/messenger/webhook" and cfg["webhook_tried_at"]
+    assert "шинэ хаяг" in messenger.parse_error(cfg)["context"]
+    del fb.fail[f"{APP_ID}/subscriptions"]
+    fb.calls.clear()
+    post_event_via(client, event(text="Сайн уу", mid="f2"), OLD_HOST)
+    assert subscriptions(fb) == []  # retried at most once an hour
+    messenger.store(dbmod.get_db(), {"webhook_tried_at": "2000-01-01 00:00:00"})
+    post_event_via(client, event(text="Сайн уу", mid="f3"), OLD_HOST)
+    assert [s[2]["object"] for s in subscriptions(fb)] == ["page", "instagram"]  # Instagram moves along
+    assert messenger.load(dbmod.get_db())["webhook_url"] == "https://domch.gem.mn/api/messenger/webhook"

@@ -16,7 +16,7 @@ from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Qu
 from fastapi.responses import PlainTextResponse
 
 from . import ai
-from .common import ago, fail, now_utc, require_admin
+from .common import ago, fail, now_utc, public_links, require_admin, site_url
 from .db import DBError, get_db
 
 GRAPH_VERSION = "v26.0"
@@ -25,7 +25,8 @@ FIELDS = "messages,messaging_postbacks,message_echoes"  # echoes reveal replies 
 PREFIX = "messenger."
 KEYS = ("app_id", "app_secret", "page_token", "verify_token", "page_id", "page_name", "page_link",
         "button", "auto_reply", "connected_at", "webhook_url", "page_subscribed", "last_event_at",
-        "greeting", "faq", "last_error", "profile_synced_at", "last_decision", "ig_id", "ig_username", "ig_status")
+        "greeting", "faq", "last_error", "profile_synced_at", "last_decision", "ig_id", "ig_username", "ig_status",
+        "webhook_tried_at")
 IG_FIELDS = "messages,messaging_postbacks"  # Instagram DMs through the same Page token (Instagram API with Facebook Login)
 IG_SCOPES = ("instagram_basic", "instagram_manage_messages")
 SECRETS = ("app_secret", "page_token")
@@ -133,10 +134,12 @@ def public_info(cfg: dict) -> dict:
     return {"enabled": cfg.get("button") == "1" and bool(link), "link": link}
 
 
+def webhook_for(site: str) -> str:
+    return f"{site}/api/messenger/webhook"
+
+
 def callback_url(request: Request) -> str:
-    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
-    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
-    return f"{proto.split(',')[0].strip()}://{host.split(',')[0].strip()}/api/messenger/webhook"
+    return webhook_for(site_url(request))
 
 
 def parse_faq(cfg: dict) -> list:
@@ -165,10 +168,6 @@ def note_error(db, context: str, exc: Exception) -> None:
         pass
 
 
-def site_url(request: Request) -> str:
-    return callback_url(request).rsplit("/api/", 1)[0]
-
-
 def admin_view(cfg: dict, request: Request) -> dict:
     return {
         "greeting": cfg["greeting"],
@@ -193,6 +192,7 @@ def admin_view(cfg: dict, request: Request) -> dict:
         "last_event_at": cfg["last_event_at"],
         "verify_token": cfg["verify_token"],
         "webhook_url": callback_url(request),
+        "webhook_saved": cfg["webhook_url"],
         "link": public_link(cfg),
     }
 
@@ -303,7 +303,7 @@ def connect(db, cfg: dict, request: Request) -> list:
     url = callback_url(request)
     if not url.startswith("https://"):
         step("webhook", "Webhook бүртгэх", False,
-             "Webhook-ийг https хаягтай, нийтлэгдсэн сайтаас холбоно (жишээ нь domch-amzailagch.vercel.app/admin).")
+             "Webhook-ийг https хаягтай, нийтлэгдсэн сайтаас холбоно (жишээ нь domch.gem.mn/admin).")
     else:
         try:
             graph("POST", f"{cfg['app_id']}/subscriptions", f"{cfg['app_id']}|{cfg['app_secret']}", {
@@ -429,6 +429,7 @@ def send_path(db, cfg: dict, psid: str) -> str:
 
 
 def send_text(db, cfg: dict, psid: str, text: str, kind: str = "reply", quick_replies: list | None = None) -> dict:
+    text = public_links(text)
     message = {"text": text}
     if quick_replies:
         message["quick_replies"] = quick_replies
@@ -706,6 +707,40 @@ def process(cfg: dict, data: dict, site: str) -> None:
                 handle_event(db, cfg, event, site=site, channel=channel)
             except Exception as exc:  # noqa: BLE001 — one bad event must not stop the rest
                 note_error(db, "Мессеж боловсруулах", exc)
+    try:
+        move_webhook(db, cfg, site)
+    except DBError:
+        pass
+
+
+def move_webhook(db, cfg: dict, site: str) -> bool:
+    """After the site moves to a new address (domch.gem.mn), point Facebook's webhook there too.
+
+    Facebook checks the new URL before switching, so a failed attempt leaves the old webhook working;
+    it is retried at most once an hour.
+    """
+    url = webhook_for(site)
+    if not (url.startswith("https://") and cfg["webhook_url"] and cfg["webhook_url"] != url
+            and cfg["app_id"] and cfg["app_secret"] and cfg["verify_token"]):
+        return False
+    if cfg["webhook_tried_at"] and cfg["webhook_tried_at"] > ago(hours=1):
+        return False
+    cfg["webhook_tried_at"] = now_utc()
+    store(db, {"webhook_tried_at": cfg["webhook_tried_at"]})
+    app_token = f"{cfg['app_id']}|{cfg['app_secret']}"
+    objects = [("page", FIELDS)] + ([("instagram", IG_FIELDS)] if cfg["ig_status"] == "1" else [])
+    try:
+        for name, fields in objects:
+            graph("POST", f"{cfg['app_id']}/subscriptions", app_token, {
+                "object": name, "callback_url": url, "fields": fields,
+                "verify_token": cfg["verify_token"], "include_values": "true",
+            }, timeout=8.0)
+    except GraphError as exc:
+        note_error(db, "Webhook-ийг шинэ хаяг руу шилжүүлэх", exc)
+        return False
+    cfg["webhook_url"] = url
+    store(db, {"webhook_url": url})
+    return True
 
 
 @public.post("/api/messenger/webhook")

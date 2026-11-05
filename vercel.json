@@ -13,6 +13,19 @@
       "excludeFiles": "{node_modules/**,src/**,public/**,dist/**,tests/**,.local/**,**/__pycache__/**}"
     }
   },
+  "redirects": [
+    {
+      "source": "/((?!api/).*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "domchamzailagch.vercel.app"
+        }
+      ],
+      "destination": "https://domch.gem.mn/$1",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/(.*)",

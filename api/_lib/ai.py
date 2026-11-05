@@ -11,7 +11,7 @@ import time
 import httpx
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 
-from .common import fail, now_utc, require_admin
+from .common import fail, now_utc, public_links, require_admin, site_url
 from .db import DBError, get_db
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta"
@@ -170,7 +170,7 @@ def clean(text: str) -> str:
     text = re.sub(r"(?m)^\s*[*•]\s+", "• ", text)
     text = re.sub(r"(?<!\w)[*_]{1,2}(\S.*?\S|\S)[*_]{1,2}(?!\w)", r"\1", text)
     text = re.sub(r"(?m)^#+\s*", "", text)
-    return text.strip()[:1990]
+    return public_links(text).strip()[:1990]
 
 
 # ------------------------------------------------------------------ knowledge
@@ -210,6 +210,8 @@ def knowledge_items(db, messenger_faq: list | None = None) -> list:
              if contact.get(k)]
     if parts:
         items.append({"source": "Холбоо барих", "title": "Холбоо барих", "text": "\n".join(parts), "keys": "утас хаяг"})
+    for item in items:  # the assistant should only ever see and repeat the primary address
+        item["text"] = public_links(item["text"])
     return items
 
 
@@ -351,12 +353,6 @@ def answer(db, cfg: dict, question: str, history: list | None = None, site: str 
 # ------------------------------------------------------------------ admin routes
 
 admin = APIRouter(prefix="/api/admin/ai", dependencies=[Depends(require_admin)])
-
-
-def site_url(request: Request) -> str:
-    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
-    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
-    return f"{proto.split(',')[0].strip()}://{host.split(',')[0].strip()}"
 
 
 def view(db, cfg: dict) -> dict:

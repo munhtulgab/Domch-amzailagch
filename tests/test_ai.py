@@ -115,7 +115,8 @@ def test_test_question_uses_knowledge_and_real_tips(client, gem):
                                                                  "doctor_name": "Д. Болд", "active": True})
     assert tip.status_code == 201
     client.post("/api/admin/t/knowledge", headers=AUTH, json={"topic": "buy", "title": "Онлайн захиалга",
-                                                              "body": "Онлайн дэлгүүрээр хүргэлттэй.", "active": True})
+                                                              "body": "Онлайн дэлгүүрээр хүргэлттэй: https://domchamzailagch.vercel.app/#where",
+                                                              "active": True})
     res = client.post("/api/admin/ai/test", json={"question": "Хүүхэд хэрэглэж болох уу?"}, headers={**AUTH, **HTTPS})
     assert res.status_code == 200, res.text
     out = res.json()
@@ -124,7 +125,8 @@ def test_test_question_uses_knowledge_and_real_tips(client, gem):
     assert "Хэрэглэх заавар" in system and "Онлайн захиалга" in system
     assert "Буйлны арчилгаа" in system and "Д. Болд" in system
     assert "Эмчийн видео зөвлөгөөг энд байршуулна" not in system  # sample tips are left out
-    assert "https://domch.example/#where" in system and "Үргэлж эелдэг бай." in system
+    assert "https://domch.gem.mn/#where" in system and "Үргэлж эелдэг бай." in system
+    assert "vercel.app" not in system  # old links in the knowledge base point at the primary domain
     assert gem.calls[-1][3]["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "minimal"}
     assert any("Мэдлэгийн сан: Хэрэглэх заавар" == s for s in out["sources"])
 
