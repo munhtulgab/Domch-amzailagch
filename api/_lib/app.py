@@ -198,7 +198,8 @@ def branches(
             params.append(value.strip())
     rows = get_db().all(
         "SELECT id, chain, name, city, district, address, lat, lng, phone, hours, sizes, online_url, verified_at, is_sample"
-        f" FROM branches WHERE {' AND '.join(where)} ORDER BY city, district, chain, name LIMIT ?",
+        f" FROM branches WHERE {' AND '.join(where)}"
+        " ORDER BY city <> 'Улаанбаатар', city, district, chain, name LIMIT ?",  # the capital first
         params + [limit],
     )
     if size in ("250", "500"):

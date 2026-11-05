@@ -6,6 +6,15 @@ import { External, Info, Locate, Phone, Pin } from './Icons.jsx';
 
 const BranchMap = lazy(() => import('./BranchMap.jsx'));
 
+// "7585-3311/4, 7007-4411" → two numbers; "/4" is an extension, dialled after a pause
+function phones(value) {
+  return String(value || '').split(/\s*[,;]\s*/).map((label) => label.trim()).filter(Boolean).map((label) => {
+    const [main, ext] = label.split('/');
+    const dial = main.replace(/[^\d+]/g, '');
+    return { label, dial: ext && /^\d+$/.test(ext.trim()) ? `${dial},${ext.trim()}` : dial };
+  }).filter((p) => p.dial.length >= 6);
+}
+
 function directionsUrl(b) {
   if (b.lat != null && b.lng != null) return `https://www.google.com/maps/dir/?api=1&destination=${b.lat},${b.lng}`;
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([b.chain, b.name, b.address, b.city].filter(Boolean).join(' '))}`;
@@ -176,17 +185,19 @@ export function Where({ filters, settings, actions }) {
                   <a className="btn btn--ghost" href={directionsUrl(b)} target="_blank" rel="noopener noreferrer" onClick={() => track('direction_click', { branch: b.id })}>
                     <Pin /> Зам заалгах
                   </a>
-                  {b.phone && (
-                    <a className="tlink tlink--sm" href={`tel:${b.phone.replace(/\s/g, '')}`} onClick={() => track('call_click', { branch: b.id })}>
-                      <Phone /> {b.phone}
+                  {phones(b.phone).map((p) => (
+                    <a key={p.label} className="tlink tlink--sm" href={`tel:${p.dial}`} onClick={() => track('call_click', { branch: b.id })}>
+                      <Phone /> {p.label}
                     </a>
-                  )}
+                  ))}
                   {b.online_url && (
                     <a className="tlink tlink--sm" href={b.online_url} target="_blank" rel="noopener noreferrer" onClick={() => track('online_click', { branch: b.id })}>
                       Онлайнаар авах <External />
                     </a>
                   )}
-                  <button type="button" className="tlink tlink--sm" onClick={() => setSelected(b.id)}>Газрын зураг дээр</button>
+                  {b.lat != null && b.lng != null && (
+                    <button type="button" className="tlink tlink--sm" onClick={() => setSelected(b.id)}>Газрын зураг дээр</button>
+                  )}
                 </div>
               </article>
             ))}
