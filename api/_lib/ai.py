@@ -11,6 +11,7 @@ import time
 import httpx
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 
+from . import places
 from .common import ago, fail, now_utc, public_links, require_admin, site_url
 from .db import DBError, get_db
 
@@ -211,6 +212,7 @@ def knowledge_items(db, messenger_faq: list | None = None) -> list:
              if contact.get(k)]
     if parts:
         items.append({"source": "Холбоо барих", "title": "Холбоо барих", "text": "\n".join(parts), "keys": "утас хаяг"})
+    items += places.knowledge(db)
     for item in items:  # the assistant should only ever see and repeat the primary address
         item["text"] = public_links(item["text"])
     return items
@@ -274,7 +276,10 @@ def system_prompt(items: list, site: str, extra: str) -> str:
 3. Онош тавихгүй, эм зааж өгөхгүй. Өвдөх, цус гарах, хавдах зэрэг шинж тэмдэг дурдвал шүдний эмчид үзүүлэхийг зөвлө.
 4. Холбоос хэрэгтэй үед сайтын хаягийг ашигла: {site} (жишээ нь худалдаалах цэг: {site}/#where).
 5. Markdown, од (*), гарчиг бүү хэрэглэ. Messenger энгийн текст харуулна.
-6. Өөрийгөө хиймэл оюун гэдгийг асуувал үнэнээр хэл."""
+6. Өөрийгөө хиймэл оюун гэдгийг асуувал үнэнээр хэл.
+7. Хаанаас авах, аль эмийн сангаар зарагддагийг асуувал: хэрэглэгч аль дүүрэг, аймагт байгаа нь тодорхойгүй бол
+   эхлээд үүнийг асуу. Тодорхой бол МЭДЛЭГ доторх «Салбарууд: …» хэсгээс тэр газрын салбаруудыг (ихдээ 6) нэр, хаяг,
+   цаг, утастай нь жагсаа. Тэнд салбар байхгүй бол үүнийг хэлээд {site}/#where хаягийг өг."""
     if extra.strip():
         rules += f"\n\nАдминаас өгсөн нэмэлт заавар:\n{extra.strip()}"
     return f"{rules}\n\nМЭДЛЭГ:\n{knowledge}"

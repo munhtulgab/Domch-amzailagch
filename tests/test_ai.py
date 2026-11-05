@@ -178,7 +178,7 @@ def test_ai_failure_falls_back_and_is_reported(client, gem, fb):
     gem.status = 429
     raw, headers = signed(event(text="Хаанаас авах вэ, Дархан?", mid="f1"))
     client.post("/api/messenger/webhook", content=raw, headers=headers)
-    # no AI: the matching knowledge entry still answers
+    # no AI and only sample branches: the matching knowledge entry still answers
     assert len(texts(fb)) == 1 and texts(fb)[0].startswith("Худалдаалах цэгүүдийг сайтын")
     err = client.get("/api/admin/ai", headers=AUTH).json()["last_error"]
     assert err["context"] == "Messenger хариулт" and "quota" in err["message"]

@@ -15,7 +15,7 @@ import httpx
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 
-from . import ai
+from . import ai, places
 from .common import ago, fail, now_utc, public_links, require_admin, site_url
 from .db import DBError, get_db
 
@@ -534,11 +534,25 @@ def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at,
                  site: str = "", attachment: bool = False) -> None:
     """Quick-question buttons first, then the welcome for a new conversation, then the AI assistant."""
     faq = parse_faq(cfg)
+    stocked = places.has_branches(db)  # without real branches the FAQ answers and the AI handle «where to buy»
+    # where to buy: a district / aimag button
+    if payload == "WHERE_ASK":
+        return ask_where(db, cfg, psid, faq)
+    if payload == "WHERE_RURAL":
+        send_text(db, cfg, psid, places.ASK_RURAL, kind="auto", quick_replies=places.rural_buttons(db))
+        decide(db, psid, "Аль аймагт байгааг асуусан.")
+        return
+    place = places.from_payload(payload)
+    if place:
+        return send_where(db, cfg, psid, place, site, faq)
     index = None
     if payload.startswith("FAQ_") and payload[4:].isdigit():
         index = int(payload[4:])
     elif text and not attachment:
         index = next((i for i, item in enumerate(faq) if _norm(item["q"]) == _norm(text)), None)
+    if stocked and index is not None and index < len(faq) and places.where_intent(faq[index]["q"]):
+        db.run("UPDATE messenger_contacts SET welcomed_at = ? WHERE psid = ?", (now_utc(), psid))
+        return ask_where(db, cfg, psid, faq)  # «📍 Хаанаас худалдаж авах вэ?» → which district, then the branches
     if index is not None and index < len(faq):
         send_text(db, cfg, psid, faq[index]["a"], kind="auto", quick_replies=faq_buttons(faq, skip=index))
         db.run("UPDATE messenger_contacts SET welcomed_at = ? WHERE psid = ?", (now_utc(), psid))
@@ -562,7 +576,36 @@ def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at,
     if until:
         decide(db, psid, f"Энэ ярианд ажилтан хариулж байгаа тул AI {until} (UTC) хүртэл түр зогссон.")
         return
+    # «Дарханд хаанаас авах вэ?», or «Баянзүрх» right after we asked which district: the branches there,
+    # straight from the branch list (exact, and works even when the AI is unavailable)
+    wants = stocked and places.where_intent(text)
+    place = places.find_place(text) if stocked else None
+    if place and (wants or last_out_text(db, psid) in places.ASKS):
+        if place["city"] == places.UB and not place["district"] and places.districts_with_branches(db):
+            return ask_where(db, cfg, psid, faq)
+        return send_where(db, cfg, psid, place, site, faq)
+    if wants:
+        return ask_where(db, cfg, psid, faq)
     ai_reply(db, cfg, psid, text, site)
+
+
+def last_out_text(db, psid: str) -> str:
+    row = db.one("SELECT text FROM messenger_messages WHERE psid = ? AND direction = 'out' ORDER BY id DESC LIMIT 1",
+                 (psid,))
+    return (row or {}).get("text") or ""
+
+
+def ask_where(db, cfg: dict, psid: str, faq: list) -> None:
+    buttons = places.ask_buttons(db)
+    send_text(db, cfg, psid, places.ASK, kind="auto", quick_replies=buttons or None)
+    decide(db, psid, "Аль дүүрэг, аймагт байгааг асуусан.")
+
+
+def send_where(db, cfg: dict, psid: str, place: dict, site: str, faq: list) -> None:
+    others = [b for i, b in enumerate(faq_buttons(faq)) if not places.where_intent(faq[i]["q"])]
+    buttons = [{"content_type": "text", "title": "Өөр байршил", "payload": "WHERE_ASK"}] + others
+    send_text(db, cfg, psid, places.answer_text(db, place, site), kind="auto", quick_replies=buttons[:13])
+    decide(db, psid, f"Салбарын мэдээлэл илгээсэн: {place['label']} ({len(places.branches_in(db, place))}).")
 
 
 def own_echo(db, cfg: dict, psid: str, message: dict) -> bool:

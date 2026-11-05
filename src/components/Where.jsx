@@ -5,6 +5,7 @@ import { distanceKm, formatDate, useInView } from '../lib/util.js';
 import { External, Info, Locate, Phone, Pin } from './Icons.jsx';
 
 const BranchMap = lazy(() => import('./BranchMap.jsx'));
+const PAGE = 6; // branches shown at a time: the nearest ones once the visitor's location is known
 
 // "7585-3311/4, 7007-4411" → two numbers; "/4" is an extension, dialled after a pause
 function phones(value) {
@@ -30,6 +31,7 @@ export function Where({ filters, settings, actions }) {
   const [origin, setOrigin] = useState(null);
   const [locating, setLocating] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [shown, setShown] = useState(PAGE);
   const [mapRef, mapVisible] = useInView();
 
   const districts = useMemo(() => {
@@ -44,6 +46,7 @@ export function Where({ filters, settings, actions }) {
     try {
       const data = await api(`/branches${query(params)}`);
       setState({ status: 'done', items: data.items || [], error: '' });
+      setShown(PAGE);
       if (reason === 'search') track('branch_search', { city: params.city, district: params.district, chain: params.chain, size: params.size });
     } catch (err) {
       setState({ status: 'error', items: [], error: err.message });
@@ -52,6 +55,12 @@ export function Where({ filters, settings, actions }) {
 
   useEffect(() => {
     search({}, 'initial');
+    // a visitor who already allowed location sees the nearest branches straight away, without asking again
+    try {
+      navigator.permissions?.query({ name: 'geolocation' }).then((p) => {
+        if (p.state === 'granted') locate(true);
+      }).catch(() => {});
+    } catch { /* not supported */ }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const items = useMemo(() => {
@@ -61,20 +70,21 @@ export function Where({ filters, settings, actions }) {
       .sort((a, b) => (a.km ?? 1e9) - (b.km ?? 1e9));
   }, [state.items, origin]);
 
-  const locate = () => {
+  const locate = (quiet = false) => {
     if (!navigator.geolocation) {
-      actions.toast('Таны төхөөрөмж байршил тодорхойлох боломжгүй байна. Дүүргээр хайна уу.', 'error');
+      if (!quiet) actions.toast('Таны төхөөрөмж байршил тодорхойлох боломжгүй байна. Дүүргээр хайна уу.', 'error');
       return;
     }
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setLocating(false);
+        setShown(PAGE);
         setOrigin({ lat: pos.coords.latitude, lng: pos.coords.longitude });
       },
       () => {
         setLocating(false);
-        actions.toast('Байршлын зөвшөөрөл өгөөгүй тул ойрын салбарыг эрэмбэлж чадсангүй. Дүүргээр хайна уу.', 'error');
+        if (!quiet) actions.toast('Байршлын зөвшөөрөл өгөөгүй тул ойрын салбарыг эрэмбэлж чадсангүй. Дүүргээр хайна уу.', 'error');
       },
       { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
     );
@@ -90,6 +100,8 @@ export function Where({ filters, settings, actions }) {
     search({ chain: next });
   };
   const onlineStore = settings.online_store;
+  const visible = items.slice(0, shown);
+  const more = items.length - visible.length;
 
   return (
     <section className="sec" id="where" aria-labelledby="where-title">
@@ -130,7 +142,7 @@ export function Where({ filters, settings, actions }) {
                 {state.status === 'loading' ? 'Хайж байна…' : 'Салбар олох'}
               </button>
             </form>
-            <button type="button" className="btn btn--ghost locate" onClick={locate} disabled={locating}>
+            <button type="button" className="btn btn--ghost locate" onClick={() => locate()} disabled={locating}>
               <Locate /> {locating ? 'Байршил тодорхойлж байна…' : origin ? 'Ойрын салбараар эрэмбэлсэн' : 'Миний ойролцоо'}
             </button>
             {filters.chains && filters.chains.length > 0 && (
@@ -147,7 +159,7 @@ export function Where({ filters, settings, actions }) {
           <div className="map-wrap" ref={mapRef}>
             {mapVisible ? (
               <Suspense fallback={<div className="map map--loading">Газрын зураг ачаалж байна…</div>}>
-                <BranchMap items={items} selected={selected} onSelect={setSelected} origin={origin} />
+                <BranchMap items={visible} selected={selected} onSelect={setSelected} origin={origin} />
               </Suspense>
             ) : (
               <div className="map map--loading">Газрын зураг</div>
@@ -164,10 +176,17 @@ export function Where({ filters, settings, actions }) {
             </div>
           )}
           {items.length > 0 && (
-            <p className="results__count">{items.length} салбар олдлоо</p>
+            <p className="results__count">
+              {more > 0 || visible.length < items.length
+                ? `${items.length} салбараас ${origin ? 'танд хамгийн ойрын ' : ''}${visible.length}-г харуулж байна`
+                : `${items.length} салбар олдлоо`}
+              {!origin && items.length > PAGE && (
+                <> · <button type="button" className="tlink tlink--sm" onClick={() => locate()} disabled={locating}>Ойрын салбараа харах</button></>
+              )}
+            </p>
           )}
           <div className="branches">
-            {items.map((b) => (
+            {visible.map((b) => (
               <article key={b.id} className={`branch${selected === b.id ? ' is-on' : ''}`} id={`branch-${b.id}`}>
                 <div className="branch__top">
                   <p className="k">{b.chain}</p>
@@ -202,6 +221,13 @@ export function Where({ filters, settings, actions }) {
               </article>
             ))}
           </div>
+          {more > 0 && (
+            <div className="results__more">
+              <button type="button" className="btn btn--ghost" onClick={() => setShown((n) => n + PAGE)}>
+                Дараагийн {Math.min(PAGE, more)} салбар ({more} үлдсэн)
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="note">
