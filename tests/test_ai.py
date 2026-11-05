@@ -306,8 +306,10 @@ def test_all_models_overloaded_sends_the_holding_reply(client, gem, fb):
     assert texts(fb)[-1].startswith("Шүүсэн ус, жамц давс")  # knowledge entry «Орц найрлага»
     assert "ачаалалтай" in client.get("/api/admin/ai", headers=AUTH).json()["last_error"]["message"]
     assert "мэдлэгийн сангаас" in client.get("/api/admin/messenger", headers=AUTH).json()["last_decision"]["reason"]
-    post(client, event(text="Une", mid="o3"))  # nothing to match: a holding reply that still points somewhere
+    post(client, event(text="zzzz qqqq", mid="o3"))  # nothing to match: a holding reply that still points somewhere
     assert texts(fb)[-1].startswith("Таны асуултыг хүлээн авлаа") and "http" in texts(fb)[-1]
+    post(client, event(text="Une", mid="o4"))  # «үнэ» typed in Latin letters still finds the price
+    assert "мл" in texts(fb)[-1] and not texts(fb)[-1].startswith("Таны асуултыг")
 
 
 def test_fallback_chain_skips_previews_and_aliases():
@@ -317,3 +319,55 @@ def test_fallback_chain_skips_previews_and_aliases():
     assert ai.fallback_chain(cfg) == ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-3.7-flash"]
     cfg["model"] = "gemini-3.8-flash"
     assert ai.fallback_chain(cfg) == ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.7-flash"]
+
+
+def test_quota_wait_is_read_from_the_error():
+    assert ai.quota_wait("Please retry in 4h4m26.427s.") == 4 * 3600 + 4 * 60 + 26
+    assert ai.quota_wait("Please retry in 26.4s.") == 30  # at least half a minute
+    assert ai.quota_wait("Please retry in 2m5s") == 125
+    assert ai.quota_wait("Generate content requests per day limit exceeded") == 6 * 3600
+    assert ai.quota_wait("Resource has been exhausted") == 60
+
+
+def test_reported_case_daily_quota_skips_the_model_and_lists_every_try(client, gem, fb, monkeypatch):
+    """gemini-3.8-flash: «limit: 20 … per day … retry in 4h»: the other models answer, the spent one is skipped."""
+    connect(client)
+    enable(client)
+    spent = {"gemini-3.5-flash:"}
+
+    def quota(request):
+        if any(m in request.url.path for m in spent):
+            return httpx.Response(429, json={"error": {"code": 429, "status": "RESOURCE_EXHAUSTED", "message":
+                "You exceeded your current quota. Quota exceeded for metric: generate_content_free_tier_requests,"
+                " limit: 20. Generate content requests per day limit exceeded on Free Tier. Please retry in 4h4m26s."}})
+        return gem(request)
+    monkeypatch.setattr(ai, "http", httpx.Client(transport=httpx.MockTransport(quota)))
+    client.put("/api/admin/ai", json={"model": "gemini-3.5-flash"}, headers=AUTH)
+    post(client, event(text="Орц нь юу вэ?", mid="d1"))
+    assert texts(fb)[-1] == gem.reply
+    tried = [c[1].rsplit("/", 1)[-1].split(":")[0] for c in gem.calls if c[1].endswith(":generateContent")]
+    assert tried == ["gemini-3.5-flash-lite"]  # the spent model answered 429 before the fake saw it
+    resting = json.loads(ai.load(dbmod.get_db())["cooldown"])
+    assert list(resting) == ["gemini-3.5-flash"]
+
+    gem.calls.clear()
+    post(client, event(text="Хэрэглэх заавар?", mid="d2"))
+    assert texts(fb)[-1] == gem.reply
+    tried = [c[1].rsplit("/", 1)[-1].split(":")[0] for c in gem.calls if c[1].endswith(":generateContent")]
+    assert tried == ["gemini-3.5-flash-lite"]  # skipped straight to the model that still has quota
+
+    spent.add("gemini-3.5-flash-lite:")
+    post(client, event(text="Хүүхэд хэрэглэж болох уу?", mid="d3"))
+    reason = client.get("/api/admin/messenger", headers=AUTH).json()["last_decision"]["reason"]
+    assert "gemini-3.5-flash-lite: хязгаар дууссан" in reason and "gemini-3.5-flash: хязгаар дууссан" in reason
+
+
+def test_latin_script_questions_find_the_knowledge_when_ai_is_down(client, gem, fb):
+    connect(client)
+    enable(client)
+    gem.status = 429
+    db = dbmod.get_db()
+    assert ai.local_answer(db, "esvel hnaas awah bolomjtoi be").startswith("Худалдаалах цэгүүдийг")
+    assert "мл" in ai.local_answer(db, "Vne")
+    post(client, event(text="hurgelt bga yu, hnaas awah we", mid="lt1"))
+    assert texts(fb)[-1].startswith("Худалдаалах цэгүүдийг")

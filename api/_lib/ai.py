@@ -11,12 +11,13 @@ import time
 import httpx
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 
-from .common import fail, now_utc, public_links, require_admin, site_url
+from .common import ago, fail, now_utc, public_links, require_admin, site_url
 from .db import DBError, get_db
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta"
 PREFIX = "ai."
-KEYS = ("gemini_key", "model", "enabled", "instructions", "models", "checked_at", "last_error", "pause_minutes")
+KEYS = ("gemini_key", "model", "enabled", "instructions", "models", "checked_at", "last_error", "pause_minutes",
+        "cooldown")
 PAUSE_CHOICES = (0, 15, 30, 60, 180, 720)
 DEFAULT_PAUSE = 30
 CONTEXT_BUDGET = 24000  # characters of knowledge sent with each question
@@ -215,11 +216,26 @@ def knowledge_items(db, messenger_faq: list | None = None) -> list:
     return items
 
 
-WORD = re.compile(r"[0-9a-zа-яёөү]+", re.I)
+WORD = re.compile(r"[0-9a-zöüа-яёөү]+", re.I)
+LATIN = (("sh", "ш"), ("ch", "ч"), ("ts", "ц"), ("kh", "х"), ("ya", "я"), ("yu", "ю"), ("yo", "ё"), ("ye", "е"),
+         ("a", "а"), ("b", "б"), ("c", "ц"), ("d", "д"), ("e", "э"), ("f", "ф"), ("g", "г"), ("h", "х"), ("i", "и"),
+         ("j", "ж"), ("k", "к"), ("l", "л"), ("m", "м"), ("n", "н"), ("o", "о"), ("p", "п"), ("q", "ө"), ("r", "р"),
+         ("s", "с"), ("t", "т"), ("u", "у"), ("v", "ү"), ("w", "в"), ("x", "х"), ("y", "ы"), ("z", "з"), ("ö", "ө"),
+         ("ü", "ү"))
+LATIN_RE = re.compile("|".join(k for k, _ in LATIN))
+LATIN_MAP = dict(LATIN)
+# letters people mix up when typing Mongolian in Latin (у/ү/в, о/ө, э/е, и/й/ы) fold together for matching
+FOLD = str.maketrans({"ү": "у", "в": "у", "ө": "о", "э": "е", "ё": "е", "й": "и", "ы": "и", "ь": "", "ъ": ""})
+
+
+def _fold(word: str) -> str:
+    word = LATIN_RE.sub(lambda m: LATIN_MAP[m.group(0)], word).translate(FOLD)
+    return re.sub(r"(.)\1+", r"\1", word)
 
 
 def _words(text: str) -> set:
-    return {w for w in WORD.findall(str(text or "").casefold()) if len(w) > 2}
+    """Words for matching a question to knowledge, in a form where «hnaas awah» and «хаанаас авах» meet."""
+    return {_fold(w) for w in WORD.findall(str(text or "").casefold()) if len(w) > 2}
 
 
 def select(items: list, question: str, budget: int = CONTEXT_BUDGET) -> list:
@@ -300,22 +316,83 @@ def fallback_chain(cfg: dict, limit: int = 4) -> list:
     return chain[:limit]
 
 
-def generate_any(cfg: dict, system: str, contents: list, budget: float = 18.0):
-    """Try the chosen model; when it is overloaded or out of quota, the next one. Returns (text, model)."""
+RETRY_IN = re.compile(r"retry in\s+(?:(\d+)h)?\s*(?:(\d+)m(?!s))?\s*(?:([\d.]+)s)?", re.I)
+
+
+def quota_wait(message: str) -> int:
+    """Seconds until a model that ran out of quota can be asked again («Please retry in 4h4m26s»)."""
+    m = RETRY_IN.search(message or "")
+    if m and any(m.groups()):
+        hours, minutes, seconds = m.groups()
+        wait = int(hours or 0) * 3600 + int(minutes or 0) * 60 + float(seconds or 0)
+    elif re.search(r"per ?day", message or "", re.I):
+        wait = 6 * 3600
+    else:
+        wait = 60
+    return int(min(max(wait, 30), 24 * 3600))
+
+
+def cooldowns(cfg: dict) -> dict:
+    try:
+        data = json.loads(cfg.get("cooldown") or "{}")
+    except ValueError:
+        return {}
+    now = now_utc()
+    return {m: until for m, until in data.items() if isinstance(until, str) and until > now} if isinstance(data, dict) else {}
+
+
+def rest_model(db, cfg: dict, model: str, seconds: int) -> None:
+    resting = cooldowns(cfg)
+    resting[model] = ago(minutes=-(seconds // 60 or 1))  # a time in the future
+    cfg["cooldown"] = json.dumps(resting)
+    if db is not None:
+        try:
+            store(db, {"cooldown": cfg["cooldown"]})
+        except DBError:
+            pass
+
+
+def _short(exc: AIError) -> str:
+    if exc.status == 429:
+        return "хязгаар дууссан"
+    if exc.status == 503 or TRANSIENT_TEXT.search(str(exc)):
+        return "ачаалалтай"
+    if "хугацаандаа" in str(exc):
+        return "хугацаа хэтэрсэн"
+    return str(exc)[:120]
+
+
+def generate_any(cfg: dict, system: str, contents: list, budget: float = 18.0, db=None):
+    """Try the chosen model; when it is overloaded or out of quota, the next one. Returns (text, model).
+
+    A model that ran out of quota is skipped until Google says it can be used again, so the time goes to
+    models that can still answer.
+    """
     started = time.monotonic()
-    last = AIError("Gemini загвар сонгогдоогүй байна.")
-    for model in fallback_chain(cfg):
+    chain = fallback_chain(cfg)
+    resting = cooldowns(cfg)
+    order = [m for m in chain if m not in resting] + [m for m in chain if m in resting]
+    if not order:
+        raise AIError("Gemini загвар сонгогдоогүй байна.")
+    failures, last = [], None
+    for model in order:
         left = budget - (time.monotonic() - started)
         if left < 1.5:
+            failures.append("хугацаа дууссан")
             break
         try:
             return generate(cfg["gemini_key"], model, system, contents, timeout=min(6.0, left)), model
         except AIError as exc:
             last = exc
             print(f"[ai] {model}: {exc}", flush=True)
+            if exc.status == 429:
+                rest_model(db, cfg, model, quota_wait(str(exc)))
             if not exc.transient:
                 raise
-    raise last
+            failures.append(f"{model}: {_short(exc)}")
+    if len(failures) <= 1:
+        raise last
+    raise AIError("Бүх загвар амжилтгүй (" + "; ".join(failures) + "). " + str(last), status=last.status, transient=True)
 
 
 def local_answer(db, question: str, messenger_faq: list | None = None, site: str = "") -> str:
@@ -345,7 +422,7 @@ def answer(db, cfg: dict, question: str, history: list | None = None, site: str 
     items = select(knowledge_items(db, messenger_faq), question)
     started = time.monotonic()
     text, model = generate_any(cfg, system_prompt(items, site, cfg.get("instructions") or ""),
-                               to_contents(history or [], question), budget=timeout)
+                               to_contents(history or [], question), budget=timeout, db=db)
     return {"answer": text, "sources": [f"{i['source']}: {i['title']}" for i in items],
             "ms": int((time.monotonic() - started) * 1000), "model": model}
 
