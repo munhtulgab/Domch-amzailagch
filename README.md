@@ -87,6 +87,17 @@ D1-гүйгээр локал SQLite дээр ажиллана. `.env.example`-д
 `pages_messaging` эрх авч, аппыг Live болгоно. Token-ууд D1-ийн `integrations` хүснэгтэд хадгалагдах бөгөөд сайтын
 нийтийн API-д хэзээ ч гарахгүй.
 
+### Instagram DM
+
+Instagram-ийн DM нь Facebook Page-ийн нэг token-оор Messenger-тэй хамт ажиллана (Instagram API with Facebook Login).
+1. Instagram professional аккаунтыг Facebook Page-тэй холбоно; Instagram апп → Мессеж → Холбогдсон хэрэгслүүд →
+   «Allow access to messages»-ийг асаана.
+2. Meta апп-д Instagram-ийн use case нэмж, `instagram_basic`, `instagram_manage_messages` эрхтэй Page token үүсгэнэ.
+3. Тохиргоо → Messenger, Instagram хэсэгт тэр token-ийг оруулаад **Хадгалаад холбох**. «Instagram DM» алхам ✓ болно.
+
+Instagram-ийн DM админы **Messenger, Instagram** цэсэнд «IG» тэмдэгтэй ирж, мэндчилгээ, асуултын товч, AI хариулт
+Messenger-тэй адил ажиллана (Instagram-д эхлэх дэлгэцийн текст байхгүй, асуултын товч л харагдана).
+
 ### Мэндчилгээ ба AI хариулт
 
 - **Мэндчилгээ ба автомат хариу** (Facebook Messenger таб): эхлэх дэлгэцийн текст, мэндчилгээ мессеж, 4 хүртэлх асуулт-хариулт.

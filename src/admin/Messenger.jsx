@@ -291,6 +291,15 @@ export function MessengerSettings({ call, onChange }) {
         {cfg.last_error && cfg.last_error.message && (
           <p className="a-error a-status__err" role="alert">Сүүлийн алдаа ({timeOf(cfg.last_error.at)}, {cfg.last_error.context}): {cfg.last_error.message}</p>
         )}
+        {cfg.page_token.set && (
+          <p className={`a-status__err ${cfg.ig_status === '1' ? 'a-note' : 'a-muted'}`}>
+            {cfg.ig_status === '1'
+              ? `Instagram холбогдсон: ${cfg.ig_username ? `@${cfg.ig_username}` : cfg.ig_id}. Instagram-ийн DM мөн «Messenger» цэсэнд ирж, AI хариулна.`
+              : cfg.ig_status === 'error'
+                ? 'Instagram-ийг холбож чадсангүй. Доорх алхмын тайлбарыг харна уу.'
+                : 'Instagram холбогдоогүй. Доорх «Instagram-ийг холбох» зааврыг харна уу.'}
+          </p>
+        )}
         {cfg.last_decision && cfg.last_decision.reason && (
           <p className="a-muted a-status__err">Сүүлийн мессеж ({timeOf(cfg.last_decision.at)}): {cfg.last_decision.reason}</p>
         )}
@@ -331,6 +340,18 @@ export function MessengerSettings({ call, onChange }) {
 
       {hasCreds && <WelcomeSettings cfg={cfg} call={call} onSaved={setCfg} />}
 
+      <details className="a-card a-details" open={cfg.page_token.set && cfg.ig_status !== '1'}>
+        <summary>Instagram-ийг холбох</summary>
+        <p className="a-muted">Instagram-ийн DM нь энэ Facebook Page-ийн token-оор, Messenger-тэй нэг дор ажиллана. Тусдаа token хэрэггүй.</p>
+        <ol className="a-guide">
+          <li>Instagram аккаунтаа <b>professional</b> (Business эсвэл Creator) болгож, ДОМЧ-ийн Facebook Page-тэй холбоно: Meta Business Suite → Тохиргоо → Instagram аккаунт.</li>
+          <li>Instagram апп → Тохиргоо → <b>Мессеж ба story-ийн хариу</b> → <b>Холбогдсон хэрэгслүүд</b> → <b>Allow access to messages</b>-ийг асаана.</li>
+          <li><a className="a-link" href="https://developers.facebook.com/apps" target="_blank" rel="noopener noreferrer">Meta апп</a> → Use cases → <b>Manage messaging &amp; content on Instagram</b> (API setup with Facebook login)-г нэмж, <b>instagram_basic</b>, <b>instagram_manage_messages</b> эрхийг зөвшөөрнө.</li>
+          <li>Эдгээр эрхтэй Page access token-ийг дахин үүсгээд дээрх «Page access token» талбарт оруулж <b>Хадгалаад холбох</b> дарна. «Instagram DM» алхам ✓ болно.</li>
+          <li>Instagram-аас ДОМЧ руу нэг мессеж бичиж шалгаарай. Апп Development горимд байхад зөвхөн апп дээр эрхтэй хүний мессеж ирнэ.</li>
+        </ol>
+      </details>
+
       <details className="a-card a-details">
         <summary>Webhook-ийг гараар тохируулах бол</summary>
         <p className="a-muted">Автомат бүртгэл амжилтгүй болбол Meta апп → Messenger → API Setup → Configure webhooks хэсэгт эдгээрийг хуулж оруулаад messages, messaging_postbacks талбарыг сонгоно.</p>
@@ -352,6 +373,11 @@ export function MessengerSettings({ call, onChange }) {
       </details>
     </div>
   );
+}
+
+function Channel({ value }) {
+  const ig = value === 'instagram';
+  return <span className={`a-channel a-channel--${ig ? 'ig' : 'fb'}`} title={ig ? 'Instagram' : 'Messenger'}>{ig ? 'IG' : 'FB'}</span>;
 }
 
 export function MessengerInbox({ call, onChange, openSettings }) {
@@ -471,7 +497,9 @@ export function MessengerInbox({ call, onChange, openSettings }) {
             {threads.map((t) => (
               <li key={t.psid}>
                 <button type="button" aria-current={active === t.psid ? 'true' : undefined} onClick={() => open(t.psid)}>
-                  <span className="a-chat__name">{label(t)}{t.unread > 0 && <span className="a-badge">{t.unread}</span>}</span>
+                  <span className="a-chat__name">
+                    <Channel value={t.channel} />{label(t)}{t.unread > 0 && <span className="a-badge">{t.unread}</span>}
+                  </span>
                   <span className="a-chat__last">{t.last_direction === 'out' ? 'Та: ' : ''}{t.last_text}</span>
                   <span className="a-chat__time">{timeOf(t.last_at)}</span>
                 </button>
@@ -485,7 +513,7 @@ export function MessengerInbox({ call, onChange, openSettings }) {
           <>
             <div className="a-chat__bar">
               <button type="button" className="a-btn a-btn--ghost a-chat__back" onClick={() => { setActive(null); setConvo(null); }}>← Буцах</button>
-              <strong>{convo.name || label({ psid: convo.psid })}</strong>
+              <strong className="a-chat__who"><Channel value={convo.channel} />{convo.name || label({ psid: convo.psid })}</strong>
               {convo.can_reply && cfg.auto_reply && (
                 <button type="button" className="a-btn a-btn--ghost" onClick={sendWelcome} disabled={sending}>Мэндчилгээ илгээх</button>
               )}

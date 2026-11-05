@@ -264,3 +264,11 @@
 .a-image__pick { position: relative; overflow: hidden; }
 .a-image__pick input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 @media (max-width: 560px) { .a-image { flex-direction: column; } .a-image img, .a-image__empty { width: 100%; flex-basis: auto; } }
+
+/* Channel badge (FB / IG) */
+.a-channel { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 18px; padding: 0 5px; border-radius: 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.04em; }
+.a-channel--fb { background: var(--tint); color: var(--accent); }
+.a-channel--ig { background: var(--fg); color: var(--bg); }
+.a-chat__who { display: inline-flex; align-items: center; gap: 8px; }
+.a-chat__bar { flex-wrap: wrap; row-gap: 8px; }
+.a-chat__who { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

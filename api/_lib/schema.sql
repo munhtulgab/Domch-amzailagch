@@ -143,6 +143,7 @@ CREATE TABLE IF NOT EXISTS messenger_contacts (
   name TEXT,
   welcomed_at TEXT,
   ai_until TEXT,
+  channel TEXT NOT NULL DEFAULT 'messenger',
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

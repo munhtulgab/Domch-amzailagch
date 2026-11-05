@@ -25,7 +25,9 @@ FIELDS = "messages,messaging_postbacks,message_echoes"  # echoes reveal replies 
 PREFIX = "messenger."
 KEYS = ("app_id", "app_secret", "page_token", "verify_token", "page_id", "page_name", "page_link",
         "button", "auto_reply", "connected_at", "webhook_url", "page_subscribed", "last_event_at",
-        "greeting", "faq", "last_error", "profile_synced_at", "last_decision")
+        "greeting", "faq", "last_error", "profile_synced_at", "last_decision", "ig_id", "ig_username", "ig_status")
+IG_FIELDS = "messages,messaging_postbacks"  # Instagram DMs through the same Page token (Instagram API with Facebook Login)
+IG_SCOPES = ("instagram_basic", "instagram_manage_messages")
 SECRETS = ("app_secret", "page_token")
 NEW_CONVERSATION_HOURS = 24  # a person who has been silent this long gets the welcome again
 MAX_FAQ = 4
@@ -76,21 +78,22 @@ def ensure_schema(db) -> None:
     if _schema_ready:
         return
     try:
-        db.one("SELECT welcomed_at, ai_until FROM messenger_contacts LIMIT 1")
+        db.one("SELECT welcomed_at, ai_until, channel FROM messenger_contacts LIMIT 1")
     except DBError:
         db.script(
             "CREATE TABLE IF NOT EXISTS integrations (key TEXT PRIMARY KEY, value TEXT,"
             " updated_at TEXT NOT NULL DEFAULT (datetime('now')));"
             "CREATE TABLE IF NOT EXISTS messenger_contacts (psid TEXT PRIMARY KEY, name TEXT, welcomed_at TEXT, ai_until TEXT,"
+            " channel TEXT NOT NULL DEFAULT 'messenger',"
             " created_at TEXT NOT NULL DEFAULT (datetime('now')));"
             "CREATE TABLE IF NOT EXISTS messenger_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, psid TEXT NOT NULL,"
             " direction TEXT NOT NULL CHECK (direction IN ('in', 'out')), kind TEXT NOT NULL DEFAULT 'message', text TEXT,"
             " mid TEXT UNIQUE, is_read INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT (datetime('now')));"
             "CREATE INDEX IF NOT EXISTS idx_messenger_psid ON messenger_messages (psid, created_at);"
         )
-        for column in ("welcomed_at", "ai_until"):
+        for column in ("welcomed_at TEXT", "ai_until TEXT", "channel TEXT NOT NULL DEFAULT 'messenger'"):
             try:
-                db.run(f"ALTER TABLE messenger_contacts ADD COLUMN {column} TEXT")
+                db.run(f"ALTER TABLE messenger_contacts ADD COLUMN {column}")
             except DBError:
                 pass
     _schema_ready = True
@@ -172,6 +175,9 @@ def admin_view(cfg: dict, request: Request) -> dict:
         "faq": parse_faq(cfg),
         "last_error": parse_error(cfg),
         "last_decision": json.loads(cfg["last_decision"] or "{}") if cfg["last_decision"].startswith("{") else {},
+        "ig_id": cfg["ig_id"],
+        "ig_username": cfg["ig_username"],
+        "ig_status": cfg["ig_status"],
         "profile_synced_at": cfg["profile_synced_at"],
         "site_url": site_url(request),
         "app_id": cfg["app_id"],
@@ -323,6 +329,7 @@ def connect(db, cfg: dict, request: Request) -> list:
             cfg["page_subscribed"] = ""
             step("page", "Page-ийг апптай холбох", False, friendly(exc))
     store(db, {"page_subscribed": cfg["page_subscribed"]})
+    connect_instagram(db, cfg, info, url, step)
 
     # connected = nothing failed outright; a Page subscription done by hand in the Meta dashboard still counts
     if all(s["ok"] or s["warn"] for s in steps):
@@ -331,28 +338,108 @@ def connect(db, cfg: dict, request: Request) -> list:
     return steps
 
 
+IG_SETUP = (
+    "Instagram-ийн DM-ийг холбохын тулд: (1) Instagram professional (Business/Creator) аккаунтаа энэ Facebook Page-тэй"
+    " холбоно (Meta Business Suite → Тохиргоо → Instagram аккаунт); (2) Instagram апп → Тохиргоо → Мессеж ба story-ийн"
+    " хариу → Холбогдсон хэрэгслүүд → «Allow access to messages»-ийг асаана; (3) Meta апп-даа Instagram-ийн хэрэглээг"
+    " (Manage messaging & content on Instagram → API setup with Facebook login) нэмж, instagram_basic,"
+    " instagram_manage_messages эрхтэй Page access token үүсгээд энд оруулж «Хадгалаад холбох» дарна."
+)
+
+
+def instagram_from(info: dict) -> str:
+    for item in info.get("granular_scopes") or []:
+        if item.get("scope") in IG_SCOPES and item.get("target_ids"):
+            return str(item["target_ids"][0])
+    return ""
+
+
+def connect_instagram(db, cfg: dict, info: dict, url: str, step) -> None:
+    """Instagram DMs arrive through the same app and Page token when the token has the Instagram permissions."""
+    scopes = info.get("scopes") or []
+    if "instagram_manage_messages" not in scopes:
+        cfg.update(ig_id="", ig_username="", ig_status="missing")
+        store(db, {"ig_id": "", "ig_username": "", "ig_status": "missing"})
+        step("instagram", "Instagram DM", False, "Token-д instagram_manage_messages эрх алга. " + IG_SETUP, warn=True)
+        return
+    ig_id = instagram_from(info)
+    if not ig_id:
+        try:
+            linked = graph("GET", cfg["page_id"], cfg["page_token"], {"fields": "instagram_business_account"},
+                           app_secret=cfg["app_secret"], timeout=4.0)
+            ig_id = str((linked.get("instagram_business_account") or {}).get("id") or "")
+        except GraphError:
+            ig_id = ""
+    if not ig_id:
+        cfg.update(ig_id="", ig_username="", ig_status="nolink")
+        store(db, {"ig_id": "", "ig_username": "", "ig_status": "nolink"})
+        step("instagram", "Instagram DM", False, "Энэ Page-тэй холбосон Instagram аккаунт олдсонгүй. " + IG_SETUP, warn=True)
+        return
+    username = ""
+    try:
+        username = graph("GET", ig_id, cfg["page_token"], {"fields": "username"}, app_secret=cfg["app_secret"],
+                         timeout=4.0).get("username", "")
+    except GraphError:
+        pass
+    if not url.startswith("https://"):
+        status, ok, message = "error", False, "Webhook-ийг https хаягтай, нийтлэгдсэн сайтаас холбоно."
+    else:
+        try:
+            graph("POST", f"{cfg['app_id']}/subscriptions", f"{cfg['app_id']}|{cfg['app_secret']}", {
+                "object": "instagram", "callback_url": url, "fields": IG_FIELDS,
+                "verify_token": cfg["verify_token"], "include_values": "true",
+            }, timeout=12.0)
+            status, ok = "1", True
+            message = (f"@{username}" if username else f"Instagram ID {ig_id}") + " · DM энд ирнэ"
+        except GraphError as exc:
+            status, ok, message = "error", False, friendly(exc)
+    cfg.update(ig_id=ig_id, ig_username=username, ig_status=status)
+    store(db, {"ig_id": ig_id, "ig_username": username, "ig_status": status})
+    step("instagram", "Instagram DM", ok, message, warn=not ok)
+
+
 # ------------------------------------------------------------------ messages
 
-def save_contact(db, cfg: dict, psid: str) -> None:
+def save_contact(db, cfg: dict, psid: str, channel: str = "messenger") -> None:
     if db.one("SELECT psid FROM messenger_contacts WHERE psid = ?", (psid,)):
         return
     name = ""
     try:
-        who = graph("GET", psid, cfg["page_token"], {"fields": "first_name,last_name"}, app_secret=cfg["app_secret"],
-                    timeout=2.5)
-        name = " ".join(p for p in (who.get("first_name"), who.get("last_name")) if p)
+        if channel == "instagram":
+            who = graph("GET", psid, cfg["page_token"], {"fields": "name,username"}, app_secret=cfg["app_secret"],
+                        timeout=2.5)
+            name = who.get("name") or (f"@{who['username']}" if who.get("username") else "")
+        else:
+            who = graph("GET", psid, cfg["page_token"], {"fields": "first_name,last_name"}, app_secret=cfg["app_secret"],
+                        timeout=2.5)
+            name = " ".join(p for p in (who.get("first_name"), who.get("last_name")) if p)
     except GraphError:
         pass
-    db.run("INSERT OR IGNORE INTO messenger_contacts (psid, name) VALUES (?, ?)", (psid, name or None))
+    db.run("INSERT OR IGNORE INTO messenger_contacts (psid, name, channel) VALUES (?, ?, ?)", (psid, name or None, channel))
+
+
+def channel_of(db, psid: str) -> str:
+    row = db.one("SELECT channel FROM messenger_contacts WHERE psid = ?", (psid,)) or {}
+    return row.get("channel") or "messenger"
+
+
+def send_path(db, cfg: dict, psid: str) -> str:
+    # Instagram DMs are sent through the Page the Instagram account is linked to
+    return f"{cfg['page_id']}/messages" if channel_of(db, psid) == "instagram" and cfg["page_id"] else "me/messages"
 
 
 def send_text(db, cfg: dict, psid: str, text: str, kind: str = "reply", quick_replies: list | None = None) -> dict:
     message = {"text": text}
     if quick_replies:
         message["quick_replies"] = quick_replies
-    res = graph("POST", "me/messages", cfg["page_token"], body={
-        "recipient": {"id": psid}, "messaging_type": "RESPONSE", "message": message,
-    }, app_secret=cfg["app_secret"])
+    body = {"recipient": {"id": psid}, "messaging_type": "RESPONSE", "message": message}
+    path = send_path(db, cfg, psid)
+    try:
+        res = graph("POST", path, cfg["page_token"], body=body, app_secret=cfg["app_secret"])
+    except GraphError as exc:
+        if path == "me/messages" or not cfg.get("ig_id") or exc.code not in (100, 3):
+            raise
+        res = graph("POST", f"{cfg['ig_id']}/messages", cfg["page_token"], body=body, app_secret=cfg["app_secret"])
     db.run(
         "INSERT OR IGNORE INTO messenger_messages (psid, direction, kind, text, mid, is_read) VALUES (?, 'out', ?, ?, ?, 1)",
         (psid, kind, text, res.get("message_id")),
@@ -376,10 +463,10 @@ def _stamp_ms(ms) -> str:
         return now_utc()
 
 
-def typing(cfg: dict, psid: str) -> None:
+def typing(db, cfg: dict, psid: str) -> None:
     try:
-        graph("POST", "me/messages", cfg["page_token"], body={"recipient": {"id": psid}, "sender_action": "typing_on"},
-              app_secret=cfg["app_secret"], timeout=2.0)
+        graph("POST", send_path(db, cfg, psid), cfg["page_token"],
+              body={"recipient": {"id": psid}, "sender_action": "typing_on"}, app_secret=cfg["app_secret"], timeout=2.0)
     except GraphError:
         pass
 
@@ -422,7 +509,7 @@ def ai_reply(db, cfg: dict, psid: str, text: str, site: str) -> None:
         if history[i]["direction"] == "in" and history[i]["text"] == text:
             del history[i]
             break
-    typing(cfg, psid)
+    typing(db, cfg, psid)
     try:
         result = ai.answer(db, acfg, text, history[-8:], site=site, messenger_faq=parse_faq(cfg), timeout=18.0)
     except ai.AIError as exc:
@@ -477,12 +564,25 @@ def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at,
     ai_reply(db, cfg, psid, text, site)
 
 
-def handle_echo(db, cfg: dict, event: dict, message: dict) -> None:
-    """A copy of a message the Page sent. Our own sends carry our app_id; anything else was typed by a person."""
+def own_echo(db, cfg: dict, psid: str, message: dict) -> bool:
+    """Did this site send it? Messenger echoes carry our app_id; Instagram ones are matched by id or text."""
     if str(message.get("app_id") or "") == cfg["app_id"]:
-        return
+        return True
+    mid = message.get("mid")
+    if mid and db.one("SELECT id FROM messenger_messages WHERE mid = ? AND direction = 'out'", (mid,)):
+        return True
+    text = message.get("text") or ""
+    return bool(text and db.one(
+        "SELECT id FROM messenger_messages WHERE psid = ? AND direction = 'out' AND kind <> 'inbox' AND text = ?"
+        " AND created_at >= ?", (psid, text, ago(minutes=3))))
+
+
+def handle_echo(db, cfg: dict, event: dict, message: dict) -> None:
+    """A copy of a message the Page sent. Anything this site did not send was typed by a person."""
     psid = str((event.get("recipient") or {}).get("id") or "")
-    if not psid or psid == cfg["page_id"]:
+    if not psid or psid in (cfg["page_id"], cfg["ig_id"]):
+        return
+    if own_echo(db, cfg, psid, message):
         return
     text = message.get("text") or ("[хавсралт]" if message.get("attachments") else "")
     db.run(
@@ -493,13 +593,15 @@ def handle_echo(db, cfg: dict, event: dict, message: dict) -> None:
     pause_ai(db, psid, ai.pause_minutes(ai.load(db)))
 
 
-def handle_event(db, cfg: dict, event: dict, site: str = "") -> None:
+def handle_event(db, cfg: dict, event: dict, site: str = "", channel: str = "messenger") -> None:
     message = event.get("message") or {}
     if message.get("is_echo"):
         handle_echo(db, cfg, event, message)
         return
+    if message.get("is_deleted") or message.get("is_unsupported"):
+        return
     psid = str((event.get("sender") or {}).get("id") or "")
-    if not psid or psid == cfg["page_id"]:
+    if not psid or psid in (cfg["page_id"], cfg["ig_id"]):
         return
     payload = ""
     attachment = False
@@ -527,7 +629,7 @@ def handle_event(db, cfg: dict, event: dict, site: str = "") -> None:
     )
     if not res.get("changes"):
         return  # a retried delivery
-    save_contact(db, cfg, psid)
+    save_contact(db, cfg, psid, channel)
     contact = db.one("SELECT welcomed_at FROM messenger_contacts WHERE psid = ?", (psid,)) or {}
     try:
         auto_respond(db, cfg, psid, text, payload, contact.get("welcomed_at"), previous.get("at"), site=site,
@@ -561,9 +663,23 @@ def sync_profile(db, cfg: dict) -> dict:
     except GraphError as exc:
         note_error(db, "Мэндчилгээний дэлгэц шинэчлэх", exc)
         return {"ok": False, "message": friendly(exc)}
+    note = ""
+    if cfg.get("ig_id") and cfg.get("ig_status") == "1":
+        # Instagram supports the quick questions (ice breakers) only, not the greeting or Get Started
+        try:
+            if faq:
+                graph("POST", "me/messenger_profile", cfg["page_token"], {"platform": "instagram"},
+                      body={"platform": "instagram", "ice_breakers": body["ice_breakers"]}, app_secret=cfg["app_secret"])
+            else:
+                graph("DELETE", "me/messenger_profile", cfg["page_token"], {"platform": "instagram"},
+                      body={"fields": ["ice_breakers"], "platform": "instagram"}, app_secret=cfg["app_secret"])
+            note = " Instagram-ийн асуултын товчнууд ч шинэчлэгдлээ."
+        except GraphError as exc:
+            note_error(db, "Instagram асуултын товч", exc)
+            note = f" Instagram-ийн асуултын товчийг шинэчилж чадсангүй: {friendly(exc)}"
     cfg["profile_synced_at"] = now_utc()
     store(db, {"profile_synced_at": cfg["profile_synced_at"]})
-    return {"ok": True, "message": "Messenger-ийн мэндчилгээний дэлгэц шинэчлэгдлээ."}
+    return {"ok": True, "message": "Messenger-ийн мэндчилгээний дэлгэц шинэчлэгдлээ." + note}
 
 
 # ------------------------------------------------------------------ routes
@@ -583,10 +699,11 @@ def verify(request: Request):
 
 def process(cfg: dict, data: dict, site: str) -> None:
     db = get_db()
+    channel = "instagram" if data.get("object") == "instagram" else "messenger"
     for entry in data.get("entry") or []:
         for event in entry.get("messaging") or []:
             try:
-                handle_event(db, cfg, event, site=site)
+                handle_event(db, cfg, event, site=site, channel=channel)
             except Exception as exc:  # noqa: BLE001 — one bad event must not stop the rest
                 note_error(db, "Мессеж боловсруулах", exc)
 
@@ -606,7 +723,7 @@ async def receive(request: Request, background: BackgroundTasks):
         data = json.loads(raw or b"{}")
     except ValueError:
         raise HTTPException(400, "JSON буруу байна.")
-    if data.get("object") == "page":
+    if data.get("object") in ("page", "instagram"):
         try:
             store(db, {"last_event_at": now_utc()})
         except DBError:
@@ -656,7 +773,7 @@ def admin_put(request: Request, payload: dict = Body(...)):
     if not cfg["verify_token"]:
         changes["verify_token"] = secrets.token_urlsafe(24)
     if credentials_changed:
-        changes.update(connected_at="", page_id="", page_name="", page_subscribed="")
+        changes.update(connected_at="", page_id="", page_name="", page_subscribed="", ig_id="", ig_username="", ig_status="")
     store(db, changes)
     cfg.update(changes)
     steps = connect(db, cfg, request) if (credentials_changed or payload.get("connect")) else []
@@ -736,11 +853,11 @@ def admin_disconnect(request: Request):
 def threads():
     db = get_db()
     rows = db.all(
-        "SELECT m.psid, c.name, MAX(m.created_at) AS last_at,"
+        "SELECT m.psid, c.name, COALESCE(c.channel, 'messenger') AS channel, MAX(m.created_at) AS last_at,"
         " SUM(CASE WHEN m.direction = 'in' AND m.is_read = 0 THEN 1 ELSE 0 END) AS unread,"
         " MAX(CASE WHEN m.direction = 'in' THEN m.created_at END) AS last_in_at"
         " FROM messenger_messages m LEFT JOIN messenger_contacts c ON c.psid = m.psid"
-        " GROUP BY m.psid, c.name ORDER BY last_at DESC LIMIT 200"
+        " GROUP BY m.psid, c.name, c.channel ORDER BY last_at DESC LIMIT 200"
     )
     if rows:
         lasts = db.all(
@@ -768,11 +885,12 @@ def thread(psid: str, limit: int = Query(200, ge=1, le=500)):
     if not items:
         raise HTTPException(404, "Харилцан яриа олдсонгүй.")
     db.run("UPDATE messenger_messages SET is_read = 1 WHERE psid = ? AND direction = 'in' AND is_read = 0", (psid,))
-    contact = db.one("SELECT name FROM messenger_contacts WHERE psid = ?", (psid,)) or {}
+    contact = db.one("SELECT name, channel FROM messenger_contacts WHERE psid = ?", (psid,)) or {}
     last_in = next((m["created_at"] for m in items if m["direction"] == "in"), None)
     return {
         "psid": psid,
         "name": contact.get("name") or "",
+        "channel": contact.get("channel") or "messenger",
         "items": list(reversed(items)),
         "can_reply": bool(last_in and last_in >= ago(hours=24)),
         "ai_on": ai.ready(ai.load(db)),

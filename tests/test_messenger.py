@@ -35,6 +35,10 @@ TOKENS = {
                                     "scopes": ["pages_show_list"]},
     "EAAMessagingOnlyToken000000": {"app_id": APP_ID, "type": "PAGE", "is_valid": True, "profile_id": "777",
                                     "scopes": ["pages_messaging", "pages_show_list"]},
+    "EAAWithInstagramToken000000": {"app_id": APP_ID, "type": "PAGE", "is_valid": True, "profile_id": "777",
+                                    "scopes": SCOPES + ["instagram_basic", "instagram_manage_messages"],
+                                    "granular_scopes": [{"scope": "pages_messaging", "target_ids": ["777"]},
+                                                        {"scope": "instagram_manage_messages", "target_ids": ["17841400000000001"]}]},
 }
 
 
@@ -75,6 +79,12 @@ class FakeGraph:
             return httpx.Response(200, json={"recipient_id": body["recipient"]["id"], "message_id": f"m_out_{len(self.calls)}"})
         if path == "me/messenger_profile":
             return httpx.Response(200, json={"result": "success"})
+        if path == "17841400000000001":
+            return httpx.Response(200, json={"id": path, "username": "domch.mn"})
+        if path == "777/messages":
+            return httpx.Response(200, json={"recipient_id": body["recipient"]["id"], "message_id": f"ig_out_{len(self.calls)}"})
+        if path.startswith("igsid"):
+            return httpx.Response(200, json={"name": "Сарнай", "username": "sarnai"})
         if path.startswith("psid"):
             return httpx.Response(200, json={"first_name": "Бат", "last_name": "Дорж"})
         return httpx.Response(404, json={"error": {"message": "unknown " + path, "code": 803}})
@@ -127,7 +137,8 @@ def test_save_connects_and_hides_secrets(client, fb):
     res = connect(client)
     assert res.status_code == 200, res.text
     steps = {s["key"]: s for s in res.json()["steps"]}
-    assert all(s["ok"] for s in steps.values()), steps
+    assert all(s["ok"] for k, s in steps.items() if k != "instagram"), steps
+    assert steps["instagram"]["warn"] and "instagram_manage_messages" in steps["instagram"]["message"]
     assert "777" in steps["token"]["message"] and "хугацаагүй" in steps["token"]["message"]
     cfg = res.json()["config"]
     assert cfg["page_id"] == "777" and cfg["connected_at"]
@@ -247,7 +258,7 @@ def test_messenger_only_token_without_page_read_permission(client, fb):
     """The reported case: the Page node cannot be read, but debug_token still identifies the Page."""
     res = connect(client)
     steps = res.json()["steps"]
-    assert all(s["ok"] for s in steps), steps
+    assert all(s["ok"] for s in steps if s["key"] != "instagram"), steps
     assert res.json()["config"]["page_id"] == "777" and res.json()["config"]["page_name"] == ""
     assert not any(c[0] == "GET" and c[1] == "me" for c in fb.calls)
 
@@ -367,3 +378,57 @@ def test_send_welcome_manually(client, fb):
     save_welcome(client)
     assert client.post("/api/admin/messenger/threads/psid-1/welcome", headers=AUTH).status_code == 200
     assert sent_texts(fb)[-1]["text"].startswith("Сайн байна уу!")
+
+
+IG_ID = "17841400000000001"
+
+
+def ig_event(igsid="igsid-1", text="Сайн байна уу, үнэ хэд вэ?", mid="ig1", echo=False):
+    sender, recipient = (IG_ID, igsid) if echo else (igsid, IG_ID)
+    message = {"mid": mid, "text": text}
+    if echo:
+        message["is_echo"] = True
+    return {"object": "instagram", "entry": [{"id": IG_ID, "time": 0, "messaging": [{
+        "sender": {"id": sender}, "recipient": {"id": recipient}, "timestamp": int(time.time() * 1000), "message": message}]}]}
+
+
+def test_instagram_connects_with_the_same_page_token(client, fb):
+    res = connect(client, page_token="EAAWithInstagramToken000000")
+    steps = {s["key"]: s for s in res.json()["steps"]}
+    assert steps["instagram"]["ok"] and "@domch.mn" in steps["instagram"]["message"]
+    sub = [c for c in fb.calls if c[1] == f"{APP_ID}/subscriptions"]
+    assert {c[2]["object"] for c in sub} == {"page", "instagram"}
+    cfg = res.json()["config"]
+    assert cfg["ig_id"] == IG_ID and cfg["ig_username"] == "domch.mn" and cfg["ig_status"] == "1" and cfg["connected_at"]
+
+
+def test_instagram_dm_is_stored_and_answered(client, fb):
+    connect(client, page_token="EAAWithInstagramToken000000", auto_reply="Сайн байна уу! ДОМЧ-д тавтай морил.")
+    raw, headers = signed(ig_event())
+    assert client.post("/api/messenger/webhook", content=raw, headers=headers).text == "EVENT_RECEIVED"
+    sends = [c for c in fb.calls if c[1] == "777/messages"]
+    assert len(sends) == 1 and sends[0][3]["recipient"] == {"id": "igsid-1"}
+    thread = client.get("/api/admin/messenger/threads", headers=AUTH).json()["items"][0]
+    assert thread["channel"] == "instagram" and thread["name"] == "Сарнай"
+    # the echo of our own reply is not mistaken for a person typing in the Instagram app
+    raw, headers = signed(ig_event(text="Сайн байна уу! ДОМЧ-д тавтай морил.", mid=sends[0][3] and "ig_out_echo", echo=True))
+    client.post("/api/messenger/webhook", content=raw, headers=headers)
+    convo = client.get("/api/admin/messenger/threads/igsid-1", headers=AUTH).json()
+    assert convo["channel"] == "instagram" and convo["ai_paused_until"] == ""
+    # an admin reply goes out through Instagram too
+    assert client.post("/api/admin/messenger/threads/igsid-1/reply", json={"text": "Баярлалаа!"}, headers=AUTH).status_code == 200
+    assert [c for c in fb.calls if c[1] == "777/messages"][-1][3]["message"]["text"] == "Баярлалаа!"
+    # a reply typed in the Instagram app pauses the AI for this person
+    raw, headers = signed(ig_event(text="Ажилтан хариулж байна", mid="ig-human", echo=True))
+    client.post("/api/messenger/webhook", content=raw, headers=headers)
+    convo = client.get("/api/admin/messenger/threads/igsid-1", headers=AUTH).json()
+    assert any(m["kind"] == "inbox" for m in convo["items"])
+
+
+def test_instagram_ice_breakers_follow_the_welcome(client, fb):
+    connect(client, page_token="EAAWithInstagramToken000000")
+    res = client.put("/api/admin/messenger/welcome", headers={**AUTH, **HTTPS},
+                     json={"auto_reply": "Сайн байна уу!", "faq": [{"q": "Үнэ хэд вэ?", "a": "Салбараас лавлана уу."}]})
+    assert "Instagram" in res.json()["sync"]["message"]
+    ig = [c for c in fb.calls if c[1] == "me/messenger_profile" and c[2].get("platform") == "instagram"]
+    assert ig and ig[0][3]["ice_breakers"][0]["call_to_actions"][0]["payload"] == "FAQ_0"

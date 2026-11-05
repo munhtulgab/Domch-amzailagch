@@ -15,7 +15,7 @@ const TABS = [
   { id: 'questions', label: 'Эмчээс асуусан', inbox: true, count: 'questions_new' },
   { id: 'reviews', label: 'Сэтгэгдэл', inbox: true, count: 'reviews_pending' },
   { id: 'locations', label: 'Байршлын санал', inbox: true, count: 'locations_new' },
-  { id: 'messenger', label: 'Messenger', count: 'messenger_unread' },
+  { id: 'messenger', label: 'Messenger, Instagram', count: 'messenger_unread' },
   { id: 'branches', label: 'Салбарууд', table: true },
   { id: 'products', label: 'Бүтээгдэхүүн, үнэ', table: true },
   { id: 'tips', label: 'Эмчийн зөвлөгөө', table: true },
@@ -741,7 +741,7 @@ function ContactSettings({ call }) {
   );
 }
 
-const SETTING_TABS = [['contact', 'Холбоо барих'], ['messenger', 'Facebook Messenger'], ['ai', 'AI']];
+const SETTING_TABS = [['contact', 'Холбоо барих'], ['messenger', 'Messenger, Instagram'], ['ai', 'AI']];
 
 function Settings({ call, tab, onTab, onChange, go }) {
   return (
