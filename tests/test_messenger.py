@@ -33,6 +33,10 @@ TOKENS = {
     "EAAUserWithIgToken000000000": {"app_id": APP_ID, "type": "USER", "is_valid": True,
                                     "scopes": SCOPES + ["instagram_basic", "instagram_manage_messages"]},
     "EAAUserNoPagesToken00000000": {"app_id": APP_ID, "type": "USER", "is_valid": True, "scopes": SCOPES},
+    "EAASystemUserToken000000000": {"app_id": APP_ID, "type": "SYSTEM_USER", "is_valid": True, "expires_at": 0,
+                                    "scopes": SCOPES + ["instagram_basic", "instagram_manage_messages", "business_management"]},
+    "EAASystemUserNoAssets000000": {"app_id": APP_ID, "type": "SYSTEM_USER", "is_valid": True, "scopes": SCOPES},
+    "EAAAppTypeToken000000000000": {"app_id": APP_ID, "type": "APP", "is_valid": True, "scopes": []},
     "EAAOtherAppToken00000000000": {"app_id": "999", "type": "PAGE", "is_valid": True, "profile_id": "777", "scopes": SCOPES},
     "EAANoScopeToken000000000000": {"app_id": APP_ID, "type": "PAGE", "is_valid": True, "profile_id": "777",
                                     "scopes": ["pages_show_list"]},
@@ -84,6 +88,9 @@ class FakeGraph:
         if path == "me/accounts":
             pages = {
                 "EAALongUserToken000000000000000": [{"id": "777", "name": "ДОМЧ", "access_token": PAGE_TOKEN}],
+                "EAASystemUserToken000000000": [
+                    {"id": "777", "name": "ДОМЧ", "access_token": "EAAWithInstagramToken000000",
+                     "instagram_business_account": {"id": "17841400000000001"}}],
                 "EAALongUserWithIgToken000000000": [
                     {"id": "888", "name": "Өөр Page", "access_token": "EAAOtherPageToken0000000000"},
                     {"id": "777", "name": "ДОМЧ", "access_token": "EAAWithInstagramToken000000",
@@ -186,7 +193,7 @@ def test_bad_credentials(client, fb):
     wrong_secret = connect(client, app_secret="another-secret-000000000")
     assert "App Secret буруу" in wrong_secret.json()["steps"][0]["message"]
     for token, text in (("EAAOtherAppToken00000000000", "өөр аппынх"), ("EAANoScopeToken000000000000", "pages_messaging"),
-                        ("IGAAInstagramLoginToken0000", "Instagram-аар нэвтэрч")):
+                        ("IGAAInstagramLoginToken0000", "Instagram-аар нэвтэрч"), ("EAAAppTypeToken000000000000", "APP token")):
         step = connect(client, page_token=token).json()["steps"][0]
         assert not step["ok"] and text in step["message"], step
     invalid = client.put("/api/admin/messenger", json={"app_id": "abc", "page_token": "short"}, headers=AUTH)
@@ -569,3 +576,26 @@ def test_missing_instagram_permission_lists_what_the_token_has(client, fb):
     assert ig["warn"] and "instagram_basic, instagram_manage_messages эрх алга" in ig["message"]
     assert "одоо байгаа эрх: pages_messaging, pages_manage_metadata, pages_show_list" in ig["message"]
     assert "developers.facebook.com/tools/explorer" in ig["message"] and "хугацаагүй" in ig["message"]
+
+
+def test_reported_case_system_user_token_gives_page_and_instagram(client, fb):
+    """«Энэ нь SYSTEM_USER token байна»: a system user token now works for Messenger and Instagram together."""
+    steps = connect(client, page_token="EAASystemUserToken000000000").json()["steps"]
+    assert steps[0] == {"key": "exchange", "label": "System user token → Page token", "ok": True, "warn": False,
+                        "message": "«ДОМЧ» Page-ийн хугацаагүй token үүсгэж хадгаллаа"}
+    assert next(s for s in steps if s["key"] == "instagram")["ok"]
+    assert messenger.load(dbmod.get_db())["page_token"] == "EAAWithInstagramToken000000"
+    assert not any(c[1] == "oauth/access_token" for c in fb.calls)  # a system user token is not exchanged
+
+
+def test_system_user_without_the_page_assigned_says_how(client, fb):
+    step = connect(client, page_token="EAASystemUserNoAssets000000").json()["steps"][0]
+    assert not step["ok"] and "Assign assets" in step["message"]
+
+
+def test_a_failing_new_token_keeps_the_working_one(client, fb):
+    connect(client)  # working Messenger token
+    steps = connect(client, page_token="EAANoScopeToken000000000000").json()["steps"]
+    assert steps[-1]["key"] == "kept" and steps[-1]["warn"]
+    cfg = messenger.load(dbmod.get_db())
+    assert cfg["page_token"] == PAGE_TOKEN and cfg["connected_at"] and cfg["page_id"] == "777"

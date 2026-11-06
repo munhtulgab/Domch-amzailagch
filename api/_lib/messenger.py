@@ -241,23 +241,26 @@ def token_problem(cfg: dict, info: dict) -> str:
         return f"Энэ token өөр аппынх байна (App ID {info.get('app_id')}). Оруулсан App ID-тай аппаас token үүсгэнэ үү."
     kind = str(info.get("type") or "").upper()
     if kind and kind != "PAGE":
-        return f"Энэ нь {kind} token байна. Messenger → API Setup → Generate access tokens хэсгээс Page-ийн token үүсгэнэ үү."
+        return (f"Энэ нь {kind} token байна. Page token, Graph API Explorer-ийн User token эсвэл Business Settings-ийн"
+                " System user token оруулна уу.")
     missing = [s for s in REQUIRED_SCOPES if s not in (info.get("scopes") or [])]
     if missing:
         return "Token-д " + ", ".join(missing) + " эрх алга. Token-ийг дахин үүсгэхдээ эдгээр эрхийг зөвшөөрнө үү."
     return ""
 
 
-def page_token_from_user(cfg: dict, user_token: str) -> tuple:
-    """A user token (e.g. from Graph API Explorer) → the Page's token.
+def page_token_from_user(cfg: dict, user_token: str, exchange: bool = True) -> tuple:
+    """A user token (Graph API Explorer) or a system user token (Business Settings) → the Page's token.
 
-    The user token is first exchanged for a long-lived one, so the Page token made from it does not expire.
-    Returns (page_token, page_name).
+    A user token is first exchanged for a long-lived one, so the Page token made from it does not expire;
+    a system user token already lasts. Returns (page_token, page_name).
     """
-    long_lived = graph("GET", "oauth/access_token", "", {
-        "grant_type": "fb_exchange_token", "client_id": cfg["app_id"], "client_secret": cfg["app_secret"],
-        "fb_exchange_token": user_token,
-    }).get("access_token") or user_token
+    long_lived = user_token
+    if exchange:
+        long_lived = graph("GET", "oauth/access_token", "", {
+            "grant_type": "fb_exchange_token", "client_id": cfg["app_id"], "client_secret": cfg["app_secret"],
+            "fb_exchange_token": user_token,
+        }).get("access_token") or user_token
     pages = graph("GET", "me/accounts", long_lived, {"fields": "id,name,access_token,instagram_business_account",
                                                      "limit": "100"}, app_secret=cfg["app_secret"]).get("data") or []
     pages = [p for p in pages if p.get("access_token")]
@@ -305,18 +308,22 @@ def connect(db, cfg: dict, request: Request) -> list:
         step("token", "App ID, App Secret", False,
              "App ID эсвэл App Secret буруу байна. App settings → Basic хэсгээс дахин хуулна уу." + _detail(exc))
         return steps
-    if (str(info.get("type") or "").upper() == "USER" and info.get("is_valid")
-            and str(info.get("app_id") or "") == cfg["app_id"]):
+    kind = str(info.get("type") or "").upper()
+    if kind in ("USER", "SYSTEM_USER") and info.get("is_valid") and str(info.get("app_id") or "") == cfg["app_id"]:
         try:
-            page_token, label = page_token_from_user(cfg, cfg["page_token"])
+            page_token, label = page_token_from_user(cfg, cfg["page_token"], exchange=kind == "USER")
             info = graph("GET", "debug_token", f"{cfg['app_id']}|{cfg['app_secret']}",
                          {"input_token": page_token}).get("data") or {}
         except (GraphError, ValueError) as exc:
-            step("token", "User token → Page token", False, f"User token-оос Page token гаргаж чадсангүй: {exc}")
+            name = "System user" if kind == "SYSTEM_USER" else "User"
+            hint = (" Business Settings → Users → System users → энэ хэрэглэгч → Assign assets хэсгээс ДОМЧ-ийн Page болон"
+                    " Instagram аккаунтыг (Full control) олгоно уу.") if kind == "SYSTEM_USER" else ""
+            step("token", f"{name} token → Page token", False, f"{name} token-оос Page token гаргаж чадсангүй: {exc}{hint}")
             return steps
         cfg["page_token"] = page_token
         store(db, {"page_token": page_token})
-        step("exchange", "User token → Page token", True, f"«{label}» Page-ийн хугацаагүй token үүсгэж хадгаллаа")
+        name = "System user" if kind == "SYSTEM_USER" else "User"
+        step("exchange", f"{name} token → Page token", True, f"«{label}» Page-ийн хугацаагүй token үүсгэж хадгаллаа")
     problem = token_problem(cfg, info)
     if problem:
         step("token", "Page access token", False, problem)
@@ -897,11 +904,20 @@ def admin_put(request: Request, payload: dict = Body(...)):
     credentials_changed = any(changes.get(k, cfg[k]) != cfg[k] for k in ("app_id", "app_secret", "page_token"))
     if not cfg["verify_token"]:
         changes["verify_token"] = secrets.token_urlsafe(24)
+    previous = {k: cfg[k] for k in KEYS}
     if credentials_changed:
         changes.update(connected_at="", page_id="", page_name="", page_subscribed="", ig_id="", ig_username="", ig_status="")
     store(db, changes)
     cfg.update(changes)
     steps = connect(db, cfg, request) if (credentials_changed or payload.get("connect")) else []
+    token_failed = any(s["key"] == "token" and not s["ok"] for s in steps)
+    if credentials_changed and token_failed and previous["connected_at"]:
+        # Messenger kept working with the old credentials: put them back instead of leaving it broken
+        restore = {k: previous[k] for k in ("app_id", "app_secret", "page_token", "connected_at", "page_id", "page_name",
+                                            "page_subscribed", "ig_id", "ig_username", "ig_status")}
+        store(db, restore)
+        steps.append({"key": "kept", "label": "Өмнөх token", "ok": False, "warn": True,
+                      "message": "Шинэ утга ажилласангүй тул Messenger-ийг өмнөх ажиллаж байсан token-оор үргэлжлүүлж байна."})
     return {"ok": True, "steps": steps, "config": admin_view(load(db), request)}
 
 
