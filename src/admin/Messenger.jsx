@@ -90,7 +90,7 @@ function Steps({ steps }) {
   );
 }
 
-const EMPTY = { app_id: '', app_secret: '', page_token: '', page_link: '', button: true };
+const EMPTY = { app_id: '', app_secret: '', page_token: '', ig_token: '', page_link: '', button: true };
 
 const DEFAULT_GREETING = 'ДОМЧ — Монгол жамц давстай, спирт агуулаагүй ам зайлагч. Асуух зүйлээ бичээрэй!';
 const DEFAULT_WELCOME = 'Сайн байна уу! ДОМЧ ам зайлагчийн хуудсанд тавтай морил. Доорх асуултаас сонгох эсвэл асуултаа бичээрэй, бид удахгүй хариулна.';
@@ -219,6 +219,7 @@ export function MessengerSettings({ call, onChange }) {
       app_id: c.app_id || '',
       app_secret: '',
       page_token: '',
+      ig_token: '',
       page_link: c.page_link || '',
       button: c.page_token.set ? Boolean(c.button) : true,
     });
@@ -255,6 +256,11 @@ export function MessengerSettings({ call, onChange }) {
       onChange?.();
     });
   };
+  const clearIgToken = () => run('save', async () => {
+    const res = await call('/messenger', { method: 'PUT', body: { ig_token_clear: true, connect: true } });
+    apply(res.config);
+    setSteps(res.steps);
+  });
   const test = () => run('test', async () => {
     const res = await call('/messenger/test', { method: 'POST', body: {} });
     apply(res.config);
@@ -325,6 +331,15 @@ export function MessengerSettings({ call, onChange }) {
           error={errors.app_secret} hint="App settings → Basic → App secret → Show" />
         <SecretField id="m-token" label="Page access token" saved={cfg.page_token} value={form.page_token} onChange={set('page_token')}
           error={errors.page_token} hint="Messenger → API Setup → Generate access tokens → Page-ээ сонгоод Generate" />
+        <SecretField id="m-igtoken" label="Instagram token (заавал биш)" saved={cfg.ig_token || { set: false }} value={form.ig_token}
+          onChange={set('ig_token')} error={errors.ig_token}
+          hint="Instagram-д тусдаа: System user эсвэл Graph API Explorer-ийн token (instagram_basic, instagram_manage_messages эрхтэй). Messenger өөрийн token-оор ажилласаар байна." />
+        {cfg.ig_token && cfg.ig_token.set && (
+          <p className="a-field a-field--wide a-hint">
+            <button type="button" className="a-link" onClick={clearIgToken} disabled={Boolean(busy)}>Instagram token-ийг арилгах</button>
+            {' '}— Instagram Messenger-ийн token-оор ажиллана.
+          </p>
+        )}
         <div className={`a-field a-field--wide${errors.page_link ? ' has-error' : ''}`}>
           <label htmlFor="m-link">Messenger холбоос (заавал биш)</label>
           <input id="m-link" type="url" value={form.page_link} onChange={(e) => set('page_link')(e.target.value)}

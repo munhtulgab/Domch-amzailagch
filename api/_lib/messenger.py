@@ -28,10 +28,10 @@ PREFIX = "messenger."
 KEYS = ("app_id", "app_secret", "page_token", "verify_token", "page_id", "page_name", "page_link",
         "button", "auto_reply", "connected_at", "webhook_url", "page_subscribed", "last_event_at",
         "greeting", "faq", "last_error", "profile_synced_at", "last_decision", "ig_id", "ig_username", "ig_status",
-        "webhook_tried_at")
+        "webhook_tried_at", "ig_token", "ig_page_token")
 IG_FIELDS = "messages,messaging_postbacks"  # Instagram DMs through the same Page token (Instagram API with Facebook Login)
 IG_SCOPES = ("instagram_basic", "instagram_manage_messages")
-SECRETS = ("app_secret", "page_token")
+SECRETS = ("app_secret", "page_token", "ig_token")
 NEW_CONVERSATION_HOURS = 24  # a person who has been silent this long gets the welcome again
 MAX_FAQ = 4
 FOREVER_DAYS = 3650  # «AI-г зогсоох» for one conversation
@@ -194,6 +194,7 @@ def admin_view(cfg: dict, request: Request) -> dict:
         "app_id": cfg["app_id"],
         "app_secret": mask(cfg["app_secret"]),
         "page_token": mask(cfg["page_token"]),
+        "ig_token": mask(cfg["ig_token"]),
         "page_id": cfg["page_id"],
         "page_name": cfg["page_name"],
         "page_link": cfg["page_link"],
@@ -221,6 +222,11 @@ def friendly(exc: GraphError) -> str:
         return "Энэ хэрэглэгч одоогоор мессеж хүлээн авах боломжгүй байна."
     if exc.code == 100 and "pages_read_engagement" in text:
         return "Token-д pages_read_engagement эрх хэрэгтэй үйлдэл байна. " + text
+    if "not admins, developers or testers" in text or exc.subcode == 2018336:
+        return ("Facebook энэ token-оор зөвхөн апп дээр эрхтэй (admin, developer, tester) хүмүүст хариу илгээхийг"
+                " зөвшөөрч байна. Messenger-т Meta апп → Messenger → API Setup → Generate access tokens-оор үүсгэсэн Page"
+                " token-ийг оруулна уу (Instagram-д тусдаа «Instagram token» талбар бий), эсвэл апп Live, pages_messaging"
+                " App Review хийгдсэн эсэхийг шалгана уу.")
     if exc.code in (200, 10, 230):
         return f"Эрх хүрэлцэхгүй байна (pages_messaging, pages_manage_metadata). {text}"
     return text
@@ -418,7 +424,18 @@ def connect(db, cfg: dict, request: Request) -> list:
             cfg["page_subscribed"] = ""
             step("page", "Page-ийг апптай холбох", False, friendly(exc))
     store(db, {"page_subscribed": cfg["page_subscribed"]})
-    connect_instagram(db, cfg, info, url, step, ig_hint=ig_hint, owner_token=owner_token)
+    cfg["ig_page_token"] = ""
+    if cfg.get("ig_token"):
+        try:
+            info, owner_token, ig_hint, cfg["ig_page_token"] = instagram_token(cfg)
+        except (GraphError, ValueError) as exc:
+            store(db, {"ig_page_token": "", "ig_id": "", "ig_username": "", "ig_status": "error"})
+            cfg.update(ig_id="", ig_username="", ig_status="error")
+            step("instagram", "Instagram DM", False, f"Instagram token: {exc}", warn=True)
+            info = None
+    store(db, {"ig_page_token": cfg["ig_page_token"]})
+    if info is not None:
+        connect_instagram(db, cfg, info, url, step, ig_hint=ig_hint, owner_token=owner_token)
 
     # connected = nothing failed outright; a Page subscription done by hand in the Meta dashboard still counts
     if all(s["ok"] or s["warn"] for s in steps):
@@ -433,8 +450,9 @@ IG_SETUP = (
     " «Allow access to messages»-ийг асаана; (3) developers.facebook.com/tools/explorer → Meta App: өөрийн апп, User or"
     " Page: User Token, Permissions: pages_show_list, pages_messaging, pages_manage_metadata, instagram_basic,"
     " instagram_manage_messages → Generate Access Token → нэвтрэх цонхонд ДОМЧ-ийн Page болон Instagram аккаунтыг сонгоно;"
-    " (4) гарсан token-ийг энд «Page access token» талбарт оруулж «Хадгалаад холбох» дарна — систем өөрөө хугацаагүй"
-    " Page token болгоно. Messenger-ийн тохиргооны «Generate access tokens»-оор үүсгэсэн token-д Instagram-ийн эрх ордоггүй."
+    " (4) гарсан token-ийг «Instagram token» талбарт оруулж «Хадгалаад холбох» дарна — систем өөрөө хугацаагүй Page token"
+    " болгоно. Messenger-ийн token-ийг («Page access token») өөрчлөх хэрэггүй. Business Settings-ийн System user token"
+    " (эдгээр эрхтэй, Page болон Instagram олгосон) ч болно."
 )
 
 
@@ -443,6 +461,29 @@ def instagram_from(info: dict) -> str:
         if item.get("scope") in IG_SCOPES and item.get("target_ids"):
             return str(item["target_ids"][0])
     return ""
+
+
+def instagram_token(cfg: dict) -> tuple:
+    """The separate Instagram token → (its debug info, owner token, Instagram ID hint, Page token for Instagram)."""
+    app_token = f"{cfg['app_id']}|{cfg['app_secret']}"
+    info = graph("GET", "debug_token", app_token, {"input_token": cfg["ig_token"]}).get("data") or {}
+    if cfg["ig_token"].startswith("IG"):
+        raise ValueError("Instagram-аар нэвтэрч авсан (IG…) token ажиллахгүй. System user эсвэл Graph API Explorer-ийн"
+                         " Facebook (EAA…) token оруулна уу.")
+    if not info.get("is_valid"):
+        raise ValueError("хүчингүй эсвэл хугацаа нь дууссан байна.")
+    if str(info.get("app_id") or "") != cfg["app_id"]:
+        raise ValueError(f"өөр аппынх байна (App ID {info.get('app_id')}).")
+    kind = str(info.get("type") or "").upper()
+    if kind in ("USER", "SYSTEM_USER"):
+        page_token, _, hint = page_token_from_user(cfg, cfg["ig_token"], exchange=kind == "USER", info=info)
+        page_info = graph("GET", "debug_token", app_token, {"input_token": page_token}).get("data") or {}
+        return page_info, cfg["ig_token"], hint, page_token
+    if kind == "PAGE":
+        if cfg["page_id"] and str(info.get("profile_id") or "") not in ("", cfg["page_id"]):
+            raise ValueError("өөр Page-ийн token байна. ДОМЧ-ийн Page-ийн token оруулна уу.")
+        return info, "", "", cfg["ig_token"]
+    raise ValueError(f"{kind} token тохирохгүй. System user эсвэл User token оруулна уу.")
 
 
 def linked_instagram(cfg: dict, tokens: list) -> tuple:
@@ -477,7 +518,7 @@ def connect_instagram(db, cfg: dict, info: dict, url: str, step, ig_hint: str = 
     # the account granted with the token (system user assets, login dialog), else the one linked to the Page
     ig_id, error = instagram_from(info) or ig_hint or cfg.get("ig_id") or "", ""  # cfg: found on an earlier connect
     if not ig_id:
-        ig_id, error = linked_instagram(cfg, [cfg["page_token"], owner_token])
+        ig_id, error = linked_instagram(cfg, [ig_token(cfg), owner_token])
     if not ig_id and "pages_read_engagement" in error and url.startswith("https://"):
         # the link cannot be read without pages_read_engagement, but DMs do not need it: subscribe the Instagram webhook
         # and learn the account from the first DM (its entry id)
@@ -510,7 +551,7 @@ def connect_instagram(db, cfg: dict, info: dict, url: str, step, ig_hint: str = 
         return
     username = ""
     try:
-        username = graph("GET", ig_id, cfg["page_token"], {"fields": "username"}, app_secret=cfg["app_secret"],
+        username = graph("GET", ig_id, ig_token(cfg), {"fields": "username"}, app_secret=cfg["app_secret"],
                          timeout=4.0).get("username", "")
     except GraphError:
         pass
@@ -539,7 +580,7 @@ def save_contact(db, cfg: dict, psid: str, channel: str = "messenger") -> None:
     name = ""
     try:
         if channel == "instagram":
-            who = graph("GET", psid, cfg["page_token"], {"fields": "name,username"}, app_secret=cfg["app_secret"],
+            who = graph("GET", psid, ig_token(cfg), {"fields": "name,username"}, app_secret=cfg["app_secret"],
                         timeout=2.5)
             name = who.get("name") or (f"@{who['username']}" if who.get("username") else "")
         else:
@@ -554,6 +595,15 @@ def save_contact(db, cfg: dict, psid: str, channel: str = "messenger") -> None:
 def channel_of(db, psid: str) -> str:
     row = db.one("SELECT channel FROM messenger_contacts WHERE psid = ?", (psid,)) or {}
     return row.get("channel") or "messenger"
+
+
+def ig_token(cfg: dict) -> str:
+    """Instagram goes through its own token when one was given (Messenger keeps the token that works for it)."""
+    return cfg.get("ig_page_token") or cfg["page_token"]
+
+
+def token_for(cfg: dict, path: str) -> str:
+    return cfg["page_token"] if path == "me/messages" else ig_token(cfg)
 
 
 def send_path(db, cfg: dict, psid: str) -> str:
@@ -571,11 +621,11 @@ def send_text(db, cfg: dict, psid: str, text: str, kind: str = "reply", quick_re
     body = {"recipient": {"id": psid}, "messaging_type": "RESPONSE", "message": message}
     path = send_path(db, cfg, psid)
     try:
-        res = graph("POST", path, cfg["page_token"], body=body, app_secret=cfg["app_secret"])
+        res = graph("POST", path, token_for(cfg, path), body=body, app_secret=cfg["app_secret"])
     except GraphError as exc:
         if path == "me/messages" or not cfg.get("ig_id") or exc.code not in (100, 3):
             raise
-        res = graph("POST", f"{cfg['ig_id']}/messages", cfg["page_token"], body=body, app_secret=cfg["app_secret"])
+        res = graph("POST", f"{cfg['ig_id']}/messages", ig_token(cfg), body=body, app_secret=cfg["app_secret"])
     db.run(
         "INSERT OR IGNORE INTO messenger_messages (psid, direction, kind, text, mid, is_read) VALUES (?, 'out', ?, ?, ?, 1)",
         (psid, kind, text, res.get("message_id")),
@@ -601,7 +651,8 @@ def _stamp_ms(ms) -> str:
 
 def typing(db, cfg: dict, psid: str) -> None:
     try:
-        graph("POST", send_path(db, cfg, psid), cfg["page_token"],
+        path = send_path(db, cfg, psid)
+        graph("POST", path, token_for(cfg, path),
               body={"recipient": {"id": psid}, "sender_action": "typing_on"}, app_secret=cfg["app_secret"], timeout=2.0)
     except GraphError:
         pass
@@ -926,10 +977,10 @@ def sync_profile(db, cfg: dict) -> dict:
         # Instagram supports the quick questions (ice breakers) only, not the greeting or Get Started
         try:
             if faq:
-                graph("POST", "me/messenger_profile", cfg["page_token"], {"platform": "instagram"},
+                graph("POST", "me/messenger_profile", ig_token(cfg), {"platform": "instagram"},
                       body={"platform": "instagram", "ice_breakers": body["ice_breakers"]}, app_secret=cfg["app_secret"])
             else:
-                graph("DELETE", "me/messenger_profile", cfg["page_token"], {"platform": "instagram"},
+                graph("DELETE", "me/messenger_profile", ig_token(cfg), {"platform": "instagram"},
                       body={"fields": ["ice_breakers"], "platform": "instagram"}, app_secret=cfg["app_secret"])
             note = " Instagram-ийн асуултын товчнууд ч шинэчлэгдлээ."
         except GraphError as exc:
@@ -976,7 +1027,7 @@ def adopt_instagram(db, cfg: dict, ig_id: str) -> None:
     """The first Instagram DM tells which account the Page's Instagram is (entry id), when it could not be read before."""
     username = ""
     try:
-        username = graph("GET", ig_id, cfg["page_token"], {"fields": "username"}, app_secret=cfg["app_secret"],
+        username = graph("GET", ig_id, ig_token(cfg), {"fields": "username"}, app_secret=cfg["app_secret"],
                          timeout=4.0).get("username", "")
     except GraphError:
         pass
@@ -1075,7 +1126,10 @@ def admin_put(request: Request, payload: dict = Body(...)):
         changes["auto_reply"] = reply
     if errors:
         fail(errors)
-    credentials_changed = any(changes.get(k, cfg[k]) != cfg[k] for k in ("app_id", "app_secret", "page_token"))
+    credentials_changed = any(changes.get(k, cfg[k]) != cfg[k] for k in ("app_id", "app_secret", "page_token", "ig_token"))
+    if payload.get("ig_token_clear"):
+        changes.update(ig_token="", ig_page_token="")
+        credentials_changed = True
     if not cfg["verify_token"]:
         changes["verify_token"] = secrets.token_urlsafe(24)
     previous = {k: cfg[k] for k in KEYS}

@@ -658,3 +658,47 @@ def test_reported_case_link_unreadable_without_pages_read_engagement(client, fb)
     assert cfg["ig_status"] == "1" and cfg["ig_id"] == IG_ID and cfg["ig_username"] == "domch.mn"
     view = client.get("/api/admin/messenger/threads", headers=AUTH).json()
     assert any(t.get("channel") == "instagram" for t in view["items"])
+
+
+# ------------------------------------------------------------------ separate Instagram token
+
+def test_reported_case_messenger_and_instagram_each_with_their_own_token(client, fb):
+    """The system user token could not message customers on Messenger: Messenger keeps its own Page token,
+    Instagram gets the system user token in its own field."""
+    steps = connect(client, ig_token="EAASystemUserToken000000000").json()["steps"]
+    by = {s["key"]: s for s in steps}
+    assert by["token"]["ok"] and by["instagram"]["ok"] and "@domch.mn" in by["instagram"]["message"]
+    cfg = messenger.load(dbmod.get_db())
+    assert cfg["page_token"] == PAGE_TOKEN and cfg["ig_page_token"] == "EAAWithInstagramToken000000"
+    view = client.get("/api/admin/messenger", headers=AUTH).json()
+    assert view["ig_token"]["set"] and "EAASystem" not in json.dumps(view)
+    save_welcome(client)
+    fb.calls.clear()
+    raw, headers = signed(ig_event(text="Үнэ хэд вэ?", mid="two-1"))
+    client.post("/api/messenger/webhook", content=raw, headers=headers)
+    raw, headers = signed(event(psid="psid-two", text="Сайн уу", mid="two-2"))
+    client.post("/api/messenger/webhook", content=raw, headers=headers)
+    tokens = {c[1]: c[2]["access_token"] for c in fb.calls if c[1] in ("777/messages", "me/messages")}
+    assert tokens == {"777/messages": "EAAWithInstagramToken000000", "me/messages": PAGE_TOKEN}
+    # removing it puts Instagram back on the Messenger token
+    res = client.put("/api/admin/messenger", json={"ig_token_clear": True, "connect": True}, headers={**AUTH, **HTTPS})
+    assert not res.json()["config"]["ig_token"]["set"] and messenger.load(dbmod.get_db())["ig_page_token"] == ""
+
+
+def test_instagram_token_problems_do_not_touch_messenger(client, fb):
+    steps = connect(client, ig_token="EAAOtherAppToken00000000000").json()["steps"]
+    by = {s["key"]: s for s in steps}
+    assert by["token"]["ok"] and by["instagram"]["warn"] and "өөр аппынх" in by["instagram"]["message"]
+    assert messenger.load(dbmod.get_db())["connected_at"]
+
+
+def test_reported_case_review_refusal_is_explained(client, fb):
+    """«Cannot message users who are not admins, developers or testers of the app …»"""
+    connect(client)
+    fb.fail["me/messages"] = (10, 2018336, "(#10) Cannot message users who are not admins, developers or testers of the app"
+                              " until pages_messaging permission is reviewed and the app is live.")
+    save_welcome(client)
+    raw, headers = signed(event(psid="psid-new", text="Сайн уу", mid="rv1"))
+    client.post("/api/messenger/webhook", content=raw, headers=headers)
+    err = client.get("/api/admin/messenger", headers=AUTH).json()["last_error"]
+    assert "зөвхөн апп дээр эрхтэй" in err["message"] and "Generate access tokens" in err["message"]
