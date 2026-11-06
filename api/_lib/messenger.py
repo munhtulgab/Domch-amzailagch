@@ -231,6 +231,9 @@ def _detail(exc: GraphError) -> str:
 
 
 def token_problem(cfg: dict, info: dict) -> str:
+    if cfg["page_token"].startswith("IG"):
+        return ("Энэ нь Instagram-аар нэвтэрч авсан (IG…) token байна. Facebook-ийн (EAA…) token хэрэгтэй: Graph API Explorer-оос"
+                " User Token үүсгэж оруулна уу (Instagram-ийг холбох заавар).")
     if not info.get("is_valid"):
         err = (info.get("error") or {}).get("message") or ""
         return "Page access token хүчингүй эсвэл хугацаа нь дууссан байна. Шинээр үүсгээд оруулна уу." + (f" ({err})" if err else "")
@@ -243,6 +246,33 @@ def token_problem(cfg: dict, info: dict) -> str:
     if missing:
         return "Token-д " + ", ".join(missing) + " эрх алга. Token-ийг дахин үүсгэхдээ эдгээр эрхийг зөвшөөрнө үү."
     return ""
+
+
+def page_token_from_user(cfg: dict, user_token: str) -> tuple:
+    """A user token (e.g. from Graph API Explorer) → the Page's token.
+
+    The user token is first exchanged for a long-lived one, so the Page token made from it does not expire.
+    Returns (page_token, page_name).
+    """
+    long_lived = graph("GET", "oauth/access_token", "", {
+        "grant_type": "fb_exchange_token", "client_id": cfg["app_id"], "client_secret": cfg["app_secret"],
+        "fb_exchange_token": user_token,
+    }).get("access_token") or user_token
+    pages = graph("GET", "me/accounts", long_lived, {"fields": "id,name,access_token,instagram_business_account",
+                                                     "limit": "100"}, app_secret=cfg["app_secret"]).get("data") or []
+    pages = [p for p in pages if p.get("access_token")]
+    if not pages:
+        raise ValueError("энэ token-оор удирдах Facebook Page алга. Нэвтрэх цонхонд ДОМЧ-ийн Page-ийг сонгосон эсэхээ шалгана уу.")
+    chosen = next((p for p in pages if str(p.get("id")) == cfg["page_id"]), None) if cfg["page_id"] else None
+    if not chosen and len(pages) == 1:
+        chosen = pages[0]
+    if not chosen:
+        with_ig = [p for p in pages if p.get("instagram_business_account")]
+        chosen = with_ig[0] if len(with_ig) == 1 else None
+    if not chosen:
+        names = ", ".join(p.get("name") or p["id"] for p in pages)
+        raise ValueError(f"token хэд хэдэн Page удирддаг ({names}). Нэвтрэх цонхонд зөвхөн ДОМЧ-ийн Page-ийг сонгоно уу.")
+    return chosen["access_token"], chosen.get("name") or chosen["id"]
 
 
 def page_id_from(info: dict) -> str:
@@ -275,6 +305,18 @@ def connect(db, cfg: dict, request: Request) -> list:
         step("token", "App ID, App Secret", False,
              "App ID эсвэл App Secret буруу байна. App settings → Basic хэсгээс дахин хуулна уу." + _detail(exc))
         return steps
+    if (str(info.get("type") or "").upper() == "USER" and info.get("is_valid")
+            and str(info.get("app_id") or "") == cfg["app_id"]):
+        try:
+            page_token, label = page_token_from_user(cfg, cfg["page_token"])
+            info = graph("GET", "debug_token", f"{cfg['app_id']}|{cfg['app_secret']}",
+                         {"input_token": page_token}).get("data") or {}
+        except (GraphError, ValueError) as exc:
+            step("token", "User token → Page token", False, f"User token-оос Page token гаргаж чадсангүй: {exc}")
+            return steps
+        cfg["page_token"] = page_token
+        store(db, {"page_token": page_token})
+        step("exchange", "User token → Page token", True, f"«{label}» Page-ийн хугацаагүй token үүсгэж хадгаллаа")
     problem = token_problem(cfg, info)
     if problem:
         step("token", "Page access token", False, problem)
@@ -339,11 +381,13 @@ def connect(db, cfg: dict, request: Request) -> list:
 
 
 IG_SETUP = (
-    "Instagram-ийн DM-ийг холбохын тулд: (1) Instagram professional (Business/Creator) аккаунтаа энэ Facebook Page-тэй"
-    " холбоно (Meta Business Suite → Тохиргоо → Instagram аккаунт); (2) Instagram апп → Тохиргоо → Мессеж ба story-ийн"
-    " хариу → Холбогдсон хэрэгслүүд → «Allow access to messages»-ийг асаана; (3) Meta апп-даа Instagram-ийн хэрэглээг"
-    " (Manage messaging & content on Instagram → API setup with Facebook login) нэмж, instagram_basic,"
-    " instagram_manage_messages эрхтэй Page access token үүсгээд энд оруулж «Хадгалаад холбох» дарна."
+    "Засах: (1) Instagram professional (Business/Creator) аккаунтаа энэ Facebook Page-тэй холбоно (Meta Business Suite →"
+    " Тохиргоо → Instagram аккаунт); (2) Instagram апп → Тохиргоо → Мессеж ба story-ийн хариу → Холбогдсон хэрэгслүүд →"
+    " «Allow access to messages»-ийг асаана; (3) developers.facebook.com/tools/explorer → Meta App: өөрийн апп, User or"
+    " Page: User Token, Permissions: pages_show_list, pages_messaging, pages_manage_metadata, instagram_basic,"
+    " instagram_manage_messages → Generate Access Token → нэвтрэх цонхонд ДОМЧ-ийн Page болон Instagram аккаунтыг сонгоно;"
+    " (4) гарсан token-ийг энд «Page access token» талбарт оруулж «Хадгалаад холбох» дарна — систем өөрөө хугацаагүй"
+    " Page token болгоно. Messenger-ийн тохиргооны «Generate access tokens»-оор үүсгэсэн token-д Instagram-ийн эрх ордоггүй."
 )
 
 
@@ -360,7 +404,10 @@ def connect_instagram(db, cfg: dict, info: dict, url: str, step) -> None:
     if "instagram_manage_messages" not in scopes:
         cfg.update(ig_id="", ig_username="", ig_status="missing")
         store(db, {"ig_id": "", "ig_username": "", "ig_status": "missing"})
-        step("instagram", "Instagram DM", False, "Token-д instagram_manage_messages эрх алга. " + IG_SETUP, warn=True)
+        missing = [s for s in IG_SCOPES if s not in scopes]
+        have = ", ".join(scopes) or "—"
+        step("instagram", "Instagram DM", False,
+             f"Token-д {', '.join(missing)} эрх алга (одоо байгаа эрх: {have}). " + IG_SETUP, warn=True)
         return
     ig_id = instagram_from(info)
     if not ig_id:

@@ -352,8 +352,10 @@ export function MessengerSettings({ call, onChange }) {
         <ol className="a-guide">
           <li>Instagram аккаунтаа <b>professional</b> (Business эсвэл Creator) болгож, ДОМЧ-ийн Facebook Page-тэй холбоно: Meta Business Suite → Тохиргоо → Instagram аккаунт.</li>
           <li>Instagram апп → Тохиргоо → <b>Мессеж ба story-ийн хариу</b> → <b>Холбогдсон хэрэгслүүд</b> → <b>Allow access to messages</b>-ийг асаана.</li>
-          <li><a className="a-link" href="https://developers.facebook.com/apps" target="_blank" rel="noopener noreferrer">Meta апп</a> → Use cases → <b>Manage messaging &amp; content on Instagram</b> (API setup with Facebook login)-г нэмж, <b>instagram_basic</b>, <b>instagram_manage_messages</b> эрхийг зөвшөөрнө.</li>
-          <li>Эдгээр эрхтэй Page access token-ийг дахин үүсгээд дээрх «Page access token» талбарт оруулж <b>Хадгалаад холбох</b> дарна. «Instagram DM» алхам ✓ болно.</li>
+          <li><a className="a-link" href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener noreferrer">Graph API Explorer</a>-ийг нээж: <b>Meta App</b> — өөрийн апп, <b>User or Page</b> — User Token, <b>Permissions</b> — pages_show_list, pages_messaging, pages_manage_metadata, instagram_basic, instagram_manage_messages. <b>Generate Access Token</b> дарна.</li>
+          <li>Нээгдэх Facebook-ийн цонхонд ДОМЧ-ийн <b>Page</b>-ийг болон <b>Instagram аккаунтыг</b> сонгож зөвшөөрнө. Өмнө нь зөвшөөрсөн бол «Edit previous settings» дарж Instagram аккаунтыг нэмж сонгоно.</li>
+          <li>Гарсан token-ийг хуулж дээрх «Page access token» талбарт оруулаад <b>Хадгалаад холбох</b> дарна. Систем түүнийг хугацаагүй Page token болгож хадгална. «Instagram DM» алхам ✓ болно.</li>
+          <li className="a-muted">Messenger-ийн тохиргооны «Generate access tokens» товчоор үүсгэсэн token-д Instagram-ийн эрх ордоггүй тул энэ алхам хэрэгтэй.</li>
           <li>Instagram-аас ДОМЧ руу нэг мессеж бичиж шалгаарай. Апп Development горимд байхад зөвхөн апп дээр эрхтэй хүний мессеж ирнэ.</li>
         </ol>
       </details>

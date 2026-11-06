@@ -30,6 +30,9 @@ SCOPES = ["pages_messaging", "pages_manage_metadata", "pages_show_list"]
 TOKENS = {
     PAGE_TOKEN: {"app_id": APP_ID, "type": "PAGE", "is_valid": True, "profile_id": "777", "scopes": SCOPES, "expires_at": 0},
     "EAAUserToken000000000000000": {"app_id": APP_ID, "type": "USER", "is_valid": True, "scopes": SCOPES},
+    "EAAUserWithIgToken000000000": {"app_id": APP_ID, "type": "USER", "is_valid": True,
+                                    "scopes": SCOPES + ["instagram_basic", "instagram_manage_messages"]},
+    "EAAUserNoPagesToken00000000": {"app_id": APP_ID, "type": "USER", "is_valid": True, "scopes": SCOPES},
     "EAAOtherAppToken00000000000": {"app_id": "999", "type": "PAGE", "is_valid": True, "profile_id": "777", "scopes": SCOPES},
     "EAANoScopeToken000000000000": {"app_id": APP_ID, "type": "PAGE", "is_valid": True, "profile_id": "777",
                                     "scopes": ["pages_show_list"]},
@@ -75,6 +78,18 @@ class FakeGraph:
             if q.get("access_token") == "EAAMessagingOnlyToken000000":
                 return httpx.Response(400, json={"error": {"code": 200, "message": "(#200) Requires pages_manage_metadata permission to manage the object"}})
             return httpx.Response(200, json={"success": True})
+        if path == "oauth/access_token":  # short-lived user token → long-lived
+            assert q["client_secret"] == APP_SECRET and q["grant_type"] == "fb_exchange_token"
+            return httpx.Response(200, json={"access_token": "EAALong" + q["fb_exchange_token"][3:], "expires_in": 5183944})
+        if path == "me/accounts":
+            pages = {
+                "EAALongUserToken000000000000000": [{"id": "777", "name": "ДОМЧ", "access_token": PAGE_TOKEN}],
+                "EAALongUserWithIgToken000000000": [
+                    {"id": "888", "name": "Өөр Page", "access_token": "EAAOtherPageToken0000000000"},
+                    {"id": "777", "name": "ДОМЧ", "access_token": "EAAWithInstagramToken000000",
+                     "instagram_business_account": {"id": "17841400000000001"}}],
+            }.get(q["access_token"], [])
+            return httpx.Response(200, json={"data": pages})
         if path == "me/messages":
             return httpx.Response(200, json={"recipient_id": body["recipient"]["id"], "message_id": f"m_out_{len(self.calls)}"})
         if path == "me/messenger_profile":
@@ -170,8 +185,8 @@ def test_bad_credentials(client, fb):
     assert steps[0]["key"] == "token" and not steps[0]["ok"] and "хүчингүй" in steps[0]["message"]
     wrong_secret = connect(client, app_secret="another-secret-000000000")
     assert "App Secret буруу" in wrong_secret.json()["steps"][0]["message"]
-    for token, text in (("EAAUserToken000000000000000", "USER token"), ("EAAOtherAppToken00000000000", "өөр аппынх"),
-                        ("EAANoScopeToken000000000000", "pages_messaging")):
+    for token, text in (("EAAOtherAppToken00000000000", "өөр аппынх"), ("EAANoScopeToken000000000000", "pages_messaging"),
+                        ("IGAAInstagramLoginToken0000", "Instagram-аар нэвтэрч")):
         step = connect(client, page_token=token).json()["steps"][0]
         assert not step["ok"] and text in step["message"], step
     invalid = client.put("/api/admin/messenger", json={"app_id": "abc", "page_token": "short"}, headers=AUTH)
@@ -517,3 +532,40 @@ def test_failed_webhook_move_keeps_the_old_one_and_waits(client, fb):
     post_event_via(client, event(text="Сайн уу", mid="f3"), OLD_HOST)
     assert [s[2]["object"] for s in subscriptions(fb)] == ["page", "instagram"]  # Instagram moves along
     assert messenger.load(dbmod.get_db())["webhook_url"] == "https://domch.gem.mn/api/messenger/webhook"
+
+
+# ------------------------------------------------------------------ user token from Graph API Explorer
+
+def test_user_token_from_graph_explorer_becomes_a_page_token(client, fb):
+    """The fix for «Token-д instagram_manage_messages эрх алга»: a user token with the Instagram permissions."""
+    res = connect(client, page_token="EAAUserWithIgToken000000000")
+    steps = res.json()["steps"]
+    assert steps[0]["key"] == "exchange" and steps[0]["ok"] and "«ДОМЧ»" in steps[0]["message"]
+    assert steps[1]["key"] == "token" and steps[1]["ok"]
+    ig = next(s for s in steps if s["key"] == "instagram")
+    assert ig["ok"] and "@domch.mn" in ig["message"]
+    cfg = messenger.load(dbmod.get_db())
+    assert cfg["page_token"] == "EAAWithInstagramToken000000"  # the Page with the Instagram account, not «Өөр Page»
+    assert cfg["ig_status"] == "1" and cfg["page_id"] == "777"
+    exchange = next(c for c in fb.calls if c[1] == "oauth/access_token")
+    assert exchange[2]["fb_exchange_token"] == "EAAUserWithIgToken000000000"  # long-lived first: the Page token never expires
+    assert "EAAUserWithIg" not in json.dumps(client.get("/api/admin/messenger", headers=AUTH).json())
+
+
+def test_user_token_keeps_the_connected_page(client, fb):
+    connect(client)  # Page 777 connected with the Messenger token
+    res = connect(client, page_token="EAAUserToken000000000000000").json()["steps"]
+    assert res[0]["ok"] and messenger.load(dbmod.get_db())["page_token"] == PAGE_TOKEN
+
+
+def test_user_token_without_pages_says_so(client, fb):
+    step = connect(client, page_token="EAAUserNoPagesToken00000000").json()["steps"][0]
+    assert not step["ok"] and "Page алга" in step["message"]
+
+
+def test_missing_instagram_permission_lists_what_the_token_has(client, fb):
+    steps = connect(client).json()["steps"]
+    ig = next(s for s in steps if s["key"] == "instagram")
+    assert ig["warn"] and "instagram_basic, instagram_manage_messages эрх алга" in ig["message"]
+    assert "одоо байгаа эрх: pages_messaging, pages_manage_metadata, pages_show_list" in ig["message"]
+    assert "developers.facebook.com/tools/explorer" in ig["message"] and "хугацаагүй" in ig["message"]
