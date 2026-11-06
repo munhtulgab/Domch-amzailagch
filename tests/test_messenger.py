@@ -593,6 +593,7 @@ def test_missing_instagram_permission_lists_what_the_token_has(client, fb):
     assert ig["warn"] and "instagram_basic, instagram_manage_messages эрх алга" in ig["message"]
     assert "одоо байгаа эрх: pages_messaging, pages_manage_metadata, pages_show_list" in ig["message"]
     assert "developers.facebook.com/tools/explorer" in ig["message"] and "хугацаагүй" in ig["message"]
+    assert "«Page access token» талбарт" in ig["message"]
 
 
 def test_reported_case_system_user_token_gives_page_and_instagram(client, fb):
@@ -701,7 +702,7 @@ def test_reported_case_review_refusal_is_explained(client, fb):
     raw, headers = signed(event(psid="psid-new", text="Сайн уу", mid="rv1"))
     client.post("/api/messenger/webhook", content=raw, headers=headers)
     err = client.get("/api/admin/messenger", headers=AUTH).json()["last_error"]
-    assert "зөвхөн апп дээр эрхтэй" in err["message"] and "Generate access tokens" in err["message"]
+    assert "зөвхөн апп дээр эрхтэй" in err["message"] and "Graph API Explorer" in err["message"]
 
 
 def test_changing_the_messenger_token_keeps_instagram(client, fb):

@@ -224,9 +224,9 @@ def friendly(exc: GraphError) -> str:
         return "Token-д pages_read_engagement эрх хэрэгтэй үйлдэл байна. " + text
     if "not admins, developers or testers" in text or exc.subcode == 2018336:
         return ("Facebook энэ token-оор зөвхөн апп дээр эрхтэй (admin, developer, tester) хүмүүст хариу илгээхийг"
-                " зөвшөөрч байна. Messenger-т Meta апп → Messenger → API Setup → Generate access tokens-оор үүсгэсэн Page"
-                " token-ийг оруулна уу (Instagram-д тусдаа «Instagram token» талбар бий), эсвэл апп Live, pages_messaging"
-                " App Review хийгдсэн эсэхийг шалгана уу.")
+                " зөвшөөрч байна. Апп Live эсэхийг шалгаад, ДОМЧ апп-ийн админ Facebook аккаунтаар Graph API Explorer-оос"
+                " User token үүсгэж «Page access token» талбарт оруулна уу — нэг token Messenger, Instagram хоёуланд ажиллана."
+                " (System user-ийн token ийм хязгаартай байдаг.)")
     if exc.code in (200, 10, 230):
         return f"Эрх хүрэлцэхгүй байна (pages_messaging, pages_manage_metadata). {text}"
     return text
@@ -450,9 +450,9 @@ IG_SETUP = (
     " «Allow access to messages»-ийг асаана; (3) developers.facebook.com/tools/explorer → Meta App: өөрийн апп, User or"
     " Page: User Token, Permissions: pages_show_list, pages_messaging, pages_manage_metadata, instagram_basic,"
     " instagram_manage_messages → Generate Access Token → нэвтрэх цонхонд ДОМЧ-ийн Page болон Instagram аккаунтыг сонгоно;"
-    " (4) гарсан token-ийг «Instagram token» талбарт оруулж «Хадгалаад холбох» дарна — систем өөрөө хугацаагүй Page token"
-    " болгоно. Messenger-ийн token-ийг («Page access token») өөрчлөх хэрэггүй. Business Settings-ийн System user token"
-    " (эдгээр эрхтэй, Page болон Instagram олгосон) ч болно."
+    " (4) гарсан token-ийг «Page access token» талбарт оруулж «Хадгалаад холбох» дарна — систем өөрөө хугацаагүй Page token"
+    " болгож, Messenger, Instagram хоёуланд ашиглана. Token-ийг ДОМЧ апп-ийн админ Facebook аккаунтаар үүсгэнэ (System user-ийн"
+    " token Messenger-т зөвхөн апп дээр эрхтэй хүмүүст хариулдаг)."
 )
 
 

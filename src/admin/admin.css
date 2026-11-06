@@ -180,6 +180,8 @@
 .a-details summary { cursor: pointer; font-weight: 600; font-size: 15px; }
 .a-details[open] summary { margin-bottom: 12px; }
 .a-details .a-form { margin-top: 12px; }
+.a-details--inline summary { font-size: 14px; font-weight: 500; color: var(--a-muted, #5b6b64); }
+.a-details--inline .a-field { margin-top: 10px; }
 .a-guide { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
 .a-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
 
