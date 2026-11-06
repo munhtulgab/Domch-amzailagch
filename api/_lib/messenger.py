@@ -249,7 +249,7 @@ def token_problem(cfg: dict, info: dict) -> str:
     return ""
 
 
-def page_token_from_user(cfg: dict, user_token: str, exchange: bool = True) -> tuple:
+def page_token_from_user(cfg: dict, user_token: str, exchange: bool = True, info: dict | None = None) -> tuple:
     """A user token (Graph API Explorer) or a system user token (Business Settings) → the Page's token.
 
     A user token is first exchanged for a long-lived one, so the Page token made from it does not expire;
@@ -265,7 +265,25 @@ def page_token_from_user(cfg: dict, user_token: str, exchange: bool = True) -> t
                                                      "limit": "100"}, app_secret=cfg["app_secret"]).get("data") or []
     pages = [p for p in pages if p.get("access_token")]
     if not pages:
-        raise ValueError("энэ token-оор удирдах Facebook Page алга. Нэвтрэх цонхонд ДОМЧ-ийн Page-ийг сонгосон эсэхээ шалгана уу.")
+        # me/accounts can come back empty (e.g. no pages_show_list): ask the Page itself, by the IDs the token was granted
+        # and the Page this site was connected to
+        targets = [str(t) for item in (info or {}).get("granular_scopes") or []
+                   if str(item.get("scope", "")).startswith("pages_") for t in item.get("target_ids") or []]
+        for pid in dict.fromkeys(targets + ([cfg["page_id"]] if cfg["page_id"] else [])):
+            try:
+                page = graph("GET", pid, long_lived, {"fields": "id,name,access_token,instagram_business_account"},
+                             app_secret=cfg["app_secret"], timeout=6.0)
+            except GraphError:
+                continue
+            if page.get("access_token"):
+                pages = [page]
+                break
+    if not pages:
+        scopes = ", ".join((info or {}).get("scopes") or []) or "—"
+        granted = any(item.get("target_ids") for item in (info or {}).get("granular_scopes") or []
+                      if str(item.get("scope", "")).startswith("pages_"))
+        raise ValueError("энэ token-оор удирдах Facebook Page олдсонгүй"
+                         f" (token-ийн эрх: {scopes}; Page олгогдсон: {'тийм' if granted else 'үгүй'}).")
     chosen = next((p for p in pages if str(p.get("id")) == cfg["page_id"]), None) if cfg["page_id"] else None
     if not chosen and len(pages) == 1:
         chosen = pages[0]
@@ -311,13 +329,14 @@ def connect(db, cfg: dict, request: Request) -> list:
     kind = str(info.get("type") or "").upper()
     if kind in ("USER", "SYSTEM_USER") and info.get("is_valid") and str(info.get("app_id") or "") == cfg["app_id"]:
         try:
-            page_token, label = page_token_from_user(cfg, cfg["page_token"], exchange=kind == "USER")
+            page_token, label = page_token_from_user(cfg, cfg["page_token"], exchange=kind == "USER", info=info)
             info = graph("GET", "debug_token", f"{cfg['app_id']}|{cfg['app_secret']}",
                          {"input_token": page_token}).get("data") or {}
         except (GraphError, ValueError) as exc:
             name = "System user" if kind == "SYSTEM_USER" else "User"
             hint = (" Business Settings → Users → System users → энэ хэрэглэгч → Assign assets хэсгээс ДОМЧ-ийн Page болон"
-                    " Instagram аккаунтыг (Full control) олгоно уу.") if kind == "SYSTEM_USER" else ""
+                    " Instagram аккаунтыг (Full control) олгоод «Холболт шалгах» дарна уу. Token-д pages_show_list эрх байх ёстой."
+                    ) if kind == "SYSTEM_USER" else " Нэвтрэх цонхонд ДОМЧ-ийн Page-ийг сонгосон эсэхээ шалгана уу."
             step("token", f"{name} token → Page token", False, f"{name} token-оос Page token гаргаж чадсангүй: {exc}{hint}")
             return steps
         cfg["page_token"] = page_token
@@ -906,7 +925,7 @@ def admin_put(request: Request, payload: dict = Body(...)):
         changes["verify_token"] = secrets.token_urlsafe(24)
     previous = {k: cfg[k] for k in KEYS}
     if credentials_changed:
-        changes.update(connected_at="", page_id="", page_name="", page_subscribed="", ig_id="", ig_username="", ig_status="")
+        changes.update(connected_at="", page_name="", page_subscribed="", ig_id="", ig_username="", ig_status="")
     store(db, changes)
     cfg.update(changes)
     steps = connect(db, cfg, request) if (credentials_changed or payload.get("connect")) else []

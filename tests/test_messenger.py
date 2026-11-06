@@ -36,6 +36,9 @@ TOKENS = {
     "EAASystemUserToken000000000": {"app_id": APP_ID, "type": "SYSTEM_USER", "is_valid": True, "expires_at": 0,
                                     "scopes": SCOPES + ["instagram_basic", "instagram_manage_messages", "business_management"]},
     "EAASystemUserNoAssets000000": {"app_id": APP_ID, "type": "SYSTEM_USER", "is_valid": True, "scopes": SCOPES},
+    "EAASystemUserNoList00000000": {"app_id": APP_ID, "type": "SYSTEM_USER", "is_valid": True,
+                                    "scopes": ["pages_messaging", "instagram_basic", "instagram_manage_messages"],
+                                    "granular_scopes": [{"scope": "pages_messaging", "target_ids": ["777"]}]},
     "EAAAppTypeToken000000000000": {"app_id": APP_ID, "type": "APP", "is_valid": True, "scopes": []},
     "EAAOtherAppToken00000000000": {"app_id": "999", "type": "PAGE", "is_valid": True, "profile_id": "777", "scopes": SCOPES},
     "EAANoScopeToken000000000000": {"app_id": APP_ID, "type": "PAGE", "is_valid": True, "profile_id": "777",
@@ -72,6 +75,9 @@ class FakeGraph:
                 return httpx.Response(400, json={"error": {"message": "Invalid OAuth access token signature.", "code": 190}})
             return httpx.Response(200, json={"data": TOKENS.get(q["input_token"], {
                 "is_valid": False, "error": {"code": 190, "message": "Invalid OAuth access token."}})})
+        if request.method == "GET" and path == "777" and q.get("access_token") == "EAASystemUserNoList00000000":
+            return httpx.Response(200, json={"id": "777", "name": "ДОМЧ", "access_token": "EAAWithInstagramToken000000",
+                                             "instagram_business_account": {"id": "17841400000000001"}})
         if request.method == "GET" and path in ("me", "777"):
             # what a Messenger-only token gets when reading the Page node (the reported error)
             return httpx.Response(400, json={"error": {"code": 100, "message": PAGES_READ_ERROR}})
@@ -567,7 +573,7 @@ def test_user_token_keeps_the_connected_page(client, fb):
 
 def test_user_token_without_pages_says_so(client, fb):
     step = connect(client, page_token="EAAUserNoPagesToken00000000").json()["steps"][0]
-    assert not step["ok"] and "Page алга" in step["message"]
+    assert not step["ok"] and "Page олдсонгүй" in step["message"] and "Нэвтрэх цонхонд" in step["message"]
 
 
 def test_missing_instagram_permission_lists_what_the_token_has(client, fb):
@@ -591,6 +597,14 @@ def test_reported_case_system_user_token_gives_page_and_instagram(client, fb):
 def test_system_user_without_the_page_assigned_says_how(client, fb):
     step = connect(client, page_token="EAASystemUserNoAssets000000").json()["steps"][0]
     assert not step["ok"] and "Assign assets" in step["message"]
+    assert "token-ийн эрх: pages_messaging, pages_manage_metadata, pages_show_list; Page олгогдсон: үгүй" in step["message"]
+
+
+def test_system_user_without_page_list_finds_the_page_by_id(client, fb):
+    """me/accounts is empty without pages_show_list; the Page granted to the token is asked for directly."""
+    steps = connect(client, page_token="EAASystemUserNoList00000000").json()["steps"]
+    assert steps[0]["key"] == "exchange" and steps[0]["ok"]
+    assert messenger.load(dbmod.get_db())["page_token"] == "EAAWithInstagramToken000000"
 
 
 def test_a_failing_new_token_keeps_the_working_one(client, fb):
