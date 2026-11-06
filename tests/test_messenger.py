@@ -39,6 +39,9 @@ TOKENS = {
     "EAASystemUserNoList00000000": {"app_id": APP_ID, "type": "SYSTEM_USER", "is_valid": True,
                                     "scopes": ["pages_messaging", "instagram_basic", "instagram_manage_messages"],
                                     "granular_scopes": [{"scope": "pages_messaging", "target_ids": ["777"]}]},
+    "EAASystemUserIgOnly00000000": {"app_id": APP_ID, "type": "SYSTEM_USER", "is_valid": True,
+                                    "scopes": ["instagram_basic", "instagram_manage_comments", "instagram_content_publish",
+                                               "instagram_manage_messages", "public_profile"]},
     "EAAAppTypeToken000000000000": {"app_id": APP_ID, "type": "APP", "is_valid": True, "scopes": []},
     "EAAOtherAppToken00000000000": {"app_id": "999", "type": "PAGE", "is_valid": True, "profile_id": "777", "scopes": SCOPES},
     "EAANoScopeToken000000000000": {"app_id": APP_ID, "type": "PAGE", "is_valid": True, "profile_id": "777",
@@ -613,3 +616,11 @@ def test_a_failing_new_token_keeps_the_working_one(client, fb):
     assert steps[-1]["key"] == "kept" and steps[-1]["warn"]
     cfg = messenger.load(dbmod.get_db())
     assert cfg["page_token"] == PAGE_TOKEN and cfg["connected_at"] and cfg["page_id"] == "777"
+
+
+def test_reported_case_instagram_only_system_user_token(client, fb):
+    """«token-ийн эрх: instagram_basic, …, public_profile; Page олгогдсон: үгүй»: say which Page permissions to tick."""
+    step = connect(client, page_token="EAASystemUserIgOnly00000000").json()["steps"][0]
+    assert not step["ok"] and "Facebook Page-ийн эрх огт алга" in step["message"]
+    assert "pages_show_list, pages_messaging, pages_manage_metadata-г сонгоно" in step["message"]
+    assert "Assign assets" in step["message"]

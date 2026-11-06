@@ -279,7 +279,13 @@ def page_token_from_user(cfg: dict, user_token: str, exchange: bool = True, info
                 pages = [page]
                 break
     if not pages:
-        scopes = ", ".join((info or {}).get("scopes") or []) or "—"
+        have = (info or {}).get("scopes") or []
+        page_scopes = [x for x in ("pages_show_list", "pages_messaging", "pages_manage_metadata") if x not in have]
+        if len(page_scopes) == 3:  # an Instagram-only token: the Page permissions were not ticked when it was made
+            raise ValueError("token-д Facebook Page-ийн эрх огт алга (одоо байгаа эрх: " + (", ".join(have) or "—") + ")."
+                             " Token-ийг дахин үүсгэхдээ Instagram-ийн эрхүүдтэй хамт pages_show_list, pages_messaging,"
+                             " pages_manage_metadata-г сонгоно. Нэг token Messenger, Instagram хоёуланд хүрнэ.")
+        scopes = ", ".join(have) or "—"
         granted = any(item.get("target_ids") for item in (info or {}).get("granular_scopes") or []
                       if str(item.get("scope", "")).startswith("pages_"))
         raise ValueError("энэ token-оор удирдах Facebook Page олдсонгүй"
