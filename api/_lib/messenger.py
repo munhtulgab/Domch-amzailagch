@@ -279,22 +279,36 @@ def page_token_from_user(cfg: dict, user_token: str, exchange: bool = True, info
             "grant_type": "fb_exchange_token", "client_id": cfg["app_id"], "client_secret": cfg["app_secret"],
             "fb_exchange_token": user_token,
         }).get("access_token") or user_token
-    pages = graph("GET", "me/accounts", long_lived, {"fields": "id,name,access_token,instagram_business_account",
-                                                     "limit": "100"}, app_secret=cfg["app_secret"]).get("data") or []
-    pages = [p for p in pages if p.get("access_token")]
+    # Only the fields every token may read: asking for instagram_business_account (or a Page's name) needs
+    # pages_read_engagement, and without it Facebook refuses the whole request.
+    pages, error = [], ""
+    for fields in ("id,name,access_token,instagram_business_account", "id,name,access_token", "id,access_token"):
+        try:
+            pages = graph("GET", "me/accounts", long_lived, {"fields": fields, "limit": "100"},
+                          app_secret=cfg["app_secret"]).get("data") or []
+        except GraphError as exc:
+            error = str(exc)
+            continue
+        pages = [p for p in pages if p.get("access_token")]
+        if pages:
+            break
     if not pages:
-        # me/accounts can come back empty (e.g. no pages_show_list): ask the Page itself, by the IDs the token was granted
-        # and the Page this site was connected to
+        # A Page managed through a Business portfolio may be missing from me/accounts: ask the Page itself,
+        # by the IDs the token was granted and the Page this site was connected to
         targets = [str(t) for item in (info or {}).get("granular_scopes") or []
                    if str(item.get("scope", "")).startswith("pages_") for t in item.get("target_ids") or []]
         for pid in dict.fromkeys(targets + ([cfg["page_id"]] if cfg["page_id"] else [])):
-            try:
-                page = graph("GET", pid, long_lived, {"fields": "id,name,access_token,instagram_business_account"},
-                             app_secret=cfg["app_secret"], timeout=6.0)
-            except GraphError:
-                continue
-            if page.get("access_token"):
-                pages = [page]
+            for fields in ("id,name,access_token", "access_token"):
+                try:
+                    page = graph("GET", pid, long_lived, {"fields": fields}, app_secret=cfg["app_secret"], timeout=6.0)
+                except GraphError as exc:
+                    error = str(exc)
+                    continue
+                if page.get("access_token"):
+                    page.setdefault("id", pid)
+                    pages = [page]
+                    break
+            if pages:
                 break
     if not pages:
         have = (info or {}).get("scopes") or []
@@ -307,7 +321,8 @@ def page_token_from_user(cfg: dict, user_token: str, exchange: bool = True, info
         granted = any(item.get("target_ids") for item in (info or {}).get("granular_scopes") or []
                       if str(item.get("scope", "")).startswith("pages_"))
         raise ValueError("энэ token-оор удирдах Facebook Page олдсонгүй"
-                         f" (token-ийн эрх: {scopes}; Page олгогдсон: {'тийм' if granted else 'үгүй'}).")
+                         f" (token-ийн эрх: {scopes}; Page олгогдсон: {'тийм' if granted else 'үгүй'}"
+                         + (f"; Facebook: {error[:200]}" if error else "") + ").")
     chosen = next((p for p in pages if str(p.get("id")) == cfg["page_id"]), None) if cfg["page_id"] else None
     if not chosen and len(pages) == 1:
         chosen = pages[0]
