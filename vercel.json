@@ -32,6 +32,10 @@
       "destination": "/api/index"
     },
     {
+      "source": "/privacy",
+      "destination": "/privacy.html"
+    },
+    {
       "source": "/admin",
       "destination": "/index.html"
     },

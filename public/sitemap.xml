@@ -4,4 +4,8 @@
     <loc>https://domch.gem.mn/</loc>
     <changefreq>weekly</changefreq>
   </url>
+  <url>
+    <loc>https://domch.gem.mn/privacy</loc>
+    <changefreq>yearly</changefreq>
+  </url>
 </urlset>
