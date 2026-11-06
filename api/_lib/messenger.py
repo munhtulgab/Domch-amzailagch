@@ -563,6 +563,8 @@ def send_path(db, cfg: dict, psid: str) -> str:
 
 def send_text(db, cfg: dict, psid: str, text: str, kind: str = "reply", quick_replies: list | None = None) -> dict:
     text = public_links(text)
+    if kind != "reply":  # automatic answers (buttons, knowledge base): a price comes with the factory-price reminder
+        text = ai.price_note(text)
     message = {"text": text}
     if quick_replies:
         message["quick_replies"] = quick_replies

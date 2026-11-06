@@ -167,12 +167,24 @@ def generate(key: str, model: str, system: str, contents: list, timeout: float =
     return clean(text)
 
 
+PRICE_NOTE = "Энэ нь үйлдвэрийн үнэ бөгөөд эмийн сан, дэлгүүрт үүнээс өндөр үнээр зарагдаж болно."
+PRICE = re.compile(r"\d[\d\s,.]*\d\s*(₮|төг)", re.I)
+PRICE_WARNED = re.compile(r"өндөр|илүү үнэ|үнэ нь өөр|үнэ өөр", re.I)
+
+
+def price_note(text: str) -> str:
+    """A price in a reply always comes with the reminder that it is the factory price and shops may charge more."""
+    if not PRICE.search(text or "") or PRICE_WARNED.search(text):
+        return text
+    return f"{text.rstrip()}\n{PRICE_NOTE}"
+
+
 def clean(text: str) -> str:
     text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
     text = re.sub(r"(?m)^\s*[*•]\s+", "• ", text)
     text = re.sub(r"(?<!\w)[*_]{1,2}(\S.*?\S|\S)[*_]{1,2}(?!\w)", r"\1", text)
     text = re.sub(r"(?m)^#+\s*", "", text)
-    return public_links(text).strip()[:1990]
+    return price_note(public_links(text).strip()[:1900])
 
 
 # ------------------------------------------------------------------ knowledge
@@ -203,8 +215,11 @@ def knowledge_items(db, messenger_faq: list | None = None) -> list:
     if products:
         lines = []
         for p in products:
-            price = f"{int(p['price']):,}₮".replace(",", " ") if p.get("price") else "үнийг салбараас лавлана"
+            price = (f"{int(p['price']):,}₮ (үйлдвэрийн үнэ)".replace(",", " ") if p.get("price")
+                     else "үнийг салбараас лавлана")
             lines.append(f"{p['volume_ml']} мл: {price}" + (f", онлайн: {p['online_url']}" if p.get("online_url") else ""))
+        if any(p.get("price") for p in products):
+            lines.append(PRICE_NOTE)
         items.append({"source": "Бүтээгдэхүүн", "title": "Савлагаа ба үнэ", "text": "\n".join(lines), "keys": "үнэ мл"})
     contact = {r["key"]: r["value"] for r in settings if r.get("value")}
     parts = [f"{label}: {contact[k]}" for k, label in (("phone", "Утас"), ("email", "И-мэйл"), ("address", "Хаяг"),
@@ -277,8 +292,9 @@ def system_prompt(items: list, site: str, extra: str) -> str:
 4. Холбоос хэрэгтэй үед сайтын хаягийг ашигла: {site} (жишээ нь худалдаалах цэг: {site}/#where).
 5. Markdown, од (*), гарчиг бүү хэрэглэ. Messenger энгийн текст харуулна.
 6. Өөрийгөө хиймэл оюун гэдгийг асуувал үнэнээр хэл.
-7. Хариултаа «Сайн байна уу» гэх мэт мэндчилгээгээр бүү эхлүүл, шууд асуултад нь хариул (мэндчилгээг тусад нь илгээдэг).
-8. Хаанаас авах, аль эмийн сангаар зарагддагийг асуувал: хэрэглэгч аль дүүрэг, аймагт байгаа нь тодорхойгүй бол
+7. Үнэ хэлэх бүрдээ энэ нь үйлдвэрийн үнэ бөгөөд эмийн сан, дэлгүүрт үүнээс өндөр үнээр зарагдаж болохыг заавал сануул.
+8. Хариултаа «Сайн байна уу» гэх мэт мэндчилгээгээр бүү эхлүүл, шууд асуултад нь хариул (мэндчилгээг тусад нь илгээдэг).
+9. Хаанаас авах, аль эмийн сангаар зарагддагийг асуувал: хэрэглэгч аль дүүрэг, аймагт байгаа нь тодорхойгүй бол
    эхлээд үүнийг асуу. Тодорхой бол МЭДЛЭГ доторх «Салбарууд: …» хэсгээс тэр газрын салбаруудыг (ихдээ 6) нэр, хаяг,
    цаг, утастай нь жагсаа. Тэнд салбар байхгүй бол үүнийг хэлээд {site}/#where хаягийг өг."""
     if extra.strip():

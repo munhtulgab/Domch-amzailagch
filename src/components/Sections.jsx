@@ -83,6 +83,9 @@ export function Sizes({ products, size, onSize, actions }) {
               );
             })}
           </div>
+          {list.some((p) => p.price) && (
+            <p className="price-note">Үйлдвэрийн үнэ. Эмийн сан, дэлгүүрт үүнээс өндөр үнээр зарагдаж болно.</p>
+          )}
           <dl className="specs">
             <div><dt>Ангилал</dt><dd>Ам зайлагч</dd></div>
             <div><dt>Амт</dt><dd>Гаа</dd></div>

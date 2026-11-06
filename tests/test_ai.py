@@ -408,7 +408,7 @@ def test_reported_case_first_question_gets_one_answer_not_welcome_plus_answer(cl
     gem.reply = "Сайн байна уу? ДОМЧ 250 мл нь 4,500 төгрөг."
     post(client, page_event(text="Hed be", mid="h1"))
     msgs = sent(fb)
-    assert len(msgs) == 1 and msgs[0]["text"] == "ДОМЧ 250 мл нь 4,500 төгрөг."  # no second «Сайн байна уу»
+    assert len(msgs) == 1 and msgs[0]["text"] == "ДОМЧ 250 мл нь 4,500 төгрөг.\n" + ai.PRICE_NOTE  # no second «Сайн байна уу»
     assert [q["title"] for q in msgs[0]["quick_replies"]] == ["Үнэ хэд вэ?"]
     post(client, page_event(text="Hurgelter avj bolhu", mid="h2"))
     assert sent(fb)[-1]["text"].startswith("ДОМЧ") and "quick_replies" not in sent(fb)[-1]
@@ -470,3 +470,36 @@ def test_like_as_the_first_message_gets_the_welcome(client, gem, fb):
     client.put("/api/admin/messenger/welcome", json={"auto_reply": "Сайн байна уу! Тавтай морил.", "faq": []}, headers=AUTH)
     post(client, page_event(psid="like-1", sticker="369239263222822", mid="l1"))
     assert [m["text"] for m in sent(fb)] == ["Сайн байна уу! Тавтай морил."]
+
+
+# ------------------------------------------------------------------ factory price reminder
+
+def test_price_note():
+    assert ai.price_note("250 мл нь 4500 төгрөг.") == "250 мл нь 4500 төгрөг.\n" + ai.PRICE_NOTE
+    assert ai.price_note("500 мл — 7 500₮") .endswith(ai.PRICE_NOTE)
+    already = "4 500₮. Эмийн санд үүнээс өндөр байж болно."
+    assert ai.price_note(already) == already  # not twice
+    assert ai.price_note("Насанд хүрэгчид 25 мл-ээр 10 секунд зайлна.") == "Насанд хүрэгчид 25 мл-ээр 10 секунд зайлна."
+
+
+def test_prices_always_come_with_the_reminder(client, gem, fb):
+    connect(client)
+    enable(client)
+    dbmod.get_db().run("UPDATE products SET price = CASE WHEN volume_ml = 250 THEN 4500 ELSE 7500 END")
+    items = ai.knowledge_items(dbmod.get_db())
+    prices = next(i for i in items if i["title"] == "Савлагаа ба үнэ")
+    assert prices["text"].startswith("250 мл: 4 500₮ (үйлдвэрийн үнэ)\n500 мл: 7 500₮ (үйлдвэрийн үнэ)")
+    assert "(үйлдвэрийн үнэ)" in prices["text"] and ai.PRICE_NOTE in prices["text"]
+    assert "үйлдвэрийн үнэ бөгөөд эмийн сан, дэлгүүрт үүнээс өндөр" in ai.system_prompt(items, "https://domch.gem.mn", "")
+    gem.reply = "ДОМЧ 250 мл нь 4,500 төгрөг, 500 мл нь 7,500 төгрөг."  # the model forgot the reminder
+    post(client, page_event(psid="price-1", text="Үнэ нь хэд вэ?", mid="pr1"))
+    assert sent(fb)[-1]["text"] == "ДОМЧ 250 мл нь 4,500 төгрөг, 500 мл нь 7,500 төгрөг.\n" + ai.PRICE_NOTE
+    # a quick-question answer with prices gets it too; a reply typed by staff is sent as written
+    client.put("/api/admin/messenger/welcome", json={"auto_reply": "Сайн байна уу!",
+               "faq": [{"q": "Үнэ хэд вэ?", "a": "250 мл — 4 500₮, 500 мл — 7 500₮."}]}, headers=AUTH)
+    ev = page_event(psid="price-1", text="Үнэ хэд вэ?", mid="pr2")
+    ev["entry"][0]["messaging"][0]["message"]["quick_reply"] = {"payload": "FAQ_0"}
+    post(client, ev)
+    assert sent(fb)[-1]["text"].endswith(ai.PRICE_NOTE)
+    client.post("/api/admin/messenger/threads/price-1/reply", json={"text": "Манайд 4 500₮ байна."}, headers=AUTH)
+    assert sent(fb)[-1]["text"] == "Манайд 4 500₮ байна."

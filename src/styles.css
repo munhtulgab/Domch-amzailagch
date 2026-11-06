@@ -257,6 +257,7 @@ html.menu-open .mcta { display: none; }
 .opt__meta { font-size: 13px; color: var(--muted); }
 .opt__price { margin-top: 6px; font-size: 16px; font-weight: 600; }
 .opt__price.is-muted { font-size: 13px; font-weight: 500; color: var(--muted); }
+.price-note { margin: 12px 0 0; font-size: 13px; color: var(--muted); }
 .specs { margin: 28px 0 0; display: flex; flex-wrap: wrap; gap: 10px 32px; }
 .specs dt { font-size: 12px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--label); }
 .specs dd { margin: 4px 0 0; font-weight: 600; }
