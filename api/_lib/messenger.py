@@ -253,7 +253,7 @@ def page_token_from_user(cfg: dict, user_token: str, exchange: bool = True, info
     """A user token (Graph API Explorer) or a system user token (Business Settings) → the Page's token.
 
     A user token is first exchanged for a long-lived one, so the Page token made from it does not expire;
-    a system user token already lasts. Returns (page_token, page_name).
+    a system user token already lasts. Returns (page_token, page_name, instagram_id or "").
     """
     long_lived = user_token
     if exchange:
@@ -299,7 +299,8 @@ def page_token_from_user(cfg: dict, user_token: str, exchange: bool = True, info
     if not chosen:
         names = ", ".join(p.get("name") or p["id"] for p in pages)
         raise ValueError(f"token хэд хэдэн Page удирддаг ({names}). Нэвтрэх цонхонд зөвхөн ДОМЧ-ийн Page-ийг сонгоно уу.")
-    return chosen["access_token"], chosen.get("name") or chosen["id"]
+    ig_id = str((chosen.get("instagram_business_account") or {}).get("id") or "") or instagram_from(info or {})
+    return chosen["access_token"], chosen.get("name") or chosen["id"], ig_id
 
 
 def page_id_from(info: dict) -> str:
@@ -333,9 +334,11 @@ def connect(db, cfg: dict, request: Request) -> list:
              "App ID эсвэл App Secret буруу байна. App settings → Basic хэсгээс дахин хуулна уу." + _detail(exc))
         return steps
     kind = str(info.get("type") or "").upper()
+    owner_token, ig_hint = "", ""
     if kind in ("USER", "SYSTEM_USER") and info.get("is_valid") and str(info.get("app_id") or "") == cfg["app_id"]:
         try:
-            page_token, label = page_token_from_user(cfg, cfg["page_token"], exchange=kind == "USER", info=info)
+            owner_token = cfg["page_token"]
+            page_token, label, ig_hint = page_token_from_user(cfg, owner_token, exchange=kind == "USER", info=info)
             info = graph("GET", "debug_token", f"{cfg['app_id']}|{cfg['app_secret']}",
                          {"input_token": page_token}).get("data") or {}
         except (GraphError, ValueError) as exc:
@@ -403,7 +406,7 @@ def connect(db, cfg: dict, request: Request) -> list:
             cfg["page_subscribed"] = ""
             step("page", "Page-ийг апптай холбох", False, friendly(exc))
     store(db, {"page_subscribed": cfg["page_subscribed"]})
-    connect_instagram(db, cfg, info, url, step)
+    connect_instagram(db, cfg, info, url, step, ig_hint=ig_hint, owner_token=owner_token)
 
     # connected = nothing failed outright; a Page subscription done by hand in the Meta dashboard still counts
     if all(s["ok"] or s["warn"] for s in steps):
@@ -430,7 +433,25 @@ def instagram_from(info: dict) -> str:
     return ""
 
 
-def connect_instagram(db, cfg: dict, info: dict, url: str, step) -> None:
+def linked_instagram(cfg: dict, tokens: list) -> tuple:
+    """The Instagram account linked to the Page, asked with each token in turn. Returns (id, error text)."""
+    error = ""
+    for token in tokens:
+        if not token:
+            continue
+        try:
+            page = graph("GET", cfg["page_id"], token, {"fields": "instagram_business_account,connected_instagram_account"},
+                         app_secret=cfg["app_secret"], timeout=5.0)
+        except GraphError as exc:
+            error = str(exc)
+            continue
+        ig = page.get("instagram_business_account") or page.get("connected_instagram_account") or {}
+        if ig.get("id"):
+            return str(ig["id"]), ""
+    return "", error
+
+
+def connect_instagram(db, cfg: dict, info: dict, url: str, step, ig_hint: str = "", owner_token: str = "") -> None:
     """Instagram DMs arrive through the same app and Page token when the token has the Instagram permissions."""
     scopes = info.get("scopes") or []
     if "instagram_manage_messages" not in scopes:
@@ -441,18 +462,19 @@ def connect_instagram(db, cfg: dict, info: dict, url: str, step) -> None:
         step("instagram", "Instagram DM", False,
              f"Token-д {', '.join(missing)} эрх алга (одоо байгаа эрх: {have}). " + IG_SETUP, warn=True)
         return
-    ig_id = instagram_from(info)
+    # the account granted with the token (system user assets, login dialog), else the one linked to the Page
+    ig_id, error = instagram_from(info) or ig_hint or cfg.get("ig_id") or "", ""  # cfg: found on an earlier connect
     if not ig_id:
-        try:
-            linked = graph("GET", cfg["page_id"], cfg["page_token"], {"fields": "instagram_business_account"},
-                           app_secret=cfg["app_secret"], timeout=4.0)
-            ig_id = str((linked.get("instagram_business_account") or {}).get("id") or "")
-        except GraphError:
-            ig_id = ""
+        ig_id, error = linked_instagram(cfg, [cfg["page_token"], owner_token])
     if not ig_id:
         cfg.update(ig_id="", ig_username="", ig_status="nolink")
         store(db, {"ig_id": "", "ig_username": "", "ig_status": "nolink"})
-        step("instagram", "Instagram DM", False, "Энэ Page-тэй холбосон Instagram аккаунт олдсонгүй. " + IG_SETUP, warn=True)
+        step("instagram", "Instagram DM", False,
+             "Энэ Page-тэй холбосон Instagram аккаунт олдсонгүй" + (f" (Facebook: {error[:160]})" if error else "") + ". "
+             "Business портфолид хоёулаа байгаа ч Page болон Instagram хоорондоо холбогдсон байх ёстой: Facebook Page →"
+             " Тохиргоо → Холбогдсон аккаунтууд (Linked accounts) → Instagram → Холбох; эсвэл Meta Business Suite →"
+             " Тохиргоо → Instagram аккаунтууд → тухайн аккаунт → Холбогдсон хөрөнгө → Page нэмэх. Дараа нь «Холболт шалгах» дарна.",
+             warn=True)
         return
     username = ""
     try:

@@ -42,6 +42,12 @@ TOKENS = {
     "EAASystemUserIgOnly00000000": {"app_id": APP_ID, "type": "SYSTEM_USER", "is_valid": True,
                                     "scopes": ["instagram_basic", "instagram_manage_comments", "instagram_content_publish",
                                                "instagram_manage_messages", "public_profile"]},
+    "EAASystemUserFull0000000000": {"app_id": APP_ID, "type": "SYSTEM_USER", "is_valid": True, "expires_at": 0,
+                                    "scopes": SCOPES + ["instagram_basic", "instagram_manage_messages"],
+                                    "granular_scopes": [{"scope": "pages_messaging", "target_ids": ["777"]},
+                                                        {"scope": "instagram_basic", "target_ids": ["17841400000000001"]}]},
+    "EAAPageNoIgGranular0000000": {"app_id": APP_ID, "type": "PAGE", "is_valid": True, "profile_id": "777", "expires_at": 0,
+                                   "scopes": SCOPES + ["instagram_basic", "instagram_manage_messages"]},
     "EAAAppTypeToken000000000000": {"app_id": APP_ID, "type": "APP", "is_valid": True, "scopes": []},
     "EAAOtherAppToken00000000000": {"app_id": "999", "type": "PAGE", "is_valid": True, "profile_id": "777", "scopes": SCOPES},
     "EAANoScopeToken000000000000": {"app_id": APP_ID, "type": "PAGE", "is_valid": True, "profile_id": "777",
@@ -97,6 +103,7 @@ class FakeGraph:
         if path == "me/accounts":
             pages = {
                 "EAALongUserToken000000000000000": [{"id": "777", "name": "ДОМЧ", "access_token": PAGE_TOKEN}],
+                "EAASystemUserFull0000000000": [{"id": "777", "name": "ДОМЧ", "access_token": "EAAPageNoIgGranular0000000"}],
                 "EAASystemUserToken000000000": [
                     {"id": "777", "name": "ДОМЧ", "access_token": "EAAWithInstagramToken000000",
                      "instagram_business_account": {"id": "17841400000000001"}}],
@@ -624,3 +631,19 @@ def test_reported_case_instagram_only_system_user_token(client, fb):
     assert not step["ok"] and "Facebook Page-ийн эрх огт алга" in step["message"]
     assert "pages_show_list, pages_messaging, pages_manage_metadata-г сонгоно" in step["message"]
     assert "Assign assets" in step["message"]
+
+
+def test_reported_case_instagram_found_from_the_system_user_grant(client, fb):
+    """«Энэ Page-тэй холбосон Instagram аккаунт олдсонгүй»: the Page token alone could not read the link, but the
+    Instagram account was granted to the system user, so it is taken from there."""
+    steps = connect(client, page_token="EAASystemUserFull0000000000").json()["steps"]
+    ig = next(s for s in steps if s["key"] == "instagram")
+    assert ig["ok"] and "@domch.mn" in ig["message"], ig
+    cfg = messenger.load(dbmod.get_db())
+    assert cfg["ig_id"] == "17841400000000001" and cfg["page_token"] == "EAAPageNoIgGranular0000000"
+
+
+def test_instagram_not_linked_says_how_with_the_facebook_reason(client, fb):
+    steps = connect(client, page_token="EAAPageNoIgGranular0000000").json()["steps"]
+    ig = next(s for s in steps if s["key"] == "instagram")
+    assert ig["warn"] and "Linked accounts" in ig["message"] and "Facebook: (#100)" in ig["message"]
