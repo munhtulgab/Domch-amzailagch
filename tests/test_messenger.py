@@ -53,6 +53,13 @@ TOKENS = {
                                                         "public_profile"],
                                     "granular_scopes": [{"scope": "pages_messaging", "target_ids": ["777"]},
                                                         {"scope": "instagram_basic", "target_ids": ["17841400000000001"]}]},
+    "EAAUserBizNoEngage000000000": {"app_id": APP_ID, "type": "USER", "is_valid": True,
+                                    "scopes": SCOPES + ["instagram_basic", "instagram_manage_messages"],
+                                    "granular_scopes": [{"scope": "pages_messaging", "target_ids": ["777"]}]},
+    "EAAUserBizMgmtToken00000000": {"app_id": APP_ID, "type": "USER", "is_valid": True,
+                                    "scopes": SCOPES + ["instagram_basic", "instagram_manage_messages", "business_management"],
+                                    "granular_scopes": [{"scope": "pages_messaging", "target_ids": ["777"]},
+                                                        {"scope": "instagram_basic", "target_ids": ["17841400000000001"]}]},
     "EAAAppTypeToken000000000000": {"app_id": APP_ID, "type": "APP", "is_valid": True, "scopes": []},
     "EAAOtherAppToken00000000000": {"app_id": "999", "type": "PAGE", "is_valid": True, "profile_id": "777", "scopes": SCOPES},
     "EAANoScopeToken000000000000": {"app_id": APP_ID, "type": "PAGE", "is_valid": True, "profile_id": "777",
@@ -89,6 +96,15 @@ class FakeGraph:
                 return httpx.Response(400, json={"error": {"message": "Invalid OAuth access token signature.", "code": 190}})
             return httpx.Response(200, json={"data": TOKENS.get(q["input_token"], {
                 "is_valid": False, "error": {"code": 190, "message": "Invalid OAuth access token."}})})
+        if q.get("access_token") in ("EAALongUserBizNoEngage000000000", "EAALongUserBizMgmtToken00000000"):
+            if path == "me/accounts":
+                return httpx.Response(200, json={"data": []})
+            if path == "me/businesses":
+                return httpx.Response(200, json={"data": [{"id": "biz1"}]})
+            if path == "biz1/owned_pages":
+                return httpx.Response(200, json={"data": [{"id": "777", "name": "ДОМЧ", "access_token": "EAAWithInstagramToken000000"}]})
+            if path == "777":
+                return httpx.Response(400, json={"error": {"code": 100, "message": PAGES_READ_ERROR}})
         if path == "me/accounts" and q.get("access_token") == "EAALongUserBizPageToken00000000":
             if "instagram_business_account" in q.get("fields", ""):
                 return httpx.Response(400, json={"error": {"code": 100, "message": PAGES_READ_ERROR}})
@@ -733,3 +749,16 @@ def test_reported_case_business_page_without_pages_read_engagement(client, fb):
     assert by["exchange"]["ok"] and by["token"]["ok"] and by["instagram"]["ok"], steps
     cfg = messenger.load(dbmod.get_db())
     assert cfg["page_token"] == "EAAWithInstagramToken000000" and cfg["ig_id"] == "17841400000000001"
+
+
+def test_reported_case_business_page_needs_pages_read_engagement(client, fb):
+    """«Page олгогдсон: тийм; Facebook: (#100) … requires the 'pages_read_engagement' permission»: say what to add."""
+    step = connect(client, page_token="EAAUserBizNoEngage000000000").json()["steps"][0]
+    assert not step["ok"] and "pages_read_engagement болон business_management эрхийг нэмж" in step["message"]
+
+
+def test_business_management_finds_the_page_through_the_portfolio(client, fb):
+    steps = connect(client, page_token="EAAUserBizMgmtToken00000000").json()["steps"]
+    by = {s["key"]: s for s in steps}
+    assert by["exchange"]["ok"] and by["instagram"]["ok"], steps
+    assert messenger.load(dbmod.get_db())["page_token"] == "EAAWithInstagramToken000000"

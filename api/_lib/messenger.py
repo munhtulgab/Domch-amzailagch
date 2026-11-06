@@ -310,6 +310,26 @@ def page_token_from_user(cfg: dict, user_token: str, exchange: bool = True, info
                     break
             if pages:
                 break
+    if not pages and "business_management" in ((info or {}).get("scopes") or []):
+        # through the Business portfolio that owns (or manages) the Page
+        try:
+            businesses = graph("GET", "me/businesses", long_lived, {"fields": "id", "limit": "50"},
+                               app_secret=cfg["app_secret"]).get("data") or []
+        except GraphError as exc:
+            businesses, error = [], str(exc)
+        for biz in businesses:
+            for edge in ("owned_pages", "client_pages"):
+                try:
+                    listed = graph("GET", f"{biz['id']}/{edge}", long_lived, {"fields": "id,name,access_token", "limit": "100"},
+                                   app_secret=cfg["app_secret"]).get("data") or []
+                except GraphError as exc:
+                    error = str(exc)
+                    continue
+                pages = [p for p in listed if p.get("access_token")]
+                if pages:
+                    break
+            if pages:
+                break
     if not pages:
         have = (info or {}).get("scopes") or []
         page_scopes = [x for x in ("pages_show_list", "pages_messaging", "pages_manage_metadata") if x not in have]
@@ -320,6 +340,11 @@ def page_token_from_user(cfg: dict, user_token: str, exchange: bool = True, info
         scopes = ", ".join(have) or "—"
         granted = any(item.get("target_ids") for item in (info or {}).get("granular_scopes") or []
                       if str(item.get("scope", "")).startswith("pages_"))
+        need = [x for x in ("pages_read_engagement", "business_management") if x not in have]
+        if granted and need and "pages_read_engagement" in error:
+            raise ValueError(f"Page олгогдсон ч Facebook Page-ийн token-ийг {', '.join(need)} эрхгүйгээр өгөхгүй байна"
+                             " (Page Business портфолиор удирдагддаг үед ингэдэг). Graph API Explorer дээр Permissions-д "
+                             + " болон ".join(need) + " эрхийг нэмж, token-ийг дахин үүсгээд оруулна уу.")
         raise ValueError("энэ token-оор удирдах Facebook Page олдсонгүй"
                          f" (token-ийн эрх: {scopes}; Page олгогдсон: {'тийм' if granted else 'үгүй'}"
                          + (f"; Facebook: {error[:200]}" if error else "") + ").")
@@ -463,7 +488,7 @@ IG_SETUP = (
     "Засах: (1) Instagram professional (Business/Creator) аккаунтаа энэ Facebook Page-тэй холбоно (Meta Business Suite →"
     " Тохиргоо → Instagram аккаунт); (2) Instagram апп → Тохиргоо → Мессеж ба story-ийн хариу → Холбогдсон хэрэгслүүд →"
     " «Allow access to messages»-ийг асаана; (3) developers.facebook.com/tools/explorer → Meta App: өөрийн апп, User or"
-    " Page: User Token, Permissions: pages_show_list, pages_messaging, pages_manage_metadata, instagram_basic,"
+    " Page: User Token, Permissions: pages_show_list, pages_messaging, pages_manage_metadata, pages_read_engagement, business_management, instagram_basic,"
     " instagram_manage_messages → Generate Access Token → нэвтрэх цонхонд ДОМЧ-ийн Page болон Instagram аккаунтыг сонгоно;"
     " (4) гарсан token-ийг «Page access token» талбарт оруулж «Хадгалаад холбох» дарна — систем өөрөө хугацаагүй Page token"
     " болгож, Messenger, Instagram хоёуланд ашиглана. Token-ийг ДОМЧ апп-ийн админ Facebook аккаунтаар үүсгэнэ (System user-ийн"

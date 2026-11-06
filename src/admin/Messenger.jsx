@@ -331,7 +331,7 @@ export function MessengerSettings({ call, onChange }) {
           error={errors.app_secret} hint="App settings → Basic → App secret → Show" />
         <SecretField id="m-token" label="Page access token" saved={cfg.page_token} value={form.page_token} onChange={set('page_token')}
           error={errors.page_token}
-          hint="Нэг token Messenger, Instagram хоёуланд: апп-ийн админ аккаунтаар Graph API Explorer → User Token (pages_show_list, pages_messaging, pages_manage_metadata, instagram_basic, instagram_manage_messages). Систем хугацаагүй Page token болгоно." />
+          hint="Нэг token Messenger, Instagram хоёуланд: апп-ийн админ аккаунтаар Graph API Explorer → User Token (pages_show_list, pages_messaging, pages_manage_metadata, pages_read_engagement, business_management, instagram_basic, instagram_manage_messages). Систем хугацаагүй Page token болгоно." />
         <details className="a-field a-field--wide a-details a-details--inline" open={Boolean(cfg.ig_token && cfg.ig_token.set)}>
           <summary>Instagram-д тусдаа token (заавал биш)</summary>
           <SecretField id="m-igtoken" label="Instagram token" saved={cfg.ig_token || { set: false }} value={form.ig_token}
@@ -373,7 +373,7 @@ export function MessengerSettings({ call, onChange }) {
         <ol className="a-guide">
           <li>Instagram аккаунтаа <b>professional</b> (Business эсвэл Creator) болгож, ДОМЧ-ийн Facebook Page-тэй холбоно: Meta Business Suite → Тохиргоо → Instagram аккаунт.</li>
           <li>Instagram апп → Тохиргоо → <b>Мессеж ба story-ийн хариу</b> → <b>Холбогдсон хэрэгслүүд</b> → <b>Allow access to messages</b>-ийг асаана.</li>
-          <li>ДОМЧ апп-ийн <b>админ</b> Facebook аккаунтаар нэвтэрч <a className="a-link" href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener noreferrer">Graph API Explorer</a>-ийг нээж: <b>Meta App</b> — өөрийн апп, <b>User or Page</b> — User Token, <b>Permissions</b> — pages_show_list, pages_messaging, pages_manage_metadata, instagram_basic, instagram_manage_messages. <b>Generate Access Token</b> дарна.</li>
+          <li>ДОМЧ апп-ийн <b>админ</b> Facebook аккаунтаар нэвтэрч <a className="a-link" href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener noreferrer">Graph API Explorer</a>-ийг нээж: <b>Meta App</b> — өөрийн апп, <b>User or Page</b> — User Token, <b>Permissions</b> — pages_show_list, pages_messaging, pages_manage_metadata, pages_read_engagement, business_management, instagram_basic, instagram_manage_messages. <b>Generate Access Token</b> дарна.</li>
           <li>Нээгдэх Facebook-ийн цонхонд ДОМЧ-ийн <b>Page</b>-ийг болон <b>Instagram аккаунтыг</b> сонгож зөвшөөрнө. Өмнө нь зөвшөөрсөн бол «Edit previous settings» дарж Instagram аккаунтыг нэмж сонгоно.</li>
           <li>Гарсан token-ийг хуулж дээрх «Page access token» талбарт оруулаад <b>Хадгалаад холбох</b> дарна. Систем түүнийг хугацаагүй Page token болгож хадгална. «Instagram DM» алхам ✓ болно.</li>
           <li className="a-muted">Messenger-ийн «Generate access tokens» товчоор үүсгэсэн token-д Instagram-ийн эрх ордоггүй, Business Settings-ийн System user token-оор Messenger зөвхөн апп дээр эрхтэй хүмүүст хариулдаг. Тиймээс админ аккаунтын Graph API Explorer-ийн token хамгийн тохиромжтой.</li>
