@@ -762,3 +762,16 @@ def test_business_management_finds_the_page_through_the_portfolio(client, fb):
     by = {s["key"]: s for s in steps}
     assert by["exchange"]["ok"] and by["instagram"]["ok"], steps
     assert messenger.load(dbmod.get_db())["page_token"] == "EAAWithInstagramToken000000"
+
+
+def test_reported_case_messenger_token_without_instagram_keeps_instagram_on_the_old_token(client, fb):
+    """Instagram works with the system user's token; a Messenger-only token («Generate access tokens») is added for
+    Messenger: Instagram keeps going with the token it had."""
+    connect(client, page_token="EAASystemUserToken000000000")  # → Page token with Instagram (works for Instagram)
+    assert messenger.load(dbmod.get_db())["ig_status"] == "1"
+    steps = connect(client, page_token="EAAMessagingOnlyToken000000").json()["steps"]
+    by = {s["key"]: s for s in steps}
+    assert by["token"]["ok"] and by["instagram"]["ok"] and by["ig_kept"]["ok"], steps
+    cfg = messenger.load(dbmod.get_db())
+    assert cfg["page_token"] == "EAAMessagingOnlyToken000000"
+    assert cfg["ig_token"] == "EAAWithInstagramToken000000" and cfg["ig_page_token"] == "EAAWithInstagramToken000000"

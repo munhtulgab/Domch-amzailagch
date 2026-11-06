@@ -1181,6 +1181,17 @@ def admin_put(request: Request, payload: dict = Body(...)):
     store(db, changes)
     cfg.update(changes)
     steps = connect(db, cfg, request) if (credentials_changed or payload.get("connect")) else []
+    ig_step = next((s for s in steps if s["key"] == "instagram"), None)
+    if (ig_step and not ig_step["ok"] and cfg.get("ig_status") == "missing" and previous["ig_status"] == "1"
+            and not previous["ig_token"] and previous["page_token"] != cfg["page_token"]
+            and not payload.get("ig_token_clear")):
+        # the new token is for Messenger only (e.g. «Generate access tokens»): Instagram keeps the token it worked with
+        store(db, {"ig_token": previous["page_token"], "ig_id": previous["ig_id"], "ig_username": previous["ig_username"]})
+        cfg = load(db)
+        steps = connect(db, cfg, request)
+        steps.append({"key": "ig_kept", "label": "Instagram", "ok": True, "warn": False,
+                      "message": "Шинэ token-д Instagram-ийн эрх байхгүй тул Instagram өмнөх token-оороо үргэлжилнэ"
+                                 " («Instagram-д тусдаа token» хэсэгт хадгалагдсан)."})
     token_failed = any(s["key"] == "token" and not s["ok"] for s in steps)
     if credentials_changed and token_failed and previous["connected_at"]:
         # Messenger kept working with the old credentials: put them back instead of leaving it broken
