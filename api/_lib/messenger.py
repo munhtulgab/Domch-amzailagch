@@ -481,6 +481,10 @@ def connect(db, cfg: dict, request: Request) -> list:
     if all(s["ok"] or s["warn"] for s in steps):
         cfg["connected_at"] = now_utc()
         store(db, {"connected_at": cfg["connected_at"]})
+        if cfg["greeting"].strip() or parse_faq(cfg):
+            # the greeting screen and quick questions live on the Page: push them again with this token
+            sync = sync_profile(db, cfg)
+            step("profile", "Мэндчилгээний дэлгэц", sync["ok"], sync["message"], warn=True)
     return steps
 
 

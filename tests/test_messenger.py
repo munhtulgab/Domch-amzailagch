@@ -775,3 +775,15 @@ def test_reported_case_messenger_token_without_instagram_keeps_instagram_on_the_
     cfg = messenger.load(dbmod.get_db())
     assert cfg["page_token"] == "EAAMessagingOnlyToken000000"
     assert cfg["ig_token"] == "EAAWithInstagramToken000000" and cfg["ig_page_token"] == "EAAWithInstagramToken000000"
+
+
+def test_connecting_pushes_the_greeting_screen_again(client, fb):
+    """After a token change the greeting and quick questions are sent to Facebook with the new token."""
+    connect(client)
+    save_welcome(client)
+    fb.calls.clear()
+    steps = connect(client, page_token="EAAWithInstagramToken000000").json()["steps"]
+    assert next(s for s in steps if s["key"] == "profile")["ok"]
+    profile = [c for c in fb.calls if c[1] == "me/messenger_profile" and c[0] == "POST"]
+    assert profile and profile[0][2]["access_token"] == "EAAWithInstagramToken000000"
+    assert any((c[3] or {}).get("platform") == "instagram" for c in profile)  # Instagram's quick questions too
