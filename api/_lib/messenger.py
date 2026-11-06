@@ -466,11 +466,31 @@ def connect_instagram(db, cfg: dict, info: dict, url: str, step, ig_hint: str = 
     ig_id, error = instagram_from(info) or ig_hint or cfg.get("ig_id") or "", ""  # cfg: found on an earlier connect
     if not ig_id:
         ig_id, error = linked_instagram(cfg, [cfg["page_token"], owner_token])
+    if not ig_id and "pages_read_engagement" in error and url.startswith("https://"):
+        # the link cannot be read without pages_read_engagement, but DMs do not need it: subscribe the Instagram webhook
+        # and learn the account from the first DM (its entry id)
+        try:
+            graph("POST", f"{cfg['app_id']}/subscriptions", f"{cfg['app_id']}|{cfg['app_secret']}", {
+                "object": "instagram", "callback_url": url, "fields": IG_FIELDS,
+                "verify_token": cfg["verify_token"], "include_values": "true",
+            }, timeout=12.0)
+        except GraphError as exc:
+            cfg.update(ig_id="", ig_username="", ig_status="error")
+            store(db, {"ig_id": "", "ig_username": "", "ig_status": "error"})
+            step("instagram", "Instagram DM", False, friendly(exc), warn=True)
+            return
+        cfg.update(ig_id="", ig_username="", ig_status="pending")
+        store(db, {"ig_id": "", "ig_username": "", "ig_status": "pending"})
+        step("instagram", "Instagram DM", False,
+             "Instagram-ийн webhook бүртгэгдлээ. Token-д pages_read_engagement эрх байхгүй тул Page-тэй холбосон Instagram"
+             " аккаунтыг урьдчилан уншиж чадсангүй — Instagram-аас ДОМЧ руу нэг DM бичихэд систем аккаунтыг автоматаар"
+             " танина. Эсвэл token-ийг pages_read_engagement эрхтэй дахин үүсгээд «Хадгалаад холбох» дарна.", warn=True)
+        return
     if not ig_id:
         cfg.update(ig_id="", ig_username="", ig_status="nolink")
         store(db, {"ig_id": "", "ig_username": "", "ig_status": "nolink"})
         step("instagram", "Instagram DM", False,
-             "Энэ Page-тэй холбосон Instagram аккаунт олдсонгүй" + (f" (Facebook: {error[:160]})" if error else "") + ". "
+             "Энэ Page-тэй холбосон Instagram аккаунт олдсонгүй" + (f" (Facebook: {error[:300]})" if error else "") + ". "
              "Business портфолид хоёулаа байгаа ч Page болон Instagram хоорондоо холбогдсон байх ёстой: Facebook Page →"
              " Тохиргоо → Холбогдсон аккаунтууд (Linked accounts) → Instagram → Холбох; эсвэл Meta Business Suite →"
              " Тохиргоо → Instagram аккаунтууд → тухайн аккаунт → Холбогдсон хөрөнгө → Page нэмэх. Дараа нь «Холболт шалгах» дарна.",
@@ -846,6 +866,8 @@ def process(cfg: dict, data: dict, site: str) -> None:
     db = get_db()
     channel = "instagram" if data.get("object") == "instagram" else "messenger"
     for entry in data.get("entry") or []:
+        if channel == "instagram" and entry.get("id") and cfg.get("ig_status") == "pending":
+            adopt_instagram(db, cfg, str(entry["id"]))
         for event in entry.get("messaging") or []:
             try:
                 handle_event(db, cfg, event, site=site, channel=channel)
@@ -855,6 +877,18 @@ def process(cfg: dict, data: dict, site: str) -> None:
         move_webhook(db, cfg, site)
     except DBError:
         pass
+
+
+def adopt_instagram(db, cfg: dict, ig_id: str) -> None:
+    """The first Instagram DM tells which account the Page's Instagram is (entry id), when it could not be read before."""
+    username = ""
+    try:
+        username = graph("GET", ig_id, cfg["page_token"], {"fields": "username"}, app_secret=cfg["app_secret"],
+                         timeout=4.0).get("username", "")
+    except GraphError:
+        pass
+    cfg.update(ig_id=ig_id, ig_username=username, ig_status="1")
+    store(db, {"ig_id": ig_id, "ig_username": username, "ig_status": "1"})
 
 
 def move_webhook(db, cfg: dict, site: str) -> bool:
@@ -872,7 +906,7 @@ def move_webhook(db, cfg: dict, site: str) -> bool:
     cfg["webhook_tried_at"] = now_utc()
     store(db, {"webhook_tried_at": cfg["webhook_tried_at"]})
     app_token = f"{cfg['app_id']}|{cfg['app_secret']}"
-    objects = [("page", FIELDS)] + ([("instagram", IG_FIELDS)] if cfg["ig_status"] == "1" else [])
+    objects = [("page", FIELDS)] + ([("instagram", IG_FIELDS)] if cfg["ig_status"] in ("1", "pending") else [])
     try:
         for name, fields in objects:
             graph("POST", f"{cfg['app_id']}/subscriptions", app_token, {

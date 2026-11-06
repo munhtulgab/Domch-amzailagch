@@ -643,7 +643,17 @@ def test_reported_case_instagram_found_from_the_system_user_grant(client, fb):
     assert cfg["ig_id"] == "17841400000000001" and cfg["page_token"] == "EAAPageNoIgGranular0000000"
 
 
-def test_instagram_not_linked_says_how_with_the_facebook_reason(client, fb):
+def test_reported_case_link_unreadable_without_pages_read_engagement(client, fb):
+    """«(#100) … requires the 'pages_read_engagement' permission»: subscribe Instagram anyway, learn the account
+    from the first DM."""
     steps = connect(client, page_token="EAAPageNoIgGranular0000000").json()["steps"]
     ig = next(s for s in steps if s["key"] == "instagram")
-    assert ig["warn"] and "Linked accounts" in ig["message"] and "Facebook: (#100)" in ig["message"]
+    assert ig["warn"] and "webhook бүртгэгдлээ" in ig["message"] and "pages_read_engagement" in ig["message"]
+    assert [c[2]["object"] for c in fb.calls if c[1] == f"{APP_ID}/subscriptions"][-1] == "instagram"
+    assert messenger.load(dbmod.get_db())["ig_status"] == "pending"
+    raw, headers = signed(ig_event(text="Сайн байна уу", mid="first-ig"))
+    client.post("/api/messenger/webhook", content=raw, headers=headers)
+    cfg = messenger.load(dbmod.get_db())
+    assert cfg["ig_status"] == "1" and cfg["ig_id"] == IG_ID and cfg["ig_username"] == "domch.mn"
+    view = client.get("/api/admin/messenger/threads", headers=AUTH).json()
+    assert any(t.get("channel") == "instagram" for t in view["items"])

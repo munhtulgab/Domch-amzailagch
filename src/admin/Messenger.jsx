@@ -295,9 +295,11 @@ export function MessengerSettings({ call, onChange }) {
           <p className={`a-status__err ${cfg.ig_status === '1' ? 'a-note' : 'a-muted'}`}>
             {cfg.ig_status === '1'
               ? `Instagram холбогдсон: ${cfg.ig_username ? `@${cfg.ig_username}` : cfg.ig_id}. Instagram-ийн DM мөн «Messenger» цэсэнд ирж, AI хариулна.`
-              : cfg.ig_status === 'error'
-                ? 'Instagram-ийг холбож чадсангүй. Доорх алхмын тайлбарыг харна уу.'
-                : 'Instagram холбогдоогүй. Доорх «Instagram-ийг холбох» зааврыг харна уу.'}
+              : cfg.ig_status === 'pending'
+                ? 'Instagram-ийн webhook бүртгэгдсэн. Instagram-аас ДОМЧ руу нэг DM ирэхэд аккаунтыг автоматаар танина.'
+                : cfg.ig_status === 'error'
+                  ? 'Instagram-ийг холбож чадсангүй. Доорх алхмын тайлбарыг харна уу.'
+                  : 'Instagram холбогдоогүй. Доорх «Instagram-ийг холбох» зааврыг харна уу.'}
           </p>
         )}
         {connected && cfg.webhook_saved && cfg.webhook_saved !== cfg.webhook_url && (
