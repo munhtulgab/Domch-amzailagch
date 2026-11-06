@@ -1134,7 +1134,10 @@ def admin_put(request: Request, payload: dict = Body(...)):
         changes["verify_token"] = secrets.token_urlsafe(24)
     previous = {k: cfg[k] for k in KEYS}
     if credentials_changed:
-        changes.update(connected_at="", page_name="", page_subscribed="", ig_id="", ig_username="", ig_status="")
+        changes.update(connected_at="", page_name="", page_subscribed="")
+        # the Instagram account is looked up again only when the token Instagram uses changed
+        if changes.get("ig_token", cfg["ig_token"]) != cfg["ig_token"] or not changes.get("ig_token", cfg["ig_token"]):
+            changes.update(ig_id="", ig_username="", ig_status="")
     store(db, changes)
     cfg.update(changes)
     steps = connect(db, cfg, request) if (credentials_changed or payload.get("connect")) else []

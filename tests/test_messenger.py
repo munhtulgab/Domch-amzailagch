@@ -702,3 +702,11 @@ def test_reported_case_review_refusal_is_explained(client, fb):
     client.post("/api/messenger/webhook", content=raw, headers=headers)
     err = client.get("/api/admin/messenger", headers=AUTH).json()["last_error"]
     assert "зөвхөн апп дээр эрхтэй" in err["message"] and "Generate access tokens" in err["message"]
+
+
+def test_changing_the_messenger_token_keeps_instagram(client, fb):
+    connect(client, ig_token="EAASystemUserToken000000000")
+    steps = connect(client, page_token="EAAMessagingOnlyToken000000").json()["steps"]  # a new Messenger token only
+    assert next(s for s in steps if s["key"] == "instagram")["ok"]
+    cfg = messenger.load(dbmod.get_db())
+    assert cfg["ig_id"] == "17841400000000001" and cfg["page_token"] == "EAAMessagingOnlyToken000000"
