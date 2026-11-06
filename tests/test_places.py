@@ -25,6 +25,7 @@ def env(tmp_path, monkeypatch):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("LOCAL_DB_PATH", str(tmp_path / "p.db"))
     monkeypatch.setenv("ADMIN_TOKEN", TOKEN)
+    monkeypatch.setattr(messenger, "INBOX_GRACE", 0)
     dbmod.reset_db()
     yield
     dbmod.reset_db()

@@ -1,5 +1,6 @@
 """Gemini answers grounded in the knowledge base, doctor tips and FAQs (fake Gemini + fake Graph API)."""
 import json
+import time
 import sys
 from pathlib import Path
 
@@ -56,6 +57,7 @@ def env(tmp_path, monkeypatch):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("LOCAL_DB_PATH", str(tmp_path / "ai.db"))
     monkeypatch.setenv("ADMIN_TOKEN", "test-admin-token")
+    monkeypatch.setattr(messenger, "INBOX_GRACE", 0)
     dbmod.reset_db()
     yield
     dbmod.reset_db()
@@ -371,3 +373,100 @@ def test_latin_script_questions_find_the_knowledge_when_ai_is_down(client, gem, 
     assert "мл" in ai.local_answer(db, "Vne")
     post(client, event(text="hurgelt bga yu, hnaas awah we", mid="lt1"))
     assert texts(fb)[-1].startswith("Худалдаалах цэгүүдийг")
+
+
+# ------------------------------------------------------------------ no double greetings, stickers
+
+def page_event(psid="dup-1", text=None, mid="d1", ts=None, echo=False, sticker=None, attachment=None):
+    message = {"mid": mid}
+    if text is not None:
+        message["text"] = text
+    if sticker:
+        message["sticker_id"] = int(sticker)
+        message["attachments"] = [{"type": "image", "payload": {"url": "https://x/s.png", "sticker_id": int(sticker)}}]
+    if attachment:
+        message["attachments"] = [{"type": attachment, "payload": {"url": "https://x/photo.jpg"}}]
+    if echo:
+        message["is_echo"] = True
+        message["app_id"] = 263902037430900  # Meta Business Suite, not this site
+    sender, recipient = ("777", psid) if echo else (psid, "777")
+    return {"object": "page", "entry": [{"id": "777", "time": 0, "messaging": [{
+        "sender": {"id": sender}, "recipient": {"id": recipient},
+        "timestamp": ts or int(time.time() * 1000), "message": message}]}]}
+
+
+def sent(fb):
+    return [c[3]["message"] for c in fb.calls if c[1] == "me/messages" and "message" in (c[3] or {})]
+
+
+def test_reported_case_first_question_gets_one_answer_not_welcome_plus_answer(client, gem, fb):
+    """«Hed be» → welcome, then «Сайн байна уу? … 4,500 төгрөг»: now only the answer, with the buttons."""
+    connect(client)
+    enable(client)
+    client.put("/api/admin/messenger/welcome", json={"auto_reply": "Сайн байна уу! ДОМЧ-д тавтай морил.",
+               "faq": [{"q": "Үнэ хэд вэ?", "a": "4500₮"}]}, headers=AUTH)
+    gem.reply = "Сайн байна уу? ДОМЧ 250 мл нь 4,500 төгрөг."
+    post(client, page_event(text="Hed be", mid="h1"))
+    msgs = sent(fb)
+    assert len(msgs) == 1 and msgs[0]["text"] == "ДОМЧ 250 мл нь 4,500 төгрөг."  # no second «Сайн байна уу»
+    assert [q["title"] for q in msgs[0]["quick_replies"]] == ["Үнэ хэд вэ?"]
+    post(client, page_event(text="Hurgelter avj bolhu", mid="h2"))
+    assert sent(fb)[-1]["text"].startswith("ДОМЧ") and "quick_replies" not in sent(fb)[-1]
+    # someone who greets first still gets the welcome only
+    post(client, page_event(psid="dup-2", text="Сайн байна уу", mid="h3"))
+    assert sent(fb)[-1]["text"] == "Сайн байна уу! ДОМЧ-д тавтай морил."
+
+
+def test_reported_case_meta_instant_reply_is_not_duplicated(client, gem, fb, monkeypatch):
+    """«?» → Page Inbox's own greeting 3 s later, then the AI's: now the site stays quiet when Meta already answered."""
+    connect(client)
+    enable(client)
+    post(client, page_event(text="Сайн уу", mid="q0"))  # conversation already started
+    before = len(sent(fb))
+    now = int(time.time() * 1000)
+    instant = page_event(text="Сайн байна уу? 🌿 ДОМЧ ам зайлагчийн албан ёсны хаягт тавтай морилно уу.",
+                         mid="meta-instant", ts=now + 3000, echo=True)
+    # Meta's instant reply arrives while the site waits a moment before answering «?»
+    monkeypatch.setattr(messenger, "wait_for_inbox", lambda received_at: post(client, instant))
+    post(client, page_event(text="?", mid="q1", ts=now))
+    assert len(sent(fb)) == before
+    convo = client.get("/api/admin/messenger/threads/dup-1", headers=AUTH).json()
+    assert convo["ai_paused_until"] == ""  # Meta's automatic reply is not a person taking over
+    assert "Page Inbox" in client.get("/api/admin/messenger", headers=AUTH).json()["last_decision"]["reason"]
+
+
+def test_a_person_typing_in_the_page_inbox_still_pauses_the_ai(client, gem, fb):
+    connect(client)
+    enable(client)
+    now = int(time.time() * 1000)
+    post(client, page_event(text="Хүргэлт байгаа юу?", mid="p1", ts=now - 120000))
+    post(client, page_event(text="Тийм, хүргэлт бий.", mid="p2", ts=now, echo=True))  # two minutes later
+    assert client.get("/api/admin/messenger/threads/dup-1", headers=AUTH).json()["ai_paused_until"]
+
+
+def test_like_sticker_gets_a_reply_once(client, gem, fb):
+    connect(client)
+    enable(client)
+    client.put("/api/admin/messenger/welcome", json={"auto_reply": "Сайн байна уу!", "faq": [{"q": "Үнэ хэд вэ?", "a": "4500₮"}]},
+               headers=AUTH)
+    post(client, page_event(text="Үнэ нь хэд вэ?", mid="s0"))
+    post(client, page_event(sticker="369239263222822", mid="s1"))  # 👍
+    msg = sent(fb)[-1]
+    assert msg["text"] == messenger.LIKE_REPLY and msg["quick_replies"][0]["title"] == "Үнэ хэд вэ?"
+    convo = client.get("/api/admin/messenger/threads/dup-1", headers=AUTH).json()
+    assert any(m["direction"] == "in" and m["text"] == "👍" for m in convo["items"])  # not «[image хавсралт]»
+    count = len(sent(fb))
+    post(client, page_event(sticker="369239343222814", mid="s2"))  # another like soon after: no repeat
+    assert len(sent(fb)) == count
+    post(client, page_event(sticker="1234567890", mid="s3"))  # any other sticker
+    assert sent(fb)[-1]["text"] == messenger.STICKER_REPLY
+    post(client, page_event(attachment="image", mid="s4"))  # a real photo
+    assert sent(fb)[-1]["text"] == messenger.FILE_REPLY
+
+
+def test_like_as_the_first_message_gets_the_welcome(client, gem, fb):
+    connect(client)
+    enable(client)
+    client.put("/api/admin/messenger/welcome", json={"auto_reply": "Сайн байна уу! Тавтай морил.", "faq": []}, headers=AUTH)
+    post(client, page_event(psid="like-1", sticker="369239263222822", mid="l1"))
+    assert [m["text"] for m in sent(fb)] == ["Сайн байна уу! Тавтай морил."]

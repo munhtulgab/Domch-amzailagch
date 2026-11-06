@@ -8,7 +8,9 @@ import hashlib
 import hmac
 import json
 import re
+import os
 import secrets
+import time
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -33,6 +35,16 @@ SECRETS = ("app_secret", "page_token")
 NEW_CONVERSATION_HOURS = 24  # a person who has been silent this long gets the welcome again
 MAX_FAQ = 4
 FOREVER_DAYS = 3650  # «AI-г зогсоох» for one conversation
+# Facebook's own like stickers (small, medium, large thumbs up)
+LIKE_STICKERS = {"369239263222822", "369239343222814", "369239383222810"}
+LIKE_REPLY = "👍 Баярлалаа! Өөр асуух зүйл байвал бичээрэй эсвэл доорх товчноос сонгоорой."
+STICKER_REPLY = "😊 Танд юугаар туслах вэ? Асуултаа бичих эсвэл доорх товчноос сонгоорой."
+FILE_REPLY = "Хавсралтыг хүлээн авлаа. Манай ажилтан үзээд удахгүй хариулна."
+HELP_REPLY = "Танд юугаар туслах вэ? Асуултаа бичих эсвэл доорх товчноос сонгоорой."
+# Meta Business Suite's own instant reply arrives within seconds; a person in the Page inbox is slower
+INBOX_AUTO_SECONDS = 20
+INBOX_GRACE = float(os.getenv("MESSENGER_INBOX_GRACE", "5"))  # wait this long before a greeting, to see if it came
+LETTERS = re.compile(r"[0-9A-Za-zА-Яа-яЁёӨөҮү]")
 GREETING = re.compile(r"^(сайн|сн|сайн уу|сайн байна уу|сайхан|мэнд|hi|hello|hey|юу байна|байна уу)[\s!.,?]*$", re.I)
 
 http = httpx.Client(timeout=8.0)  # replaced in tests
@@ -617,7 +629,21 @@ def decide(db, psid: str, reason: str) -> None:
         pass
 
 
-def ai_reply(db, cfg: dict, psid: str, text: str, site: str) -> None:
+GREETING_START = re.compile(r"^\s*(сайн байна уу|сайн байцгаана уу|сайн уу|мэнд хүргэе)[\s,!?.🙂😊🌿]*", re.I)
+
+
+def drop_greeting(db, psid: str, question: str, answer: str) -> str:
+    """Only the first reply of a conversation may start with «Сайн байна уу», and only if the person greeted."""
+    greeted = db.one("SELECT id FROM messenger_messages WHERE psid = ? AND direction = 'out' AND created_at >= ?"
+                     " AND id < (SELECT MAX(id) FROM messenger_messages WHERE psid = ?)", (psid, ago(hours=12), psid))
+    person_greets = re.match(r"^\s*(сайн|сн|sain|sn|hi|hello|мэнд)", question, re.I)
+    rest = GREETING_START.sub("", answer, count=1)
+    if (greeted or not person_greets) and rest != answer and len(rest) > 10:
+        return rest[0].upper() + rest[1:]
+    return answer
+
+
+def ai_reply(db, cfg: dict, psid: str, text: str, site: str, buttons: list | None = None) -> None:
     acfg = ai.load(db)
     if not ai.ready(acfg):
         decide(db, psid, "AI унтраалттай эсвэл тохируулаагүй тул хариулсангүй." if not acfg.get("gemini_key")
@@ -647,12 +673,12 @@ def ai_reply(db, cfg: dict, psid: str, text: str, site: str) -> None:
                       kind="auto", quick_replies=faq_buttons(parse_faq(cfg)))
             decide(db, psid, f"AI алдаа: {exc}")
         return
-    send_text(db, cfg, psid, result["answer"], kind="ai")
+    send_text(db, cfg, psid, drop_greeting(db, psid, text, result["answer"]), kind="ai", quick_replies=buttons)
     decide(db, psid, f"AI хариулсан ({result['model']}, {result['ms']} мс).")
 
 
 def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at, previous_in,
-                 site: str = "", attachment: bool = False) -> None:
+                 site: str = "", attachment: bool = False, sticker: str = "", received_at: str = "") -> None:
     """Quick-question buttons first, then the welcome for a new conversation, then the AI assistant."""
     faq = parse_faq(cfg)
     stocked = places.has_branches(db)  # without real branches the FAQ answers and the AI handle «where to buy»
@@ -682,20 +708,41 @@ def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at,
     welcome = cfg["auto_reply"].strip()
     window = ago(hours=NEW_CONVERSATION_HOURS)
     new_conversation = not welcomed_at or (welcomed_at < window and (not previous_in or previous_in < window))
-    welcomed = False
-    if welcome and (payload == "GET_STARTED" or new_conversation):
-        send_text(db, cfg, psid, welcome, kind="auto", quick_replies=faq_buttons(faq))
+    clean = text.strip()
+    # a greeting, «?», a like or a sticker: there is nothing to answer beyond a greeting and the buttons
+    light = bool(sticker) or attachment or not LETTERS.search(clean) or bool(GREETING.match(clean)) or len(clean) < 6
+    if welcome and (payload == "GET_STARTED" or (new_conversation and light)):
         db.run("UPDATE messenger_contacts SET welcomed_at = ? WHERE psid = ?", (now_utc(), psid))
-        welcomed = True
-    if payload == "GET_STARTED" or attachment or not text.strip():
-        decide(db, psid, "Мэндчилгээ илгээсэн." if welcomed else "Хавсралт эсвэл хоосон мессеж тул хариулсангүй.")
-        return
-    if welcomed and (GREETING.match(text.strip()) or len(text.strip()) < 6):
+        if payload != "GET_STARTED":
+            wait_for_inbox(received_at)
+            if inbox_answered(db, psid, received_at):
+                decide(db, psid, "Page Inbox-ийн автомат хариу очсон тул мэндчилгээг давхардуулсангүй.")
+                return
+        send_text(db, cfg, psid, welcome, kind="auto", quick_replies=faq_buttons(faq))
         decide(db, psid, "Мэндчилгээ илгээсэн.")
-        return  # "сайн байна уу" is answered by the welcome itself
+        return
+    first = new_conversation  # a real question as the first message: answer it, with the buttons, without a separate welcome
+    if first:
+        db.run("UPDATE messenger_contacts SET welcomed_at = ? WHERE psid = ?", (now_utc(), psid))
+        if welcome and not ai.ready(ai.load(db)):  # no AI to answer it: the welcome and its buttons at least
+            send_text(db, cfg, psid, welcome, kind="auto", quick_replies=faq_buttons(faq))
+            decide(db, psid, "Мэндчилгээ илгээсэн (AI унтраалттай).")
+            first = False
     until = ai_paused_until(db, psid)
     if until:
         decide(db, psid, f"Энэ ярианд ажилтан хариулж байгаа тул AI {until} (UTC) хүртэл түр зогссон.")
+        return
+    if sticker or attachment or not LETTERS.search(clean):
+        reply = LIKE_REPLY if sticker == "like" else FILE_REPLY if attachment else STICKER_REPLY if sticker else HELP_REPLY
+        wait_for_inbox(received_at)
+        if inbox_answered(db, psid, received_at):
+            decide(db, psid, "Page Inbox хариулсан тул давхардуулсангүй.")
+        elif replied_lately(db, psid, reply):
+            decide(db, psid, "Саяхан ижил хариу илгээсэн тул давтсангүй.")
+        else:
+            send_text(db, cfg, psid, reply, kind="auto", quick_replies=None if attachment else faq_buttons(faq))
+            decide(db, psid, {LIKE_REPLY: "Like-д хариулсан.", FILE_REPLY: "Хавсралтыг хүлээн авснаа мэдэгдсэн.",
+                              STICKER_REPLY: "Стикерт хариулсан.", HELP_REPLY: "Юугаар туслахыг асуусан."}[reply])
         return
     # «Дарханд хаанаас авах вэ?», or «Баянзүрх» right after we asked which district: the branches there,
     # straight from the branch list (exact, and works even when the AI is unavailable)
@@ -707,7 +754,7 @@ def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at,
         return send_where(db, cfg, psid, place, site, faq)
     if wants:
         return ask_where(db, cfg, psid, faq)
-    ai_reply(db, cfg, psid, text, site)
+    ai_reply(db, cfg, psid, text, site, buttons=faq_buttons(faq) if first else None)
 
 
 def last_out_text(db, psid: str) -> str:
@@ -750,12 +797,49 @@ def handle_echo(db, cfg: dict, event: dict, message: dict) -> None:
     if own_echo(db, cfg, psid, message):
         return
     text = message.get("text") or ("[хавсралт]" if message.get("attachments") else "")
+    at = _stamp_ms(event.get("timestamp"))
     db.run(
         "INSERT OR IGNORE INTO messenger_messages (psid, direction, kind, text, mid, is_read, created_at)"
         " VALUES (?, 'out', 'inbox', ?, ?, 1, ?)",
-        (psid, text[:2000], message.get("mid"), _stamp_ms(event.get("timestamp"))),
+        (psid, text[:2000], message.get("mid"), at),
     )
+    last_in = (db.one("SELECT MAX(created_at) AS at FROM messenger_messages WHERE psid = ? AND direction = 'in'",
+                      (psid,)) or {}).get("at")
+    if last_in and 0 <= _seconds(last_in, at) <= INBOX_AUTO_SECONDS:
+        return  # Meta Business Suite's instant reply, seconds after the person wrote: not a person taking over
     pause_ai(db, psid, ai.pause_minutes(ai.load(db)))
+
+
+def _seconds(start: str, end: str) -> float:
+    try:
+        fmt = "%Y-%m-%d %H:%M:%S"
+        return (datetime.strptime(end[:19], fmt) - datetime.strptime(start[:19], fmt)).total_seconds()
+    except ValueError:
+        return -1
+
+
+def inbox_answered(db, psid: str, since: str) -> bool:
+    """Did the Page inbox (Meta's instant reply or a person) already answer the message received at `since`?"""
+    return bool(since and db.one("SELECT id FROM messenger_messages WHERE psid = ? AND direction = 'out' AND kind = 'inbox'"
+                                 " AND created_at >= ?", (psid, since)))
+
+
+def wait_for_inbox(received_at: str) -> None:
+    """Give Meta's instant reply a few seconds to arrive before greeting, so the person is not greeted twice."""
+    if INBOX_GRACE <= 0 or not received_at:
+        return
+    try:
+        received = datetime.strptime(received_at[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return
+    left = INBOX_GRACE - (datetime.now(timezone.utc) - received).total_seconds()
+    if left > 0:
+        time.sleep(min(left, INBOX_GRACE))
+
+
+def replied_lately(db, psid: str, text: str, minutes: int = 10) -> bool:
+    return bool(db.one("SELECT id FROM messenger_messages WHERE psid = ? AND direction = 'out' AND text = ?"
+                       " AND created_at >= ?", (psid, text, ago(minutes=minutes))))
 
 
 def handle_event(db, cfg: dict, event: dict, site: str = "", channel: str = "messenger") -> None:
@@ -770,10 +854,17 @@ def handle_event(db, cfg: dict, event: dict, site: str = "", channel: str = "mes
         return
     payload = ""
     attachment = False
+    sticker = ""
     if message:
         text = message.get("text") or ""
         payload = str((message.get("quick_reply") or {}).get("payload") or "")
-        if not text and message.get("attachments"):
+        sticker_id = str(message.get("sticker_id") or next(
+            ((a.get("payload") or {}).get("sticker_id") for a in message.get("attachments") or []
+             if (a.get("payload") or {}).get("sticker_id")), "") or "")
+        if not text and sticker_id:  # the 👍 button and other stickers come as an image with a sticker_id
+            sticker = "like" if sticker_id in LIKE_STICKERS else "sticker"
+            text = "👍" if sticker == "like" else "[стикер]"
+        elif not text and message.get("attachments"):
             kinds = {a.get("type", "file") for a in message["attachments"]}
             text = "[" + ", ".join(sorted(kinds)) + " хавсралт]"
             attachment = True
@@ -798,7 +889,7 @@ def handle_event(db, cfg: dict, event: dict, site: str = "", channel: str = "mes
     contact = db.one("SELECT welcomed_at FROM messenger_contacts WHERE psid = ?", (psid,)) or {}
     try:
         auto_respond(db, cfg, psid, text, payload, contact.get("welcomed_at"), previous.get("at"), site=site,
-                     attachment=attachment)
+                     attachment=attachment, sticker=sticker, received_at=when)
     except GraphError as exc:
         note_error(db, "Автомат хариу илгээх", exc)
 
