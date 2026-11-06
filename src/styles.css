@@ -191,11 +191,16 @@ html.menu-open .mcta { display: none; }
 }
 .mnav__sub { padding: 0 0 12px 4px !important; }
 .mnav__sub button { display: block; width: 100%; padding: 10px 0; border: 0; background: none; text-align: left; font-size: 16px; color: var(--muted); cursor: pointer; }
-@media (max-width: 1240px) {
+/* the full menu stays on laptop screens (and with a browser side panel open); tighter below 1280px */
+@media (min-width: 1081px) and (max-width: 1280px) {
+  .head__in { gap: 8px; }
+  .nav__btn { padding: 0 7px; font-size: 14px; gap: 4px; }
+}
+@media (max-width: 1080px) {
   .nav, .mega { display: none; }
   .menu-btn { display: inline-flex; }
 }
-@media (min-width: 1241px) { .head__cta { display: none; } }
+@media (min-width: 1081px) { .head__cta { display: none; } }
 @media (max-width: 420px) { .head__cta { display: none; } }
 
 /* 3D layer */
