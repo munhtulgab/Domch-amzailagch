@@ -91,7 +91,9 @@ WHERE_WORDS = ("хаана", "хаанаас", "хаанах", "haana", "hana", 
 BUY_WORDS = ("ав", "худалдаж", "худалдаа", "зарагд", "зардаг", "олдо", "байдаг", "байна", "aw", "av", "hudaldaj",
              "zarag", "zardag", "oldo", "baidag", "bga", "baina", "buy")
 DIRECT = ("салбар", "худалдаалах цэг", "борлуулах цэг", "байршил", "эмийн сан", "salbar", "bairshil", "emiin san",
-          "зарагддаг", "худалдаж ав", "hudaldaj aw", "hudaldaj av", "zaragddag")
+          "зарагддаг", "худалдаж ав", "hudaldaj aw", "hudaldaj av", "zaragddag",
+          "аль дэлгүүр", "ямар дэлгүүр", "хайпермаркет", "супермаркет", "al delguur", "yamar delguur",
+          "hypermarket", "supermarket", "minii hyper", "minii delguur", "minii discounter")
 NOT_WHERE = ("үйлдвэрл", "uildwerl", "uildverl")  # «хаана үйлдвэрлэдэг вэ» asks where it is made
 
 
@@ -227,4 +229,4 @@ def knowledge(db) -> list:
         groups.setdefault(key, []).append(b)
     return [{"source": "Худалдаалах цэг", "title": f"Салбарууд: {key}",
              "text": "\n".join(line(b, i + 1) for i, b in enumerate(items)),
-             "keys": f"хаана авах салбар эмийн сан {key}"} for key, items in groups.items()]
+             "keys": f"хаана авах салбар эмийн сан дэлгүүр {' '.join(sorted({b['chain'] for b in items}))} {key}"} for key, items in groups.items()]

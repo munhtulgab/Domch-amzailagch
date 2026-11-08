@@ -113,6 +113,10 @@ def test_no_place(text):
     ("Танай салбарууд хаана байдаг вэ", True),
     ("esvel hnaas awah bolomjtoi be", True),
     ("darhan hotod haana zaragddag we", True),
+    ("Аль дэлгүүрт байдаг вэ?", True),
+    ("Миний хайпермаркетэд байгаа юу", True),
+    ("minii delguurt bga yu", True),
+    ("Миний дэлгүүрт авч зармаар байна, бөөний үнэ хэд вэ", False),
     ("Хаана үйлдвэрлэдэг вэ?", False),
     ("Орц нь юу вэ?", False),
     ("Хүүхэд хэрэглэж болох уу", False),
@@ -212,3 +216,18 @@ def test_ai_knows_the_branches_by_place(client, stocked):
     assert "Болор худалдааны төв" in darkhan["text"] and "7037-4343" in darkhan["text"]
     prompt = ai.system_prompt(items, "https://domch.gem.mn", "")
     assert "аль дүүрэг, аймагт байгаа нь тодорхойгүй бол" in prompt and "Салбарууд: Хан-Уул дүүрэг" in prompt
+
+
+def test_supermarket_chain_joins_the_district_answer(client, fb, stocked):
+    add(client, "Миний дэлгүүр", "Minii Discounter", UB, "Сүхбаатар", address="Сүхбаатар дүүрэг, 17-р хороо",
+        phone="7575-6061", hours="09:00–22:00")
+    connect(client)
+    post(client, "Аль дэлгүүрт байдаг вэ?", mid="s1")
+    assert last(fb)["text"] == places.ASK
+    assert ("Сүхбаатар", f"WHERE:{UB}|Сүхбаатар") in buttons(last(fb))
+    post(client, "СБД", mid="s2")
+    text = last(fb)["text"]
+    assert text.startswith("📍 Сүхбаатар дүүрэг")
+    assert "1. Миний дэлгүүр — Minii Discounter\nСүхбаатар дүүрэг, 17-р хороо\n09:00–22:00 · 7575-6061" in text
+    item = next(i for i in ai.knowledge_items(dbmod.get_db()) if i["title"] == "Салбарууд: Сүхбаатар дүүрэг")
+    assert "Миний дэлгүүр" in item["keys"]
