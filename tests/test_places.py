@@ -116,6 +116,8 @@ def test_no_place(text):
     ("Аль дэлгүүрт байдаг вэ?", True),
     ("Миний хайпермаркетэд байгаа юу", True),
     ("minii delguurt bga yu", True),
+    ("Эфэст байгаа юу", True),
+    ("bsb supermarketad zaragddag uu", True),
     ("Миний дэлгүүрт авч зармаар байна, бөөний үнэ хэд вэ", False),
     ("Хаана үйлдвэрлэдэг вэ?", False),
     ("Орц нь юу вэ?", False),

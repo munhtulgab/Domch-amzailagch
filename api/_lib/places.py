@@ -93,7 +93,8 @@ BUY_WORDS = ("ав", "худалдаж", "худалдаа", "зарагд", "з
 DIRECT = ("салбар", "худалдаалах цэг", "борлуулах цэг", "байршил", "эмийн сан", "salbar", "bairshil", "emiin san",
           "зарагддаг", "худалдаж ав", "hudaldaj aw", "hudaldaj av", "zaragddag",
           "аль дэлгүүр", "ямар дэлгүүр", "хайпермаркет", "супермаркет", "al delguur", "yamar delguur",
-          "hypermarket", "supermarket", "minii hyper", "minii delguur", "minii discounter")
+          "hypermarket", "supermarket", "minii hyper", "minii delguur", "minii discounter",
+          "эфэс", "efes", "effes", "бсб", "bsb")
 NOT_WHERE = ("үйлдвэрл", "uildwerl", "uildverl")  # «хаана үйлдвэрлэдэг вэ» asks where it is made
 
 
