@@ -787,3 +787,46 @@ def test_connecting_pushes_the_greeting_screen_again(client, fb):
     profile = [c for c in fb.calls if c[1] == "me/messenger_profile" and c[0] == "POST"]
     assert profile and profile[0][2]["access_token"] == "EAAWithInstagramToken000000"
     assert any((c[3] or {}).get("platform") == "instagram" for c in profile)  # Instagram's quick questions too
+
+
+# ------------------------------------------------------------------ conversation list (D1 reads)
+
+def _msg(db, psid, direction, text, at, mid=None, is_read=0):
+    db.run("INSERT OR IGNORE INTO messenger_messages (psid, direction, kind, text, mid, is_read, created_at)"
+           " VALUES (?, ?, 'message', ?, ?, ?, ?)", (psid, direction, text, mid, is_read, at))
+
+
+def _threads(client):
+    return {t["psid"]: t for t in client.get("/api/admin/messenger/threads", headers=AUTH).json()["items"]}
+
+
+def test_thread_list_is_kept_by_triggers(client):
+    db = dbmod.get_db()
+    _msg(db, "a", "in", "сайн уу", "2026-11-10 01:00:00", mid="m1")
+    _msg(db, "a", "in", "үнэ хэд вэ", "2026-11-10 01:00:05", mid="m2")
+    _msg(db, "a", "in", "үнэ хэд вэ", "2026-11-10 01:00:05", mid="m2")  # retried delivery: ignored
+    _msg(db, "a", "out", "4 500₮", "2026-11-10 01:00:09", is_read=1)
+    _msg(db, "b", "in", "хаана авах вэ", "2026-11-10 02:00:00", mid="m3")
+    t = _threads(client)
+    assert list(t) == ["b", "a"]  # newest conversation first
+    assert (t["a"]["unread"], t["a"]["last_text"], t["a"]["last_direction"]) == (2, "4 500₮", "out")
+    assert t["a"]["last_in_at"] == "2026-11-10 01:00:05" and t["a"]["last_at"] == "2026-11-10 01:00:09"
+    summary = client.get("/api/admin/summary?events=0", headers=AUTH).json()
+    assert summary["counts"]["messenger_unread"] == 3 and "events" not in summary
+
+    client.get("/api/admin/messenger/threads/a", headers=AUTH)  # opening the conversation reads it
+    assert _threads(client)["a"]["unread"] == 0 and _threads(client)["b"]["unread"] == 1
+    assert client.delete("/api/admin/messenger/threads/a", headers=AUTH).status_code == 200
+    assert list(_threads(client)) == ["b"]
+
+
+def test_thread_list_is_backfilled_for_older_databases(client, monkeypatch):
+    db = dbmod.get_db()
+    db.script("DROP TRIGGER trg_messenger_thread_in; DROP TRIGGER trg_messenger_thread_read; DROP TABLE messenger_threads;")
+    _msg(db, "old", "in", "асуулт", "2026-11-01 01:00:00", mid="o1")
+    _msg(db, "old", "out", "хариу", "2026-11-01 01:00:03", is_read=1)
+    monkeypatch.setattr(messenger, "_schema_ready", False)
+    t = _threads(client)["old"]
+    assert (t["unread"], t["last_text"], t["last_in_at"]) == (1, "хариу", "2026-11-01 01:00:00")
+    _msg(db, "old", "in", "дахиад", "2026-11-01 02:00:00", mid="o2")  # triggers work after the upgrade
+    assert _threads(client)["old"]["unread"] == 2

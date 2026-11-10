@@ -109,7 +109,43 @@ def ensure_schema(db) -> None:
                 db.run(f"ALTER TABLE messenger_contacts ADD COLUMN {column}")
             except DBError:
                 pass
+    try:
+        db.one("SELECT psid FROM messenger_threads LIMIT 1")
+    except DBError:
+        db.script(THREADS_SQL)
     _schema_ready = True
+
+
+# One row per conversation, kept current by triggers: the admin's conversation list (polled every 20 s) reads
+# these few rows instead of grouping every message, which used up D1's daily read allowance.
+THREADS_SQL = (
+    "CREATE TABLE IF NOT EXISTS messenger_threads (psid TEXT PRIMARY KEY, last_id INTEGER NOT NULL DEFAULT 0,"
+    " last_at TEXT, last_in_at TEXT, last_text TEXT, last_direction TEXT, unread INTEGER NOT NULL DEFAULT 0);"
+    "CREATE INDEX IF NOT EXISTS idx_messenger_threads_last ON messenger_threads (last_at);"
+    "CREATE INDEX IF NOT EXISTS idx_messenger_unread ON messenger_messages (psid) WHERE direction = 'in' AND is_read = 0;"
+    "CREATE TRIGGER IF NOT EXISTS trg_messenger_thread_in AFTER INSERT ON messenger_messages BEGIN"
+    " INSERT INTO messenger_threads (psid, last_id, last_at, last_in_at, last_text, last_direction, unread)"
+    " VALUES (NEW.psid, NEW.id, NEW.created_at, CASE WHEN NEW.direction = 'in' THEN NEW.created_at END, NEW.text,"
+    " NEW.direction, CASE WHEN NEW.direction = 'in' AND NEW.is_read = 0 THEN 1 ELSE 0 END)"
+    " ON CONFLICT (psid) DO UPDATE SET"
+    " last_at = MAX(COALESCE(last_at, ''), excluded.last_at),"
+    " last_in_at = CASE WHEN excluded.last_in_at > COALESCE(last_in_at, '') THEN excluded.last_in_at ELSE last_in_at END,"
+    " last_text = CASE WHEN excluded.last_id > last_id THEN excluded.last_text ELSE last_text END,"
+    " last_direction = CASE WHEN excluded.last_id > last_id THEN excluded.last_direction ELSE last_direction END,"
+    " last_id = MAX(last_id, excluded.last_id),"
+    " unread = unread + excluded.unread;"
+    " END;"
+    "CREATE TRIGGER IF NOT EXISTS trg_messenger_thread_read AFTER UPDATE OF is_read ON messenger_messages"
+    " WHEN NEW.direction = 'in' AND OLD.is_read = 0 AND NEW.is_read = 1 BEGIN"
+    " UPDATE messenger_threads SET unread = MAX(unread - 1, 0) WHERE psid = NEW.psid;"
+    " END;"
+    "INSERT OR REPLACE INTO messenger_threads (psid, last_id, last_at, last_in_at, last_text, last_direction, unread)"
+    " SELECT a.psid, a.last_id, a.last_at, a.last_in_at, m.text, m.direction, a.unread FROM"
+    " (SELECT psid, MAX(id) AS last_id, MAX(created_at) AS last_at,"
+    " MAX(CASE WHEN direction = 'in' THEN created_at END) AS last_in_at,"
+    " SUM(CASE WHEN direction = 'in' AND is_read = 0 THEN 1 ELSE 0 END) AS unread"
+    " FROM messenger_messages GROUP BY psid) a JOIN messenger_messages m ON m.id = a.last_id;"
+)
 
 
 def load(db) -> dict:
@@ -1279,25 +1315,18 @@ def admin_disconnect(request: Request):
 @admin.get("/threads")
 def threads():
     db = get_db()
+    ensure_schema(db)
     rows = db.all(
-        "SELECT m.psid, c.name, COALESCE(c.channel, 'messenger') AS channel, MAX(m.created_at) AS last_at,"
-        " SUM(CASE WHEN m.direction = 'in' AND m.is_read = 0 THEN 1 ELSE 0 END) AS unread,"
-        " MAX(CASE WHEN m.direction = 'in' THEN m.created_at END) AS last_in_at"
-        " FROM messenger_messages m LEFT JOIN messenger_contacts c ON c.psid = m.psid"
-        " GROUP BY m.psid, c.name, c.channel ORDER BY last_at DESC LIMIT 200"
+        "SELECT t.psid, c.name, COALESCE(c.channel, 'messenger') AS channel, t.last_at, t.unread, t.last_in_at,"
+        " t.last_text, t.last_direction FROM messenger_threads t LEFT JOIN messenger_contacts c ON c.psid = t.psid"
+        " ORDER BY t.last_at DESC LIMIT 200"
     )
-    if rows:
-        lasts = db.all(
-            "SELECT psid, text, direction FROM messenger_messages WHERE id IN"
-            " (SELECT MAX(id) FROM messenger_messages GROUP BY psid)"
-        )
-        last = {r["psid"]: r for r in lasts}
-        window = ago(hours=24)
-        for row in rows:
-            row["last_text"] = (last.get(row["psid"]) or {}).get("text") or ""
-            row["last_direction"] = (last.get(row["psid"]) or {}).get("direction") or ""
-            row["can_reply"] = bool(row.get("last_in_at") and row["last_in_at"] >= window)
-            row["unread"] = int(row.get("unread") or 0)
+    window = ago(hours=24)
+    for row in rows:
+        row["last_text"] = row.get("last_text") or ""
+        row["last_direction"] = row.get("last_direction") or ""
+        row["can_reply"] = bool(row.get("last_in_at") and row["last_in_at"] >= window)
+        row["unread"] = int(row.get("unread") or 0)
     return {"items": rows}
 
 
@@ -1361,6 +1390,7 @@ def delete_thread(psid: str):
     db = get_db()
     res = db.run("DELETE FROM messenger_messages WHERE psid = ?", (psid,))
     db.run("DELETE FROM messenger_contacts WHERE psid = ?", (psid,))
+    db.run("DELETE FROM messenger_threads WHERE psid = ?", (psid,))
     if not res["changes"]:
         raise HTTPException(404, "Харилцан яриа олдсонгүй.")
     return {"ok": True}

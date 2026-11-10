@@ -125,6 +125,7 @@ CREATE TABLE IF NOT EXISTS events (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_events_name ON events (name, created_at);
+CREATE INDEX IF NOT EXISTS idx_events_created ON events (created_at);
 
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
@@ -158,6 +159,17 @@ CREATE TABLE IF NOT EXISTS messenger_messages (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_messenger_psid ON messenger_messages (psid, created_at);
+
+-- one row per conversation, kept current by triggers (the admin list reads these instead of every message)
+CREATE TABLE IF NOT EXISTS messenger_threads (psid TEXT PRIMARY KEY, last_id INTEGER NOT NULL DEFAULT 0, last_at TEXT, last_in_at TEXT, last_text TEXT, last_direction TEXT, unread INTEGER NOT NULL DEFAULT 0);
+CREATE INDEX IF NOT EXISTS idx_messenger_threads_last ON messenger_threads (last_at);
+CREATE INDEX IF NOT EXISTS idx_messenger_unread ON messenger_messages (psid) WHERE direction = 'in' AND is_read = 0;
+CREATE TRIGGER IF NOT EXISTS trg_messenger_thread_in AFTER INSERT ON messenger_messages BEGIN
+  INSERT INTO messenger_threads (psid, last_id, last_at, last_in_at, last_text, last_direction, unread) VALUES (NEW.psid, NEW.id, NEW.created_at, CASE WHEN NEW.direction = 'in' THEN NEW.created_at END, NEW.text, NEW.direction, CASE WHEN NEW.direction = 'in' AND NEW.is_read = 0 THEN 1 ELSE 0 END) ON CONFLICT (psid) DO UPDATE SET last_at = MAX(COALESCE(last_at, ''), excluded.last_at), last_in_at = CASE WHEN excluded.last_in_at > COALESCE(last_in_at, '') THEN excluded.last_in_at ELSE last_in_at END, last_text = CASE WHEN excluded.last_id > last_id THEN excluded.last_text ELSE last_text END, last_direction = CASE WHEN excluded.last_id > last_id THEN excluded.last_direction ELSE last_direction END, last_id = MAX(last_id, excluded.last_id), unread = unread + excluded.unread;
+END;
+CREATE TRIGGER IF NOT EXISTS trg_messenger_thread_read AFTER UPDATE OF is_read ON messenger_messages WHEN NEW.direction = 'in' AND OLD.is_read = 0 AND NEW.is_read = 1 BEGIN
+  UPDATE messenger_threads SET unread = MAX(unread - 1, 0) WHERE psid = NEW.psid;
+END;
 
 -- Knowledge base used by the Messenger AI assistant (with doctor tips and FAQs)
 CREATE TABLE IF NOT EXISTS knowledge (

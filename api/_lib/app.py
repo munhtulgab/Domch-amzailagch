@@ -568,7 +568,8 @@ def _unique_guard(exc: DBError, table: str):
 
 
 @admin.get("/summary")
-def admin_summary():
+def admin_summary(events: int = Query(1, ge=0, le=1)):
+    """Badge counts; the 30-day event statistics only when asked (the 30-second badge refresh skips them)."""
     db = get_db()
     counts = db.one(
         "SELECT"
@@ -580,6 +581,8 @@ def admin_summary():
         " + (SELECT COUNT(*) FROM videos WHERE is_sample = 1) AS samples,"
         " (SELECT COUNT(*) FROM messenger_messages WHERE direction = 'in' AND is_read = 0) AS messenger_unread"
     )
+    if not events:
+        return {"counts": counts or {}, "driver": db.driver}
     since = ago(days=30)
     events = db.all(
         "SELECT name, COUNT(*) AS count FROM events WHERE created_at >= ? GROUP BY name ORDER BY count DESC",

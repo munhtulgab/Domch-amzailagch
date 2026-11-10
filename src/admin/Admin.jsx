@@ -786,12 +786,17 @@ export default function Admin() {
     if (!token) return;
     call('/summary').then(setSummary).catch(() => {});
   }, [call, token]);
-  useEffect(() => { loadSummary(); }, [loadSummary, tab]);
+  // badge counts only: the 30-day statistics are read when the overview opens, not on every refresh
+  const loadCounts = useCallback(() => {
+    if (!token) return;
+    call('/summary?events=0').then((s) => setSummary((prev) => ({ ...(prev || { events: [], daily: [] }), ...s }))).catch(() => {});
+  }, [call, token]);
+  useEffect(() => { if (tab === 'overview') loadSummary(); else loadCounts(); }, [loadSummary, loadCounts, tab]);
   useEffect(() => {
     // keep the badges fresh while the admin is open (new Messenger messages, form requests)
-    const id = setInterval(() => { if (document.visibilityState === 'visible') loadSummary(); }, 30000);
+    const id = setInterval(() => { if (document.visibilityState === 'visible') loadCounts(); }, 60000);
     return () => clearInterval(id);
-  }, [loadSummary]);
+  }, [loadCounts]);
 
   useEffect(() => {
     document.title = 'ДОМЧ удирдлага';
@@ -831,10 +836,10 @@ export default function Admin() {
         <main className="a-main">
           <h1>{current.label}</h1>
           {tab === 'overview' && <Overview call={call} summary={summary} reload={loadSummary} go={setTab} />}
-          {current.inbox && <Inbox key={tab} kind={tab} call={call} onChange={loadSummary} />}
+          {current.inbox && <Inbox key={tab} kind={tab} call={call} onChange={loadCounts} />}
           {current.table && <TableView key={tab} table={tab} call={call} />}
           {tab === 'messenger' && (
-            <MessengerInbox call={call} onChange={loadSummary} openSettings={() => { setSettingsTab('messenger'); setTab('settings'); }} />
+            <MessengerInbox call={call} onChange={loadCounts} openSettings={() => { setSettingsTab('messenger'); setTab('settings'); }} />
           )}
           {tab === 'settings' && <Settings call={call} tab={settingsTab} onTab={setSettingsTab} onChange={loadSummary} go={setTab} />}
         </main>
