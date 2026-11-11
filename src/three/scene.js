@@ -9,20 +9,22 @@ const S = 1 / 1000; // photo pixels -> scene units
 // body rows: [y, half-width, shape] where shape 0 = round neck, 1 = rounded-square body.
 const BOTTLES = {
   big: {
-    H: 1440, volume: '500 мл', seed: 7, drops: 240, capDrops: 26,
-    cap: { y0: 0, y1: 205, rTop: 117, rBot: 123 },
-    ring: { y0: 205, y1: 242, r: 124 },
-    neck: { y0: 242, y1: 302, r: 100, threads: [258, 274, 290] },
-    body: [[302, 100, 0], [308, 140, 0.15], [316, 200, 0.4], [330, 243, 0.65], [350, 262, 0.82], [370, 278, 0.93], [390, 292, 1], [410, 296, 1], [580, 296, 1], [595, 290, 1], [610, 278, 1], [625, 265, 1], [640, 260, 1], [1100, 260, 1], [1115, 266, 1], [1130, 276, 1], [1150, 286, 1], [1170, 290, 1], [1190, 292, 1], [1360, 292, 1], [1385, 282, 1], [1405, 264, 1], [1420, 240, 1], [1430, 205, 1], [1436, 150, 1], [1439, 80, 1], [1440, 4, 1]],
-    labels: { upper: [408, 578, 252], main: [645, 1135, 250], back: [665, 1095, 236] },
+    H: 1440, volume: '500 мл', barcode: '8656021393816', seed: 7, drops: 240, capDrops: 26,
+    cap: { y0: 0, y1: 205, rTop: 107, rBot: 112 },
+    ring: { y0: 205, y1: 242, r: 113 },
+    neck: { y0: 242, y1: 302, r: 90, threads: [258, 274, 290] },
+    body: [[302, 90, 0], [308, 134, 0.15], [316, 196, 0.4], [330, 241, 0.65], [350, 262, 0.82], [370, 278, 0.93], [390, 292, 1], [410, 296, 1], [580, 296, 1], [595, 288, 1], [610, 272, 1], [625, 255, 1], [640, 248, 1], [1100, 248, 1], [1115, 256, 1], [1130, 268, 1], [1150, 282, 1], [1170, 289, 1], [1190, 292, 1], [1360, 292, 1], [1385, 282, 1], [1405, 264, 1], [1420, 240, 1], [1430, 205, 1], [1436, 150, 1], [1439, 80, 1], [1440, 4, 1]],
+    labels: { upper: [408, 578, 252], main: [645, 1135, 238], back: [665, 1095, 224], strip: [1178, 1226, 246] },
+    recess: [1190, 1418, 168, 64],
   },
   small: {
     H: 1182, volume: '250 мл', seed: 19, drops: 190, capDrops: 20,
-    cap: { y0: 0, y1: 205, rTop: 103, rBot: 108 },
-    ring: { y0: 205, y1: 226, r: 104 },
-    neck: { y0: 226, y1: 257, r: 84, threads: [236, 248] },
-    body: [[257, 84, 0], [262, 140, 0.3], [272, 190, 0.55], [282, 218, 0.72], [302, 234, 0.86], [322, 251, 0.96], [342, 257, 1], [482, 257, 1], [502, 242, 1], [522, 228, 1], [542, 225, 1], [922, 225, 1], [942, 231, 1], [962, 240, 1], [982, 249, 1], [1002, 250, 1], [1102, 250, 1], [1122, 243, 1], [1142, 222, 1], [1162, 196, 1], [1172, 178, 1], [1178, 140, 1], [1181, 70, 1], [1182, 4, 1]],
-    labels: { upper: [332, 486, 218], main: [524, 938, 209], back: [548, 905, 200] },
+    cap: { y0: 0, y1: 205, rTop: 96, rBot: 100 },
+    ring: { y0: 205, y1: 226, r: 97 },
+    neck: { y0: 226, y1: 257, r: 76, threads: [236, 248] },
+    body: [[257, 76, 0], [262, 134, 0.3], [272, 186, 0.55], [282, 216, 0.72], [302, 234, 0.86], [322, 251, 0.96], [342, 257, 1], [482, 257, 1], [502, 240, 1], [522, 222, 1], [542, 214, 1], [922, 214, 1], [942, 221, 1], [962, 234, 1], [982, 247, 1], [1002, 250, 1], [1102, 250, 1], [1122, 243, 1], [1142, 222, 1], [1162, 196, 1], [1172, 178, 1], [1178, 140, 1], [1181, 70, 1], [1182, 4, 1]],
+    labels: { upper: [332, 486, 218], main: [524, 938, 199], back: [548, 905, 190], strip: [990, 1030, 210] },
+    recess: [1006, 1160, 144, 54],
   },
 };
 
@@ -216,13 +218,159 @@ function capGeometry(b) {
     if (v.y <= yTop && v.y >= yBot) {
       const ang = Math.atan2(v.z, v.x);
       const r = Math.hypot(v.x, v.z);
-      const k = (r + (0.5 + 0.5 * Math.cos(ang * 60)) ** 2 * 3.2 * S) / r;
+      const k = (r + (0.5 + 0.5 * Math.cos(ang * 96)) ** 2 * 2.6 * S) / r;
       p.setXYZ(i, v.x * k, v.y, v.z * k);
     }
   }
   g.computeVertexNormals();
   return g;
 }
+// ---- Printed labels drawn from the product photo (sharper than a photo crop) ----
+const INK = '#23292a';
+const LABEL_GREEN = '#1f4a41';
+const font = (wt, px, face = '"Golos Text", system-ui, sans-serif') => `${wt} ${px}px ${face}`;
+function canvasTexture(cv) {
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+function silver(g, x0, y0, x1, y1) {
+  const grad = g.createLinearGradient(x0, y0, x1, y1);
+  grad.addColorStop(0, '#c9c6c2');
+  grad.addColorStop(0.28, '#e7e5e2');
+  grad.addColorStop(0.55, '#b9b6b2');
+  grad.addColorStop(0.8, '#dddad6');
+  grad.addColorStop(1, '#aeaba7');
+  return grad;
+}
+function octagon(g, W, H, c) {
+  g.beginPath();
+  g.moveTo(c, 0); g.lineTo(W - c, 0); g.lineTo(W, c); g.lineTo(W, H - c);
+  g.lineTo(W - c, H); g.lineTo(c, H); g.lineTo(0, H - c); g.lineTo(0, c);
+  g.closePath();
+}
+// Justified paragraphs (the first one indented), shrinking the type until everything fits.
+function setText(g, paras, x, top, maxW, bottom, size) {
+  for (let px = size; px >= 18; px -= 1) {
+    g.font = font(500, px);
+    const lh = px * 1.16;
+    const lines = [];
+    paras.forEach((text, pi) => {
+      const indent = pi === 0 ? px * 3.2 : 0;
+      let line = [];
+      let first = true;
+      text.split(' ').forEach((w) => {
+        const room = maxW - (first ? indent : 0);
+        const t = [...line, w].join(' ');
+        if (line.length && g.measureText(t).width > room) {
+          lines.push({ words: line, indent: first ? indent : 0, last: false });
+          line = [w];
+          first = false;
+        } else line.push(w);
+      });
+      if (line.length) lines.push({ words: line, indent: first ? indent : 0, last: true });
+    });
+    if (top + lines.length * lh <= bottom || px === 18) {
+      let y = top + px;
+      lines.forEach(({ words, indent, last }) => {
+        const room = maxW - indent;
+        const used = words.reduce((a, w) => a + g.measureText(w).width, 0);
+        const gap = !last && words.length > 1 ? (room - used) / (words.length - 1) : g.measureText(' ').width;
+        let cx = x + indent;
+        words.forEach((w) => {
+          g.fillText(w, cx, y);
+          cx += g.measureText(w).width + gap;
+        });
+        y += lh;
+      });
+      return;
+    }
+  }
+}
+// EAN-13 bars for the code printed on the bottle.
+function ean13(code) {
+  const L = ['0001101', '0011001', '0010011', '0111101', '0100011', '0110001', '0101111', '0111011', '0110111', '0001011'];
+  const G = ['0100111', '0110011', '0011011', '0100001', '0011101', '0111001', '0000101', '0010001', '0001001', '0010111'];
+  const R = L.map((p) => p.replace(/./g, (c) => (c === '0' ? '1' : '0')));
+  const PAR = ['LLLLLL', 'LLGLGG', 'LLGGLG', 'LLGGGL', 'LGLLGG', 'LGGLLG', 'LGGGLL', 'LGLGLG', 'LGLGGL', 'LGGLGL'];
+  const d = code.split('').map(Number);
+  let bits = '101';
+  for (let i = 1; i <= 6; i += 1) bits += (PAR[d[0]][i - 1] === 'L' ? L : G)[d[i]];
+  bits += '01010';
+  for (let i = 7; i <= 12; i += 1) bits += R[d[i]];
+  return `${bits}101`;
+}
+function barcode(g, code, x, y, w, h) {
+  g.fillStyle = '#ffffff';
+  g.fillRect(x, y, w, h);
+  const bits = ean13(code);
+  const m = (w - 40) / (bits.length + 9);
+  const x0 = x + 20 + m * 9;
+  const barH = h - 56;
+  g.fillStyle = '#111';
+  for (let i = 0; i < bits.length; i += 1) {
+    if (bits[i] !== '1') continue;
+    const guard = i < 3 || (i >= 45 && i < 50) || i >= 92;
+    g.fillRect(x0 + i * m, y + 12, m + 0.4, barH + (guard ? 18 : 0));
+  }
+  g.font = font(500, Math.round(m * 7.4));
+  g.textBaseline = 'alphabetic';
+  g.textAlign = 'center';
+  const ty = y + h - 10;
+  g.fillText(code[0], x0 - m * 5, ty);
+  for (let i = 0; i < 6; i += 1) g.fillText(code[1 + i], x0 + m * (3 + 7 * i + 3.5), ty);
+  for (let i = 0; i < 6; i += 1) g.fillText(code[7 + i], x0 + m * (50 + 7 * i + 3.5), ty);
+  g.textAlign = 'left';
+}
+function binIcon(g, x, y, s) {
+  g.fillStyle = LABEL_GREEN;
+  g.fillRect(x, y, s, s);
+  g.strokeStyle = '#ffffff';
+  g.fillStyle = '#ffffff';
+  g.lineWidth = s * 0.05;
+  g.beginPath();
+  g.moveTo(x + s * 0.3, y + s * 0.36); g.lineTo(x + s * 0.35, y + s * 0.84); g.lineTo(x + s * 0.65, y + s * 0.84); g.lineTo(x + s * 0.7, y + s * 0.36);
+  g.closePath();
+  g.stroke();
+  [0.42, 0.5, 0.58].forEach((k) => {
+    g.beginPath(); g.moveTo(x + s * k, y + s * 0.44); g.lineTo(x + s * k, y + s * 0.76); g.stroke();
+  });
+  g.fillRect(x + s * 0.24, y + s * 0.27, s * 0.52, s * 0.06);
+  g.fillRect(x + s * 0.42, y + s * 0.2, s * 0.16, s * 0.05);
+}
+function recycleIcon(g, x, y, s) {
+  g.fillStyle = LABEL_GREEN;
+  g.fillRect(x, y, s, s);
+  g.strokeStyle = '#ffffff';
+  g.fillStyle = '#ffffff';
+  g.lineWidth = s * 0.08;
+  const cx = x + s / 2;
+  const cy = y + s * 0.54;
+  const r = s * 0.28;
+  for (let k = 0; k < 3; k += 1) {
+    const a0 = -Math.PI / 2 + (k * 2 * Math.PI) / 3 + 0.35;
+    const a1 = a0 + (2 * Math.PI) / 3 - 0.75;
+    g.beginPath(); g.arc(cx, cy, r, a0, a1); g.stroke();
+    const tx = cx + r * Math.cos(a1);
+    const ty = cy + r * Math.sin(a1);
+    const ta = a1 + Math.PI / 2;
+    g.beginPath();
+    g.moveTo(tx + Math.cos(ta) * s * 0.11, ty + Math.sin(ta) * s * 0.11);
+    g.lineTo(tx + Math.cos(ta + 2.2) * s * 0.09, ty + Math.sin(ta + 2.2) * s * 0.09);
+    g.lineTo(tx + Math.cos(ta - 2.2) * s * 0.09, ty + Math.sin(ta - 2.2) * s * 0.09);
+    g.closePath(); g.fill();
+  }
+}
+const BACK_TEXT = [
+  'Намар, өвөл, хаврын улиралд домч уусмалаар амны хөндий, хоолойгоо тогтмол зайлснаар амны хөндий, буйл, хоолой, залгиурын бактери, вирусын гаралтай үрэвсэлт өвчин, ханиад томуунаас сэргийлнэ.',
+  'НАЙРЛАГА: Шүүсэн ус, жамц давс, хадаасан цэцгийн ханд, гаа, глицерин, FD&C Blue No.1',
+  'ХЭРЭГЛЭХ АРГА, ТУН: Өглөө оройд шүдээ угаасны дараа насанд хүрэгчид нэг удаа 25 мл, хүүхэд 15 мл уусмалаар амны хөндий, хоолой залгиурыг 10 секунд орчим зайлж асгана. 2 удаа давтана.',
+  'ХАДГАЛАХ НӨХЦӨЛ: Тасалгааны хэмд 12 сар хадгална.',
+  'АНХААРУУЛГА: Бүтээгдэхүүний найрлагад орсон аль нэг бодисд харшилтай бол хэрэглэж болохгүй!',
+  'Залгиж болохгүй!',
+  'ХАЯГ: Монгол улс, Улаанбаатар хот, Жем Интернэшнл ХХК-д үйлдвэрлэв. Утас: 77997799 www.gem.mn',
+];
+// The back label as printed on the bottle (text, claim, wordmark, volume, barcode and disposal icons).
 function backLabelTexture(b) {
   const [y0, y1, hw] = b.labels.back;
   const W = 1024;
@@ -231,72 +379,101 @@ function backLabelTexture(b) {
   cv.width = W;
   cv.height = H;
   const g = cv.getContext('2d');
-  const sil = g.createLinearGradient(0, 0, W, 0);
-  sil.addColorStop(0, '#b7bdbb');
-  sil.addColorStop(0.35, '#e4e7e6');
-  sil.addColorStop(0.65, '#cfd4d2');
-  sil.addColorStop(1, '#aab1ae');
-  const r = 46;
-  g.beginPath();
-  g.moveTo(r, 0); g.lineTo(W - r, 0); g.lineTo(W, r); g.lineTo(W, H - r);
-  g.lineTo(W - r, H); g.lineTo(r, H); g.lineTo(0, H - r); g.lineTo(0, r);
-  g.closePath();
-  g.fillStyle = '#0d5a45';
-  g.fill();
+  octagon(g, W, H, 64);
   g.save();
-  g.beginPath();
-  g.rect(18, 18, W - 36, H - 36);
   g.clip();
-  g.fillStyle = sil;
+  g.fillStyle = silver(g, 0, 0, W, H);
   g.fillRect(0, 0, W, H);
-  g.fillStyle = '#0b4f3d';
-  g.fillRect(18, 18, W - 36, 120);
-  g.restore();
-  const font = (wt, px) => `${wt} ${px}px "Golos Text", system-ui, sans-serif`;
+  const band = Math.round(H * 0.118);
+  const head = g.createLinearGradient(0, 0, W, 0);
+  head.addColorStop(0, '#3d6f62');
+  head.addColorStop(0.45, LABEL_GREEN);
+  head.addColorStop(1, '#173b34');
+  g.fillStyle = head;
+  g.fillRect(0, 0, W, band);
+  const sheen = g.createLinearGradient(0, band, 0, band + 70);
+  sheen.addColorStop(0, 'rgba(120, 165, 160, 0.75)');
+  sheen.addColorStop(1, 'rgba(120, 165, 160, 0)');
+  g.fillStyle = sheen;
+  g.beginPath(); g.moveTo(0, band); g.lineTo(W, band); g.lineTo(W, band + 10); g.lineTo(0, band + 80); g.closePath(); g.fill();
   g.fillStyle = '#ffffff';
-  g.font = font(700, 52);
+  g.textAlign = 'center';
   g.textBaseline = 'middle';
-  g.fillText('ОРЦ, НАЙРЛАГА', 60, 80);
-  g.fillStyle = '#123b30';
+  g.font = font(700, Math.round(band * 0.52));
+  g.fillText('ЖАМЦ ДАВСНЫ УУСМАЛ', W / 2, band * 0.54);
+  g.textAlign = 'left';
   g.textBaseline = 'alphabetic';
-  const wrap = (text, x, startY, maxW, lh) => {
-    let line = '';
-    let y = startY;
-    text.split(' ').forEach((w) => {
-      const t = line ? `${line} ${w}` : w;
-      if (g.measureText(t).width > maxW && line) {
-        g.fillText(line, x, y);
-        y += lh;
-        line = w;
-      } else line = t;
-    });
-    if (line) {
-      g.fillText(line, x, y);
-      y += lh;
-    }
-    return y;
-  };
-  g.font = font(500, 40);
-  let y = wrap('Шүүсэн ус, жамц давс, хадаасан цэцгийн ханд (башир цэцэг), гаа, глицерин, FD&C Blue No.1.', 60, 210, W - 120, 54);
-  g.fillStyle = 'rgba(13, 90, 69, 0.45)';
-  g.fillRect(60, y - 10, W - 120, 3);
-  g.fillStyle = '#123b30';
-  g.font = font(600, 38);
-  y += 50;
-  ['Ангилал: Ам зайлагч', 'Амт: Гаа', 'Спирт агуулаагүй'].forEach((t) => {
-    g.fillText(t, 60, y);
-    y += 54;
-  });
-  g.font = font(500, 32);
-  g.fillStyle = '#2c4a41';
-  g.fillText('Үйлдвэрлэгч: Жем Интернэшнл ХХК', 60, H - 70);
-  g.fillStyle = '#0b4f3d';
-  g.font = font(700, 76);
+
+  const foot = H - Math.round(H * 0.3);
+  g.fillStyle = INK;
+  setText(g, BACK_TEXT, 44, band + 24, W - 88, foot - 10, 33);
+
+  // claim, wordmark and volume
+  g.fillStyle = INK;
+  g.font = font(700, 29);
+  g.fillText('ЭМНЭЛ ЗҮЙН ТУРШИЛТ', 44, foot + 40);
+  g.fillText('СУДАЛГААГААР БАТАЛГААЖСАН', 44, foot + 76);
   g.textAlign = 'right';
-  g.fillText(b.volume, W - 60, H - 150);
-  const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+  g.fillStyle = LABEL_GREEN;
+  g.font = font(600, 64, 'Unbounded, "Golos Text", sans-serif');
+  g.fillText('DOMCH', W - 44, foot + 52);
+  g.fillStyle = '#2d3233';
+  g.font = font(500, 50);
+  g.fillText(b.volume.toUpperCase(), W - 44, foot + 108);
+  g.textAlign = 'left';
+  const icon = 84;
+  binIcon(g, W - 44 - icon * 2 - 18, H - icon - 34, icon);
+  recycleIcon(g, W - 44 - icon, H - icon - 34, icon);
+  if (b.barcode) barcode(g, b.barcode, 190, foot + 98, 470, H - foot - 98);
+  g.restore();
+  return canvasTexture(cv);
+}
+// The silver strip on the lower back: «ЭРДСИЙН ТУНАДАС ҮҮСЭЖ БОЛНО.»
+function stripTexture(b) {
+  const [y0, y1, hw] = b.labels.strip;
+  const W = 1024;
+  const H = Math.round((W * (y1 - y0)) / (2 * hw));
+  const cv = document.createElement('canvas');
+  cv.width = W;
+  cv.height = H;
+  const g = cv.getContext('2d');
+  const c = H * 0.5;
+  g.beginPath();
+  g.moveTo(c, 0); g.lineTo(W - c * 0.6, 0); g.lineTo(W, H * 0.5); g.lineTo(W - c * 0.6, H); g.lineTo(c, H); g.lineTo(0, H * 0.5);
+  g.closePath();
+  g.fillStyle = silver(g, 0, 0, W, H);
+  g.fill();
+  g.fillStyle = INK;
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.font = font(700, Math.round(H * 0.5));
+  g.fillText('ЭРДСИЙН ТУНАДАС ҮҮСЭЖ БОЛНО.', W / 2, H * 0.54);
+  return canvasTexture(cv);
+}
+// The moulded grip recess on the lower body, drawn as a thin glass ridge that follows the surface.
+function recessGeometry(b, side) {
+  const [y0, y1, hw, rad] = b.recess;
+  const pts = [];
+  const seg = 18;
+  const corner = (cx, cy, a0) => {
+    for (let i = 0; i <= seg; i += 1) {
+      const a = a0 + (i / seg) * (Math.PI / 2);
+      pts.push([cx + Math.cos(a) * rad, cy + Math.sin(a) * rad]);
+    }
+  };
+  corner(hw - rad, y0 + rad, -Math.PI / 2);
+  corner(hw - rad, y1 - rad, 0);
+  corner(-hw + rad, y1 - rad, Math.PI / 2);
+  corner(-hw + rad, y0 + rad, Math.PI);
+  const curve = new THREE.CatmullRomCurve3(pts.map(([xp, yp]) => {
+    const sh = shapeAt(b.R, yp);
+    const xw = xp * S * side;
+    const c = sgnPow(clamp(xw / sh.w, -0.995, 0.995), sh.n / 2);
+    const phi = Math.atan2(Math.sqrt(Math.max(0, 1 - c * c)) * side, c);
+    const { p, n } = surfacePoint(b, yp, phi);
+    return p.addScaledVector(n, 0.0004);
+  }), true);
+  return new THREE.TubeGeometry(curve, 220, 0.0032, 6, true);
 }
 
 // ---- Ingredient forms ----
@@ -462,6 +639,7 @@ export async function createScene({ canvas, media = '/media/', initialSize = 'bi
       Promise.all([
         document.fonts.load('500 40px "Golos Text"'),
         document.fonts.load('700 40px "Golos Text"'),
+        document.fonts.load('600 40px "Golos Text"'),
         document.fonts.load('600 200px Unbounded'),
       ]),
       sleep(1600),
@@ -472,15 +650,48 @@ export async function createScene({ canvas, media = '/media/', initialSize = 'bi
   if (disposed) return null;
 
   // ---- Materials ----
-  const liquid = new THREE.MeshPhysicalMaterial({
-    color: 0x0c8f68, roughness: 0.1, metalness: 0, transmission: 0.3, thickness: 0.35, ior: 1.36,
-    attenuationColor: new THREE.Color(0x05634a), attenuationDistance: 0.25,
-    clearcoat: 1, clearcoatRoughness: 0.06, envMapIntensity: 1.15,
+  // The real liquid is clear (see the product photo): a nearly colourless body whose edges catch the light.
+  // LIQUID = 'green' brings back the earlier tinted look.
+  const LIQUID = 'clear';
+  // Glass edges look dark against a light page and bright against the dark ingredient section: uEdge 0..1.
+  const edgeTone = { value: 0 };
+  const fresnelEdges = (mat, edge) => {
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uEdge = edgeTone;
+      shader.fragmentShader = `uniform float uEdge;\n${shader.fragmentShader}`.replace('#include <opaque_fragment>', `
+        float fres = pow(1.0 - clamp(abs(dot(normalize(normal), normalize(vViewPosition))), 0.0, 1.0), 1.7);
+        vec3 edgeCol = mix(vec3(0.10, 0.17, 0.15), vec3(0.86, 0.96, 0.93), uEdge);
+        outgoingLight = mix(outgoingLight, edgeCol, fres * 0.85);
+        diffuseColor.a = mix(diffuseColor.a, ${edge.toFixed(2)}, fres);
+        #include <opaque_fragment>`);
+    };
+    return mat;
+  };
+  const liquid = LIQUID === 'green'
+    ? new THREE.MeshPhysicalMaterial({
+      color: 0x0c8f68, roughness: 0.1, metalness: 0, transmission: 0.3, thickness: 0.35, ior: 1.36,
+      attenuationColor: new THREE.Color(0x05634a), attenuationDistance: 0.25,
+      clearcoat: 1, clearcoatRoughness: 0.06, envMapIntensity: 1.15,
+    })
+    : fresnelEdges(new THREE.MeshPhysicalMaterial({
+      color: 0xa3c2ba, roughness: 0.03, metalness: 0, transparent: true, opacity: 0.1, depthWrite: false,
+      clearcoat: 1, clearcoatRoughness: 0.02, envMapIntensity: 1.3,
+    }), 0.7);
+  // both walls in one mesh: three.js draws the far side first, then the near side
+  if (LIQUID !== 'green') liquid.side = THREE.DoubleSide;
+  const glass = LIQUID === 'green'
+    ? new THREE.MeshPhysicalMaterial({
+      color: 0xdcefe8, roughness: 0.05, metalness: 0, transparent: true, opacity: 0.32, clearcoat: 1, envMapIntensity: 1.6, depthWrite: false,
+    })
+    : fresnelEdges(new THREE.MeshPhysicalMaterial({
+      color: 0xb4cdc6, roughness: 0.04, metalness: 0, transparent: true, opacity: 0.14, clearcoat: 1, envMapIntensity: 1.6,
+      depthWrite: false, side: THREE.DoubleSide,
+    }), 0.7);
+  const ridgeMat = new THREE.MeshPhysicalMaterial({
+    color: 0xf4fffb, roughness: 0.04, metalness: 0, transparent: true, opacity: 0.42, clearcoat: 1, envMapIntensity: 2.6, depthWrite: false,
   });
-  const glass = new THREE.MeshPhysicalMaterial({
-    color: 0xdcefe8, roughness: 0.05, metalness: 0, transparent: true, opacity: 0.32, clearcoat: 1, envMapIntensity: 1.6, depthWrite: false,
-  });
-  const capMat = new THREE.MeshPhysicalMaterial({ color: 0x141616, roughness: 0.42, metalness: 0.05, clearcoat: 0.35, clearcoatRoughness: 0.4 });
+  // dark espresso-brown ribbed cap, as on the bottle
+  const capMat = new THREE.MeshPhysicalMaterial({ color: 0x3a2b27, roughness: 0.38, metalness: 0.08, clearcoat: 0.5, clearcoatRoughness: 0.3 });
   const beadMat = new THREE.MeshPhysicalMaterial({ color: 0xf2fffa, roughness: 0, metalness: 0, transparent: true, opacity: 0.3, clearcoat: 1, envMapIntensity: 3 });
   const labelMat = (map) => new THREE.MeshStandardMaterial({
     map, transparent: true, roughness: 0.42, metalness: 0.12, emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0.18,
@@ -503,24 +714,33 @@ export async function createScene({ canvas, media = '/media/', initialSize = 'bi
     b.R = buildRows(b);
     b.maxW = Math.max(...b.body.map((r) => r[1]));
     const inner = new THREE.Group();
-    inner.add(new THREE.Mesh(bodyGeometry(b), liquid));
-    inner.add(new THREE.Mesh(labelGeometry(b, b.labels.upper, 1), upperMat));
-    inner.add(new THREE.Mesh(labelGeometry(b, b.labels.main, 1), mainMat));
+    // draw order for the clear body: far wall, back labels, near wall, front labels and glass details
+    const add = (mesh, order) => {
+      mesh.renderOrder = order;
+      inner.add(mesh);
+      return mesh;
+    };
+    const body = bodyGeometry(b);
+    add(new THREE.Mesh(body, liquid), 3);
+    add(new THREE.Mesh(labelGeometry(b, b.labels.upper, 1), upperMat), 4);
+    add(new THREE.Mesh(labelGeometry(b, b.labels.main, 1), mainMat), 4);
     const backTex = backLabelTexture(b);
     backTex.anisotropy = aniso;
-    inner.add(new THREE.Mesh(labelGeometry(b, b.labels.back, -1), labelMat(backTex)));
-    const neck = new THREE.Mesh(new THREE.CylinderGeometry(b.neck.r * S, b.neck.r * S, (b.neck.y1 - b.neck.y0) * S, 56, 1, true), glass);
+    add(new THREE.Mesh(labelGeometry(b, b.labels.back, -1), labelMat(backTex)), 2);
+    const stripTex = stripTexture(b);
+    stripTex.anisotropy = aniso;
+    add(new THREE.Mesh(labelGeometry(b, b.labels.strip, -1), labelMat(stripTex)), 2);
+    add(new THREE.Mesh(recessGeometry(b, 1), ridgeMat), 4);
+    add(new THREE.Mesh(recessGeometry(b, -1), ridgeMat), 2);
+    const neck = add(new THREE.Mesh(new THREE.CylinderGeometry(b.neck.r * S, b.neck.r * S, (b.neck.y1 - b.neck.y0) * S, 56, 1, true), glass), 4);
     neck.position.y = yWorld(b, (b.neck.y0 + b.neck.y1) / 2);
-    inner.add(neck);
     b.neck.threads.forEach((ty) => {
-      const t = new THREE.Mesh(new THREE.TorusGeometry(b.neck.r * S + 0.0015, 0.0045, 8, 56), glass);
+      const t = add(new THREE.Mesh(new THREE.TorusGeometry(b.neck.r * S + 0.0015, 0.0045, 8, 56), glass), 4);
       t.rotation.x = Math.PI / 2;
       t.position.y = yWorld(b, ty);
-      inner.add(t);
     });
-    const ring = new THREE.Mesh(new THREE.CylinderGeometry(b.ring.r * S, b.ring.r * S, (b.ring.y1 - b.ring.y0) * S, 64), glass);
+    const ring = add(new THREE.Mesh(new THREE.CylinderGeometry(b.ring.r * S, b.ring.r * S, (b.ring.y1 - b.ring.y0) * S, 64), glass), 4);
     ring.position.y = yWorld(b, (b.ring.y0 + b.ring.y1) / 2);
-    inner.add(ring);
     inner.add(new THREE.Mesh(capGeometry(b), capMat));
 
     const rand = rng(b.seed);
@@ -550,6 +770,7 @@ export async function createScene({ canvas, media = '/media/', initialSize = 'bi
       m.compose(p, q, sc);
       beads.setMatrixAt(i, m);
     }
+    beads.renderOrder = 5;
     inner.add(beads);
     inner.position.y = (-b.H * S) / 2;
     const pivot = new THREE.Group();
@@ -608,8 +829,13 @@ export async function createScene({ canvas, media = '/media/', initialSize = 'bi
   );
   scene.add(mark);
 
+  let darkPage = 0;
   const readColors = () => {
     const cs = getComputedStyle(root);
+    // the first painted background (body is often transparent and the colour sits on <html>)
+    const bg = [document.body, root].map((el) => getComputedStyle(el).backgroundColor.match(/[\d.]+/g))
+      .find((c) => c && (c[3] === undefined || Number(c[3]) > 0.5));
+    darkPage = bg && (0.2126 * bg[0] + 0.7152 * bg[1] + 0.0722 * bg[2]) / 255 < 0.4 ? 1 : 0;
     mark.material.color.setStyle(cs.getPropertyValue('--ghost').trim() || '#EAE8DF');
     halo.material.color.setStyle(cs.getPropertyValue('--mint').trim() || '#7FE0BE');
   };
@@ -815,6 +1041,7 @@ export async function createScene({ canvas, media = '/media/', initialSize = 'bi
     halo.position.set(pb.x, pb.y, -1.1);
     halo.material.opacity = deep * 0.45;
     rim.intensity = 0.9 + deep * 0.9;
+    edgeTone.value = Math.max(deep, darkPage);
     mark.position.set(pb.x, pb.y - 0.02, -2.6);
     mark.scale.setScalar(narrow ? 0.42 : 0.55);
     mark.material.opacity = cur.mark * ePos;
