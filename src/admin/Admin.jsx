@@ -1,29 +1,38 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { CITIES } from '../data/static.js';
 import { formatDate } from '../lib/util.js';
-import { Modal } from '../components/Modal.jsx';
 import { MessengerInbox, MessengerSettings } from './Messenger.jsx';
 import { AiSettings } from './Ai.jsx';
+import { Avatar, Drawer, Empty, Icon, Skeleton, THEME_ICON, THEME_LABEL, ToastProvider, useTheme, useToast } from './ui.jsx';
 import './admin.css';
 
 const KEY = 'domch_admin_token';
 
 const TABS = [
-  { id: 'overview', label: 'Тойм' },
-  { id: 'partners', label: 'Хамтын ажиллагаа', inbox: true, count: 'partners_new' },
-  { id: 'questions', label: 'Эмчээс асуусан', inbox: true, count: 'questions_new' },
-  { id: 'reviews', label: 'Сэтгэгдэл', inbox: true, count: 'reviews_pending' },
-  { id: 'locations', label: 'Байршлын санал', inbox: true, count: 'locations_new' },
-  { id: 'messenger', label: 'Messenger, Instagram', count: 'messenger_unread' },
-  { id: 'branches', label: 'Салбарууд', table: true },
-  { id: 'products', label: 'Бүтээгдэхүүн, үнэ', table: true },
-  { id: 'tips', label: 'Эмчийн зөвлөгөө', table: true },
-  { id: 'knowledge', label: 'Мэдлэгийн сан', table: true },
-  { id: 'videos', label: 'Видео', table: true },
-  { id: 'faqs', label: 'Түгээмэл асуулт', table: true },
-  { id: 'settings', label: 'Тохиргоо' },
+  { id: 'overview', label: 'Тойм', icon: 'home', group: 'main', sub: '' },
+  { id: 'messenger', label: 'Messenger, Instagram', short: 'Чат', icon: 'chat', group: 'inbox', count: 'messenger_unread',
+    sub: 'Facebook Page болон Instagram-аас ирсэн мессеж. AI туслах хариулж, та хүссэн үедээ орж хариулна.' },
+  { id: 'partners', label: 'Хамтын ажиллагаа', icon: 'handshake', group: 'inbox', inbox: true, count: 'partners_new',
+    sub: 'Эмийн сан, эмнэлэг, байгууллага, контент бүтээгчдийн хүсэлт.' },
+  { id: 'questions', label: 'Эмчээс асуусан', icon: 'question', group: 'inbox', inbox: true, count: 'questions_new',
+    sub: 'Сайтаас эмчид илгээсэн асуултууд.' },
+  { id: 'reviews', label: 'Сэтгэгдэл', icon: 'star', group: 'inbox', inbox: true, count: 'reviews_pending',
+    sub: 'Сэтгэгдэл таныг нийтлэх хүртэл сайтад харагдахгүй.' },
+  { id: 'locations', label: 'Байршлын санал', icon: 'pin', group: 'inbox', inbox: true, count: 'locations_new',
+    sub: 'Хэрэглэгчдийн «энд зарж эхлээч» гэж санал болгосон газрууд.' },
+  { id: 'branches', label: 'Салбарууд', icon: 'store', group: 'content', table: true,
+    sub: 'Сайтын газрын зураг болон AI туслахын «хаанаас авах вэ» хариултад орно.' },
+  { id: 'products', label: 'Бүтээгдэхүүн, үнэ', icon: 'tag', group: 'content', table: true, sub: 'Савлагаа, үнэ, онлайн дэлгүүрийн холбоос.' },
+  { id: 'tips', label: 'Эмчийн зөвлөгөө', icon: 'doctor', group: 'content', table: true, sub: 'Зөвлөгөө, 1 минутын видео, «Үнэн үү, ташаа юу?».' },
+  { id: 'knowledge', label: 'Мэдлэгийн сан', icon: 'book', group: 'content', table: true,
+    sub: 'Messenger-ийн AI зөвхөн эндхийн баталгаатай мэдээллээр хариулна.' },
+  { id: 'videos', label: 'Видео', icon: 'video', group: 'content', table: true, sub: 'Контент бүтээгчид болон «Манай гэрийн Домч» бичлэгүүд.' },
+  { id: 'faqs', label: 'Түгээмэл асуулт', icon: 'help', group: 'content', table: true, sub: 'Сайтын асуулт, хариултын хэсэг.' },
+  { id: 'settings', label: 'Тохиргоо', icon: 'gear', group: 'system', sub: 'Холбоо барих мэдээлэл, Messenger, Instagram, AI туслах.' },
 ];
+const TAB = Object.fromEntries(TABS.map((t) => [t.id, t]));
+const GROUPS = [['main', ''], ['inbox', 'Ирсэн'], ['content', 'Агуулга'], ['system', 'Систем']];
 
 const STATUS_LABEL = {
   pending: 'Хүлээгдэж буй', approved: 'Нийтэлсэн', rejected: 'Татгалзсан', new: 'Шинэ', answered: 'Хариулсан',
@@ -47,6 +56,8 @@ const SORT = { k: 'sort', l: 'Эрэмбэ', type: 'number', hint: 'Бага т�
 const SCHEMAS = {
   branches: {
     title: 'Салбарууд',
+    titleKey: 'name',
+    filters: ['chain', 'city'],
     cols: [['chain', 'Сүлжээ'], ['name', 'Салбар'], ['city', 'Хот, аймаг'], ['district', 'Дүүрэг'], ['phone', 'Утас']],
     fields: [
       { k: 'chain', l: 'Сүлжээний нэр', req: true },
@@ -66,7 +77,8 @@ const SCHEMAS = {
   },
   products: {
     title: 'Бүтээгдэхүүн, үнэ',
-    cols: [['volume_ml', 'Хэмжээ (мл)'], ['price', 'Үнэ (₮)'], ['online_url', 'Онлайн холбоос']],
+    titleKey: 'name',
+    cols: [['volume_ml', 'Хэмжээ'], ['price', 'Үнэ'], ['online_url', 'Онлайн холбоос']],
     fields: [
       { k: 'slug', l: 'Код', req: true, hint: 'small эсвэл big' },
       { k: 'name', l: 'Нэр', req: true },
@@ -79,6 +91,7 @@ const SCHEMAS = {
   },
   tips: {
     title: 'Эмчийн зөвлөгөө',
+    titleKey: 'title',
     cols: [['title', 'Гарчиг'], ['doctor_name', 'Эмч'], ['kind', 'Төрөл'], ['featured', 'Онцлох']],
     fields: [
       { k: 'kind', l: 'Төрөл', type: 'select', options: [['advice', 'Эмчийн зөвлөгөө'], ['minute', '1 минутын зөвлөгөө'], ['myth', 'Үнэн үү, ташаа юу?']], def: 'advice' },
@@ -98,7 +111,8 @@ const SCHEMAS = {
   },
   videos: {
     title: 'Видео',
-    cols: [['author', 'Нэр'], ['topic', 'Сэдэв'], ['kind', 'Төрөл']],
+    titleKey: 'title',
+    cols: [['title', 'Гарчиг'], ['author', 'Нэр'], ['topic', 'Сэдэв'], ['kind', 'Төрөл']],
     fields: [
       { k: 'kind', l: 'Төрөл', type: 'select', options: [['creator', 'Контент бүтээгч'], ['family', 'Манай гэрийн Домч']], def: 'creator' },
       { k: 'title', l: 'Гарчиг', req: true },
@@ -113,6 +127,8 @@ const SCHEMAS = {
   },
   knowledge: {
     title: 'Мэдлэгийн сан',
+    titleKey: 'title',
+    filters: ['topic'],
     cols: [['title', 'Гарчиг'], ['topic', 'Ангилал'], ['updated_at', 'Шинэчилсэн']],
     fields: [
       { k: 'topic', l: 'Ангилал', type: 'select', options: KNOWLEDGE_TOPICS, def: 'general' },
@@ -126,6 +142,7 @@ const SCHEMAS = {
   },
   faqs: {
     title: 'Түгээмэл асуулт',
+    titleKey: 'question',
     cols: [['question', 'Асуулт'], ['sort', 'Эрэмбэ']],
     fields: [
       { k: 'question', l: 'Асуулт', req: true },
@@ -135,11 +152,14 @@ const SCHEMAS = {
     ],
   },
 };
+const FILTER_LABEL = { chain: 'Бүх сүлжээ', city: 'Бүх хот, аймаг', topic: 'Бүх ангилал' };
 
 const SETTING_FIELDS = [
   ['phone', 'Утас'], ['email', 'И-мэйл'], ['address', 'Хаяг'], ['online_store', 'Онлайн дэлгүүрийн холбоос'],
   ['facebook', 'Facebook холбоос'], ['instagram', 'Instagram холбоос'], ['youtube', 'YouTube холбоос'],
 ];
+
+const fmt = (n) => Number(n || 0).toLocaleString('en-US');
 
 function useAdminApi(token, onUnauthorized) {
   return useCallback(async (path, opts = {}) => {
@@ -152,30 +172,76 @@ function useAdminApi(token, onUnauthorized) {
   }, [token, onUnauthorized]);
 }
 
-function Confirm({ label, onConfirm, danger = true }) {
+/* Two-step delete: the first press arms the button for 4 seconds. */
+function Confirm({ label, onConfirm, danger = true, icon = 'trash', compact = false }) {
   const [armed, setArmed] = useState(false);
   useEffect(() => {
     if (!armed) return undefined;
     const t = setTimeout(() => setArmed(false), 4000);
     return () => clearTimeout(t);
   }, [armed]);
-  return armed ? (
-    <button type="button" className={`a-btn${danger ? ' a-btn--danger' : ''}`} onClick={() => { setArmed(false); onConfirm(); }}>Тийм, {label.toLowerCase()}</button>
+  if (armed) {
+    return (
+      <button type="button" className={`a-btn a-btn--sm${danger ? ' a-btn--danger' : ''}`}
+        onClick={(e) => { e.stopPropagation(); setArmed(false); onConfirm(); }}>
+        Тийм, {label.toLowerCase()}
+      </button>
+    );
+  }
+  return compact ? (
+    <button type="button" className="a-icon-btn" aria-label={label} title={label} onClick={(e) => { e.stopPropagation(); setArmed(true); }}>
+      <Icon name={icon} />
+    </button>
   ) : (
-    <button type="button" className="a-btn a-btn--ghost" onClick={() => setArmed(true)}>{label}</button>
+    <button type="button" className="a-btn a-btn--ghost a-btn--sm" onClick={(e) => { e.stopPropagation(); setArmed(true); }}>
+      <Icon name={icon} size={16} />{label}
+    </button>
   );
 }
 
+function download(name, rows) {
+  const blob = new Blob(['﻿' + toCsv(rows)], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `domch-${name}-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+function toCsv(rows) {
+  if (!rows.length) return '';
+  const keys = Array.from(rows.reduce((set, r) => { Object.keys(r).forEach((k) => set.add(k)); return set; }, new Set()));
+  const esc = (v) => {
+    const s = v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return [keys.join(','), ...rows.map((r) => keys.map((k) => esc(r[k])).join(','))].join('\n');
+}
+
+function SearchBox({ value, onChange, placeholder = 'Хайх…', label = 'Хайх', autoFocus = false }) {
+  return (
+    <label className="a-search">
+      <Icon name="search" size={17} />
+      <span className="sr">{label}</span>
+      <input type="search" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} data-autofocus={autoFocus ? '' : undefined} />
+    </label>
+  );
+}
+
+/* ---------------- Login ---------------- */
 function Login({ onDone }) {
   const [token, setToken] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [show, setShow] = useState(false);
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true);
     setError('');
     try {
-      await api('/admin/summary', { token: token.trim() });
+      await api('/admin/summary?events=0', { token: token.trim() });
       onDone(token.trim());
     } catch (err) {
       setError(err.status === 401 ? 'Нэвтрэх түлхүүр буруу байна.' : err.message);
@@ -185,19 +251,31 @@ function Login({ onDone }) {
   };
   return (
     <div className="a-login">
-      <form onSubmit={submit} className="a-card">
+      <form onSubmit={submit} className="a-login__card">
+        <span className="a-logo" aria-hidden="true">Д</span>
         <p className="a-mark">DOMCH</p>
         <h1>Удирдлагын хэсэг</h1>
+        <p className="a-muted">Сайт, Messenger, AI туслахаа нэг дороос удирдана.</p>
         <label htmlFor="a-token">Нэвтрэх түлхүүр</label>
-        <input id="a-token" type="password" value={token} onChange={(e) => setToken(e.target.value)} autoComplete="current-password" required />
+        <div className="a-login__field">
+          <input id="a-token" type={show ? 'text' : 'password'} value={token} onChange={(e) => setToken(e.target.value)}
+            autoComplete="current-password" required autoFocus />
+          <button type="button" className="a-icon-btn" onClick={() => setShow(!show)} aria-pressed={show}
+            aria-label={show ? 'Түлхүүрийг нуух' : 'Түлхүүрийг харах'}>
+            <Icon name={show ? 'eyeOff' : 'eye'} />
+          </button>
+        </div>
         {error && <p className="a-error" role="alert">{error}</p>}
-        <button className="a-btn" type="submit" disabled={busy || !token.trim()}>{busy ? 'Шалгаж байна…' : 'Нэвтрэх'}</button>
-        <a className="a-link" href="/">Сайт руу буцах</a>
+        <button className="a-btn a-btn--lg" type="submit" disabled={busy || !token.trim()}>
+          {busy ? 'Шалгаж байна…' : <>Нэвтрэх <Icon name="arrowRight" size={17} /></>}
+        </button>
+        <a className="a-link" href="/">← Сайт руу буцах</a>
       </form>
     </div>
   );
 }
 
+/* ---------------- Overview ---------------- */
 function lastDays(n) {
   const now = new Date();
   return Array.from({ length: n }, (_, i) => (
@@ -213,14 +291,9 @@ function niceMax(v) {
 }
 
 /** 30 columns, one per UTC day (empty days included, so gaps are visible). */
-function DailyChart({ daily }) {
-  const days = useMemo(() => {
-    const map = new Map(daily.map((d) => [d.day, d.count]));
-    return lastDays(30).map((day) => ({ day, count: map.get(day) || 0 }));
-  }, [daily]);
+function DailyChart({ days }) {
   const [active, setActive] = useState(null);
   const top = niceMax(Math.max(...days.map((d) => d.count)));
-  const total = days.reduce((s, d) => s + d.count, 0);
   const cur = active == null ? null : days[active];
   const onKey = (e) => {
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
@@ -232,12 +305,8 @@ function DailyChart({ daily }) {
   };
   return (
     <figure className="a-chart">
-      <figcaption>
-        <span>Өдөр тутмын үйлдэл, сүүлийн 30 хоног</span>
-        <span className="a-muted">Нийт {total.toLocaleString('en-US')}</span>
-      </figcaption>
       <div className="a-chart__plot">
-        <div className="a-chart__y" aria-hidden="true"><span>{top.toLocaleString('en-US')}</span><span>0</span></div>
+        <div className="a-chart__y" aria-hidden="true"><span>{fmt(top)}</span><span>{fmt(top / 2)}</span><span>0</span></div>
         <div
           className="a-chart__bars"
           tabIndex={0}
@@ -258,7 +327,7 @@ function DailyChart({ daily }) {
               style={{ left: `${((active + 0.5) / days.length) * 100}%` }}
               role="status"
             >
-              <strong>{cur.count.toLocaleString('en-US')}</strong>
+              <strong>{fmt(cur.count)}</strong>
               <span>{formatDate(cur.day)}</span>
             </span>
           )}
@@ -284,156 +353,319 @@ function DailyChart({ daily }) {
   );
 }
 
+function Trend({ now, prev, against }) {
+  if (!now && !prev) return <span className="a-trend">Өгөгдөл алга</span>;
+  if (!prev) return <span className="a-trend is-up"><Icon name="up" size={14} />шинэ · {against}</span>;
+  const pct = Math.round(((now - prev) / prev) * 100);
+  const dir = pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat';
+  return (
+    <span className={`a-trend is-${dir}`}>
+      {dir !== 'flat' && <Icon name={dir} size={14} />}
+      {dir === 'flat' ? 'Өөрчлөлтгүй' : `${Math.abs(pct)}%`} · {against}
+    </span>
+  );
+}
+
+function Spark({ values }) {
+  const max = Math.max(1, ...values);
+  const w = 120;
+  const h = 36;
+  const step = w / (values.length - 1 || 1);
+  const pts = values.map((v, i) => `${(i * step).toFixed(1)},${(h - 3 - (v / max) * (h - 6)).toFixed(1)}`);
+  return (
+    <svg className="a-spark" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" aria-hidden="true">
+      <polyline points={`0,${h} ${pts.join(' ')} ${w},${h}`} className="a-spark__area" />
+      <polyline points={pts.join(' ')} className="a-spark__line" />
+    </svg>
+  );
+}
+
+const TODO = [
+  ['messenger', 'messenger_unread', 'уншаагүй мессеж', 'Хариулах'],
+  ['reviews', 'reviews_pending', 'сэтгэгдэл нийтлэхийг хүлээж байна', 'Шалгах'],
+  ['questions', 'questions_new', 'эмчид ирсэн шинэ асуулт', 'Хариулах'],
+  ['partners', 'partners_new', 'хамтын ажиллагааны шинэ хүсэлт', 'Холбогдох'],
+  ['locations', 'locations_new', 'байршлын шинэ санал', 'Үзэх'],
+];
+
 function Overview({ call, summary, reload, go }) {
-  const [msg, setMsg] = useState('');
+  const toast = useToast();
   const counts = (summary && summary.counts) || {};
-  const cards = [
-    ['reviews', 'Шалгах сэтгэгдэл', counts.reviews_pending],
-    ['questions', 'Шинэ асуулт', counts.questions_new],
-    ['partners', 'Шинэ хүсэлт', counts.partners_new],
-    ['locations', 'Байршлын санал', counts.locations_new],
-    ['messenger', 'Уншаагүй мессеж', counts.messenger_unread],
-  ];
+  const ready = Boolean(summary && summary.full);
+  const days = useMemo(() => {
+    const map = new Map(((summary && summary.daily) || []).map((d) => [d.day, d.count]));
+    return lastDays(30).map((day) => ({ day, count: map.get(day) || 0 }));
+  }, [summary]);
+  const series = days.map((d) => d.count);
+  const sum = (a) => a.reduce((s, v) => s + v, 0);
+  const last7 = sum(series.slice(-7));
+  const prev7 = sum(series.slice(-14, -7));
+  const events = (summary && summary.events) || [];
+  const topEvent = events[0];
+  const maxEvent = Math.max(1, ...events.map((e) => e.count));
+  const todo = TODO.filter(([, key]) => counts[key] > 0);
+
   const clear = async () => {
     try {
       const res = await call('/clear-samples', { method: 'POST', body: {} });
-      setMsg(`${res.deleted} жишээ мөр устгалаа.`);
+      toast(`${res.deleted} жишээ мөр устгалаа.`);
       reload();
     } catch (err) {
-      setMsg(err.message);
+      toast(err.message, 'error');
     }
   };
+
   return (
-    <div className="a-stack">
-      <div className="a-cards">
-        {cards.map(([tab, label, n]) => (
-          <button key={tab} type="button" className="a-stat" onClick={() => go(tab)}>
-            <span className="a-stat__n">{n ?? '—'}</span>
-            <span>{label}</span>
-          </button>
-        ))}
-      </div>
-      {counts.samples > 0 && (
-        <div className="a-card a-warn">
-          <p><strong>{counts.samples} жишээ мөр</strong> (салбар, зөвлөгөө, видео) сайтад «Жишээ» тэмдэгтэй харагдаж байна. Бодит мэдээллээ оруулаад жишээг устгана уу. Жишээ мөрийг засахад бодит мөр болно.</p>
-          <Confirm label="Жишээг устгах" onConfirm={clear} />
+    <div className="a-ov">
+      <section className="a-kpis" aria-label="Гол үзүүлэлт">
+        <div className="a-kpi a-kpi--hero">
+          <span className="a-kpi__label">Сүүлийн 7 хоног</span>
+          {ready ? <strong className="a-kpi__n">{fmt(last7)}</strong> : <Skeleton rows={1} />}
+          <span className="a-kpi__sub">сайт дээрх үйлдэл</span>
+          {ready && <Trend now={last7} prev={prev7} against="өмнөх 7 хоногоос" />}
+          {ready && <Spark values={series.slice(-14)} />}
         </div>
-      )}
-      {msg && <p className="a-note">{msg}</p>}
-      <div className="a-card">
-        <h2>Сүүлийн 30 хоногийн үйлдэл</h2>
-        {summary && summary.events.length ? (
-          <table className="a-table">
-            <thead><tr><th>Үйлдэл</th><th className="num">Тоо</th></tr></thead>
-            <tbody>
-              {summary.events.map((e) => (
-                <tr key={e.name}><td>{EVENT_LABEL[e.name] || e.name}</td><td className="num">{e.count}</td></tr>
-              ))}
-            </tbody>
-          </table>
-        ) : <p className="a-muted">Одоогоор бүртгэгдсэн үйлдэл алга.</p>}
-        {summary && <DailyChart daily={summary.daily || []} />}
-        <p className="a-muted">Онлайн дэлгүүрийн борлуулалттай холбогдоогүй тул холбоосын даралтыг борлуулалт гэж тооцохгүй.</p>
-      </div>
-      <p className="a-muted">Өгөгдлийн сан: {summary ? (summary.driver === 'd1' ? 'Cloudflare D1' : 'Локал SQLite') : '…'}</p>
+        <div className="a-kpi">
+          <span className="a-kpi__label">Өнөөдөр</span>
+          {ready ? <strong className="a-kpi__n">{fmt(series[29])}</strong> : <Skeleton rows={1} />}
+          <span className="a-kpi__sub">үйлдэл</span>
+          {ready && <Trend now={series[29]} prev={series[28]} against="өчигдрөөс" />}
+        </div>
+        <div className="a-kpi">
+          <span className="a-kpi__label">30 хоног</span>
+          {ready ? <strong className="a-kpi__n">{fmt(sum(series))}</strong> : <Skeleton rows={1} />}
+          <span className="a-kpi__sub">нийт үйлдэл</span>
+        </div>
+        <div className="a-kpi">
+          <span className="a-kpi__label">Хамгийн их хийсэн</span>
+          {ready ? (
+            topEvent ? <strong className="a-kpi__n a-kpi__n--text">{EVENT_LABEL[topEvent.name] || topEvent.name}</strong> : <strong className="a-kpi__n">—</strong>
+          ) : <Skeleton rows={1} />}
+          <span className="a-kpi__sub">{topEvent ? `${fmt(topEvent.count)} удаа, 30 хоногт` : 'бүртгэл алга'}</span>
+        </div>
+      </section>
+
+      <section className="a-panel a-todo" aria-labelledby="ov-todo">
+        <header className="a-panel__head">
+          <h2 id="ov-todo">Танд хийх зүйл</h2>
+          {todo.length > 0 && <span className="a-badge">{sum(todo.map(([, k]) => counts[k]))}</span>}
+        </header>
+        {!summary ? <Skeleton rows={3} /> : todo.length === 0 ? (
+          <Empty icon="check" title="Бүх зүйл шийдэгдсэн" text="Шинэ мессеж, хүсэлт ирвэл энд гарна." />
+        ) : (
+          <ul className="a-todo__list">
+            {todo.map(([tab, key, text, action]) => (
+              <li key={tab}>
+                <button type="button" onClick={() => go(tab)}>
+                  <span className="a-todo__icon"><Icon name={TAB[tab].icon} /></span>
+                  <span className="a-todo__text"><b>{counts[key]}</b> {text}</span>
+                  <span className="a-todo__go">{action}<Icon name="arrowRight" size={15} /></span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {counts.samples > 0 && (
+          <div className="a-alert">
+            <Icon name="bolt" />
+            <p><strong>{counts.samples} жишээ мөр</strong> (салбар, зөвлөгөө, видео) сайтад «Жишээ» тэмдэгтэй харагдаж байна. Бодит мэдээллээ оруулаад жишээг устгана уу.</p>
+            <Confirm label="Жишээг устгах" onConfirm={clear} />
+          </div>
+        )}
+      </section>
+
+      <section className="a-panel a-events" aria-labelledby="ov-events">
+        <header className="a-panel__head">
+          <h2 id="ov-events">Хүмүүс сайт дээр юу хийсэн бэ</h2>
+          <span className="a-muted">30 хоног</span>
+        </header>
+        {!ready ? <Skeleton rows={5} /> : events.length === 0 ? (
+          <Empty icon="spark" title="Одоогоор бүртгэгдсэн үйлдэл алга" />
+        ) : (
+          <ol className="a-bars">
+            {events.map((e) => (
+              <li key={e.name}>
+                <span className="a-bars__label">{EVENT_LABEL[e.name] || e.name}</span>
+                <span className="a-bars__track"><i style={{ width: `${(e.count / maxEvent) * 100}%` }} /></span>
+                <span className="a-bars__n">{fmt(e.count)}</span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
+
+      <section className="a-panel a-daily" aria-labelledby="ov-daily">
+        <header className="a-panel__head">
+          <h2 id="ov-daily">Өдөр тутмын үйлдэл</h2>
+          <span className="a-muted">Сүүлийн 30 хоног · нийт {fmt(sum(series))}</span>
+        </header>
+        {ready ? <DailyChart days={days} /> : <Skeleton rows={4} card />}
+        <p className="a-hint">Онлайн дэлгүүрийн борлуулалттай холбогдоогүй тул холбоосын даралтыг борлуулалт гэж тооцохгүй.
+          {' '}Өгөгдлийн сан: {summary ? (summary.driver === 'd1' ? 'Cloudflare D1' : 'Локал SQLite') : '…'}.</p>
+      </section>
     </div>
   );
 }
 
-function toCsv(rows) {
-  if (!rows.length) return '';
-  const keys = Array.from(rows.reduce((set, r) => { Object.keys(r).forEach((k) => set.add(k)); return set; }, new Set()));
-  const esc = (v) => {
-    const s = v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  return [keys.join(','), ...rows.map((r) => keys.map((k) => esc(r[k])).join(','))].join('\n');
+/* ---------------- Inbox (form submissions): list + detail ---------------- */
+function inboxTitle(kind, r) {
+  if (kind === 'partners') return r.org || r.contact_name || 'Нэргүй байгууллага';
+  if (kind === 'locations') return [r.city, r.district].filter(Boolean).join(', ') || 'Байршил';
+  return r.name || 'Нэргүй';
+}
+function inboxSnippet(kind, r) {
+  if (kind === 'reviews') return r.body;
+  if (kind === 'questions') return r.question;
+  if (kind === 'partners') return [KIND_LABEL[r.kind] || r.kind, r.message].filter(Boolean).join(' · ');
+  return r.note;
+}
+function contactLinks(r) {
+  const out = [];
+  const phone = r.phone || (/\d[\d\s-]{5,}/.test(r.contact || '') && !/@/.test(r.contact || '') ? r.contact : '');
+  const email = r.email || (/@/.test(r.contact || '') ? r.contact : '');
+  if (phone) out.push(['phone', `Залгах: ${phone}`, `tel:${String(phone).replace(/[^\d+]/g, '')}`]);
+  if (email) out.push(['mail', 'И-мэйл бичих', `mailto:${email}`]);
+  return out;
 }
 
 function Inbox({ kind, call, onChange }) {
+  const toast = useToast();
+  const [data, setData] = useState(null);
   const [status, setStatus] = useState('');
-  const [data, setData] = useState({ items: [], statuses: [] });
+  const [q, setQ] = useState('');
+  const [sel, setSel] = useState(null);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
+  const wide = useRef(typeof window !== 'undefined' && window.matchMedia('(min-width: 861px)').matches);
+
   const load = useCallback(async () => {
-    setLoading(true);
     setError('');
     try {
-      setData(await call(`/inbox/${kind}${status ? `?status=${status}` : ''}`));
+      const res = await call(`/inbox/${kind}`);
+      setData(res);
+      setSel((cur) => cur ?? (wide.current && res.items[0] ? res.items[0].id : null));
     } catch (err) {
       setError(err.message);
-    } finally {
-      setLoading(false);
     }
-  }, [call, kind, status]);
+  }, [call, kind]);
   useEffect(() => { load(); }, [load]);
 
+  const items = (data && data.items) || [];
+  const statuses = (data && data.statuses) || [];
+  const byStatus = useMemo(() => items.reduce((m, r) => ({ ...m, [r.status]: (m[r.status] || 0) + 1 }), {}), [items]);
+  const shown = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return items.filter((r) => (!status || r.status === status)
+      && (!needle || JSON.stringify(r).toLowerCase().includes(needle)));
+  }, [items, status, q]);
+  const current = items.find((r) => r.id === sel);
+
   const patch = async (id, next) => {
+    const before = items;
+    setData((d) => ({ ...d, items: d.items.map((r) => (r.id === id ? { ...r, status: next } : r)) }));
     try {
       await call(`/inbox/${kind}/${id}`, { method: 'PATCH', body: { status: next } });
-      await load();
+      toast(kind === 'reviews' && next === 'approved' ? 'Сэтгэгдэл сайтад нийтлэгдлээ.' : `Төлөв: ${STATUS_LABEL[next] || next}`);
       onChange();
     } catch (err) {
-      setError(err.message);
+      setData((d) => ({ ...d, items: before }));
+      toast(err.message, 'error');
     }
   };
   const remove = async (id) => {
     try {
       await call(`/inbox/${kind}/${id}`, { method: 'DELETE' });
-      await load();
+      setData((d) => ({ ...d, items: d.items.filter((r) => r.id !== id) }));
+      setSel(null);
+      toast('Устгалаа.');
       onChange();
     } catch (err) {
-      setError(err.message);
+      toast(err.message, 'error');
     }
   };
-  const download = () => {
-    const blob = new Blob(['﻿' + toCsv(data.items)], { type: 'text/csv;charset=utf-8' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `domch-${kind}-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  };
 
+  if (error && !data) return <p className="a-error" role="alert">{error}</p>;
   return (
-    <div className="a-stack">
-      <div className="a-toolbar">
-        <label htmlFor="a-status">Төлөв</label>
-        <select id="a-status" value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">Бүгд</option>
-          {data.statuses.map((s) => <option key={s} value={s}>{STATUS_LABEL[s] || s}</option>)}
-        </select>
-        <button type="button" className="a-btn a-btn--ghost" onClick={load}>Шинэчлэх</button>
-        <button type="button" className="a-btn a-btn--ghost" onClick={download} disabled={!data.items.length}>CSV татах</button>
-      </div>
-      {error && <p className="a-error" role="alert">{error}</p>}
-      {loading ? <p className="a-muted">Ачаалж байна…</p> : data.items.length === 0 ? (
-        <p className="a-muted">Мэдээлэл алга.</p>
-      ) : (
-        <ul className="a-inbox">
-          {data.items.map((r) => (
-            <li key={r.id} className="a-card">
-              <div className="a-inbox__head">
-                <span className={`a-pill a-pill--${r.status}`}>{STATUS_LABEL[r.status] || r.status}</span>
-                <span className="a-muted">{formatDate(r.created_at)} · №{r.id}</span>
-              </div>
-              <InboxBody kind={kind} r={r} />
-              <div className="a-inbox__actions">
-                <label className="sr" htmlFor={`st-${r.id}`}>Төлөв өөрчлөх</label>
-                <select id={`st-${r.id}`} value={r.status} onChange={(e) => patch(r.id, e.target.value)}>
-                  {data.statuses.map((s) => <option key={s} value={s}>{STATUS_LABEL[s] || s}</option>)}
-                </select>
-                {kind === 'reviews' && r.status !== 'approved' && (
-                  <button type="button" className="a-btn" onClick={() => patch(r.id, 'approved')}>Нийтлэх</button>
-                )}
-                <Confirm label="Устгах" onConfirm={() => remove(r.id)} />
-              </div>
-            </li>
+    <div className={`a-split${current ? ' has-sel' : ''}`}>
+      <section className="a-split__list" aria-label="Жагсаалт">
+        <div className="a-split__tools">
+          <SearchBox value={q} onChange={setQ} />
+          <button type="button" className="a-icon-btn" onClick={load} aria-label="Шинэчлэх" title="Шинэчлэх"><Icon name="refresh" /></button>
+          <button type="button" className="a-icon-btn" onClick={() => download(kind, shown)} disabled={!shown.length}
+            aria-label="CSV татах" title="CSV татах"><Icon name="download" /></button>
+        </div>
+        <div className="a-chips" role="group" aria-label="Төлөвөөр шүүх">
+          <button type="button" aria-pressed={!status} onClick={() => setStatus('')}>Бүгд <span>{items.length}</span></button>
+          {statuses.map((s) => (
+            <button key={s} type="button" aria-pressed={status === s} onClick={() => setStatus(s)}>
+              {STATUS_LABEL[s] || s} <span>{byStatus[s] || 0}</span>
+            </button>
           ))}
-        </ul>
-      )}
+        </div>
+        {!data ? <Skeleton rows={6} /> : shown.length === 0 ? (
+          <Empty icon="inbox" title={items.length ? 'Тохирох зүйл олдсонгүй' : 'Одоогоор ирээгүй байна'}
+            text={items.length ? 'Шүүлтүүр эсвэл хайлтаа өөрчилнө үү.' : 'Сайтаас илгээсэн хүсэлт энд гарна.'} />
+        ) : (
+          <ul className="a-mail">
+            {shown.map((r) => (
+              <li key={r.id}>
+                <button type="button" aria-current={sel === r.id ? 'true' : undefined} onClick={() => setSel(r.id)}
+                  className={r.status === 'new' || r.status === 'pending' ? 'is-unread' : ''}>
+                  <Avatar name={inboxTitle(kind, r)} size={38} />
+                  <span className="a-mail__main">
+                    <span className="a-mail__top">
+                      <strong>{inboxTitle(kind, r)}</strong>
+                      <time>{formatDate(r.created_at)}</time>
+                    </span>
+                    {kind === 'reviews' && <span className="a-stars a-stars--sm" aria-label={`5-аас ${r.rating}`}>{'★'.repeat(r.rating)}<span>{'★'.repeat(5 - r.rating)}</span></span>}
+                    <span className="a-mail__snip">{inboxSnippet(kind, r) || '—'}</span>
+                    <span className={`a-pill a-pill--${r.status}`}>{STATUS_LABEL[r.status] || r.status}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <section className="a-split__detail" aria-label="Дэлгэрэнгүй" aria-live="polite">
+        {!current ? (
+          <Empty icon="inbox" title="Зүүн талаас сонгоно уу" text="Сонгосон хүсэлтийн дэлгэрэнгүй энд харагдана." />
+        ) : (
+          <article className="a-detail">
+            <header className="a-detail__head">
+              <button type="button" className="a-icon-btn a-back" onClick={() => setSel(null)} aria-label="Жагсаалт руу буцах"><Icon name="arrowLeft" /></button>
+              <Avatar name={inboxTitle(kind, current)} size={44} />
+              <div className="a-detail__who">
+                <h2>{inboxTitle(kind, current)}</h2>
+                <p className="a-muted">{formatDate(current.created_at)} · №{current.id}</p>
+              </div>
+              <span className={`a-pill a-pill--${current.status}`}>{STATUS_LABEL[current.status] || current.status}</span>
+            </header>
+            <div className="a-detail__body"><InboxBody kind={kind} r={current} /></div>
+            {contactLinks(current).length > 0 && (
+              <div className="a-detail__links">
+                {contactLinks(current).map(([icon, label, href]) => (
+                  <a key={href} className="a-btn a-btn--ghost a-btn--sm" href={href}><Icon name={icon} size={16} />{label}</a>
+                ))}
+              </div>
+            )}
+            <footer className="a-detail__foot">
+              <div className="a-seg" role="group" aria-label="Төлөв өөрчлөх">
+                {statuses.map((s) => (
+                  <button key={s} type="button" aria-pressed={current.status === s} onClick={() => current.status !== s && patch(current.id, s)}>
+                    {STATUS_LABEL[s] || s}
+                  </button>
+                ))}
+              </div>
+              <div className="a-detail__acts">
+                {kind === 'reviews' && current.status !== 'approved' && (
+                  <button type="button" className="a-btn a-btn--sm" onClick={() => patch(current.id, 'approved')}><Icon name="check" size={16} />Нийтлэх</button>
+                )}
+                <Confirm label="Устгах" onConfirm={() => remove(current.id)} />
+              </div>
+            </footer>
+          </article>
+        )}
+      </section>
     </div>
   );
 }
@@ -441,7 +673,7 @@ function Inbox({ kind, call, onChange }) {
 function Row({ label, value, href }) {
   if (!value) return null;
   return (
-    <p className="a-kv"><span>{label}</span>{href ? <a href={href}>{value}</a> : <span className="a-pre">{value}</span>}</p>
+    <div className="a-kv"><dt>{label}</dt><dd>{href ? <a href={href}>{value}</a> : <span className="a-pre">{value}</span>}</dd></div>
   );
 }
 
@@ -450,24 +682,26 @@ function InboxBody({ kind, r }) {
     return (
       <div>
         <p className="a-stars" aria-label={`5-аас ${r.rating}`}>{'★'.repeat(r.rating)}<span>{'★'.repeat(5 - r.rating)}</span></p>
-        <Row label="Нэр" value={r.name} />
-        <Row label="Савлагаа" value={r.size && r.size !== 'unknown' ? `${r.size} мл` : ''} />
-        <Row label="Сэтгэгдэл" value={r.body} />
+        <dl>
+          <Row label="Сэтгэгдэл" value={r.body} />
+          <Row label="Нэр" value={r.name} />
+          <Row label="Савлагаа" value={r.size && r.size !== 'unknown' ? `${r.size} мл` : ''} />
+        </dl>
       </div>
     );
   }
   if (kind === 'questions') {
     return (
-      <div>
+      <dl>
         <Row label="Асуулт" value={r.question} />
         <Row label="Нэр" value={r.name} />
         <Row label="Холбоо барих" value={r.contact} />
-      </div>
+      </dl>
     );
   }
   if (kind === 'partners') {
     return (
-      <div>
+      <dl>
         <Row label="Төрөл" value={KIND_LABEL[r.kind] || r.kind} />
         <Row label="Байгууллага" value={r.org} />
         <Row label="Холбоо барих" value={r.contact_name} />
@@ -476,18 +710,19 @@ function InboxBody({ kind, r }) {
         <Row label="Байршил" value={r.location} />
         {Object.entries(r.details || {}).map(([k, v]) => <Row key={k} label={DETAIL_LABEL[k] || k} value={v} />)}
         <Row label="Мессеж" value={r.message} />
-      </div>
+      </dl>
     );
   }
   return (
-    <div>
+    <dl>
       <Row label="Байршил" value={[r.city, r.district].filter(Boolean).join(', ')} />
       <Row label="Санал" value={r.note} />
       <Row label="Холбоо барих" value={r.contact} />
-    </div>
+    </dl>
   );
 }
 
+/* ---------------- Content tables ---------------- */
 async function toWebp(file, max = 1280) {
   const url = URL.createObjectURL(file);
   try {
@@ -539,18 +774,18 @@ function ImageField({ id, value, onChange, call, onError }) {
     <div className="a-image">
       {value ? <img src={value} alt="" /> : <span className="a-image__empty">Зураг алга</span>}
       <div className="a-image__ctl">
-        <label className="a-btn a-btn--ghost a-image__pick">
+        <label className="a-btn a-btn--ghost a-btn--sm a-image__pick">
           <input type="file" accept="image/*" onChange={pick} disabled={busy} />
           {busy ? 'Оруулж байна…' : value ? 'Зураг солих' : 'Зураг оруулах'}
         </label>
-        {value && <button type="button" className="a-btn a-btn--ghost" onClick={() => onChange('')}>Хасах</button>}
+        {value && <button type="button" className="a-btn a-btn--ghost a-btn--sm" onClick={() => onChange('')}>Хасах</button>}
         <input id={id} type="url" value={value} onChange={(e) => onChange(e.target.value)} placeholder="эсвэл зургийн холбоос https://…" />
       </div>
     </div>
   );
 }
 
-function EditForm({ schema, row, onSave, onCancel, call }) {
+function EditForm({ schema, row, onSave, onCancel, call, extra }) {
   const initial = {};
   schema.fields.forEach((f) => {
     const v = row ? row[f.k] : undefined;
@@ -585,7 +820,10 @@ function EditForm({ schema, row, onSave, onCancel, call }) {
         return (
           <div key={f.k} className={`a-field${f.type === 'checkbox' ? ' a-field--check' : ''}${f.type === 'image' ? ' a-field--wide' : ''}${errors[f.k] ? ' has-error' : ''}`}>
             {f.type === 'checkbox' ? (
-              <label htmlFor={id}><input id={id} type="checkbox" checked={values[f.k]} onChange={(e) => set(e.target.checked)} /> {f.l}</label>
+              <label htmlFor={id} className="a-switch-row">
+                <span>{f.l}</span>
+                <input id={id} type="checkbox" role="switch" className="a-switch" checked={values[f.k]} onChange={(e) => set(e.target.checked)} />
+              </label>
             ) : (
               <>
                 <label htmlFor={id}>{f.l}{f.req && <span className="req"> *</span>}</label>
@@ -611,121 +849,245 @@ function EditForm({ schema, row, onSave, onCancel, call }) {
         );
       })}
       {error && <p className="a-error" role="alert">{error}</p>}
-      <div className="a-form__actions">
-        <button type="submit" className="a-btn" disabled={busy}>{busy ? 'Хадгалж байна…' : 'Хадгалах'}</button>
+      <div className="a-form__actions a-form__actions--sticky">
+        <button type="submit" className="a-btn" disabled={busy}>{busy ? 'Хадгалж байна…' : <><Icon name="check" size={16} />Хадгалах</>}</button>
         <button type="button" className="a-btn a-btn--ghost" onClick={onCancel}>Болих</button>
+        {extra && <span className="a-form__extra">{extra}</span>}
       </div>
     </form>
   );
 }
 
+const PAGE = 25;
+const KIND_SHORT = { advice: 'Зөвлөгөө', minute: '1 минут', myth: 'Үнэн үү?', creator: 'Бүтээгч', family: 'Гэр бүл' };
+
+function cellText(row, key) {
+  const v = row[key];
+  if (key === 'featured') return v ? 'Онцлох' : '';
+  if (key === 'topic' && TOPIC_LABEL[v]) return TOPIC_LABEL[v];
+  if (key === 'updated_at') return formatDate(v);
+  if (key === 'kind') return KIND_SHORT[v] || v;
+  if (key === 'price') return v == null || v === '' ? '—' : `${fmt(v)}₮`;
+  if (key === 'volume_ml') return v == null ? '—' : `${v} мл`;
+  if (key === 'online_url' && v) return String(v).replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
+  return v == null || v === '' ? '—' : String(v);
+}
+
+function compare(a, b) {
+  const ea = a == null || a === '';
+  const eb = b == null || b === '';
+  if (ea || eb) return ea === eb ? 0 : ea ? 1 : -1;
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  return String(a).localeCompare(String(b), 'mn', { numeric: true });
+}
+
 function TableView({ table, call }) {
   const schema = SCHEMAS[table];
-  const [items, setItems] = useState([]);
+  const toast = useToast();
+  const [items, setItems] = useState(null);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState('');
+  const [vis, setVis] = useState('');
+  const [filters, setFilters] = useState({});
+  const [sort, setSort] = useState({ k: '', dir: 1 });
+  const [limit, setLimit] = useState(PAGE);
+  const activeLabel = (schema.fields.find((f) => f.k === 'active') || ACTIVE).l;
+
   const load = useCallback(async () => {
-    setLoading(true);
     setError('');
     try {
       setItems((await call(`/t/${table}`)).items);
     } catch (err) {
       setError(err.message);
-    } finally {
-      setLoading(false);
     }
   }, [call, table]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { setLimit(PAGE); }, [q, vis, filters, sort]);
+
+  const options = useMemo(() => Object.fromEntries((schema.filters || []).map((k) => [
+    k, Array.from(new Set((items || []).map((r) => r[k]).filter(Boolean))).sort((a, b) => compare(a, b)),
+  ])), [items, schema]);
+
+  const shown = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    let list = (items || []).filter((r) => (!vis || Boolean(r.active) === (vis === 'on'))
+      && Object.entries(filters).every(([k, v]) => !v || r[k] === v)
+      && (!needle || Object.values(r).some((v) => (typeof v === 'string' || typeof v === 'number') && String(v).toLowerCase().includes(needle))));
+    if (sort.k) list = [...list].sort((a, b) => compare(a[sort.k], b[sort.k]) * sort.dir);
+    return list;
+  }, [items, q, vis, filters, sort]);
 
   const save = async (values) => {
     const body = { ...values };
     if (editing && editing.id) await call(`/t/${table}/${editing.id}`, { method: 'PUT', body });
     else await call(`/t/${table}`, { method: 'POST', body });
     setEditing(null);
+    toast(editing && editing.id ? 'Өөрчлөлтийг хадгаллаа.' : 'Шинэ мөр нэмлээ.');
     load();
   };
   const remove = async (id) => {
     try {
       await call(`/t/${table}/${id}`, { method: 'DELETE' });
-      load();
+      setItems((list) => list.filter((r) => r.id !== id));
+      setEditing(null);
+      toast('Устгалаа.');
     } catch (err) {
-      setError(err.message);
+      toast(err.message, 'error');
     }
   };
-  const cell = (row, key) => {
-    const v = row[key];
-    if (key === 'featured') return v ? 'Тийм' : '';
-    if (key === 'topic') return TOPIC_LABEL[v] || v;
-    if (key === 'updated_at') return formatDate(v);
-    if (key === 'kind') return { advice: 'Зөвлөгөө', minute: '1 минут', myth: 'Үнэн үү?', creator: 'Бүтээгч', family: 'Гэр бүл' }[v] || v;
-    if (key === 'price') return v == null ? '—' : Number(v).toLocaleString('en-US');
-    return v == null || v === '' ? '—' : String(v);
+  const toggle = async (row) => {
+    const next = !row.active;
+    setItems((list) => list.map((r) => (r.id === row.id ? { ...r, active: next ? 1 : 0 } : r)));
+    try {
+      await call(`/t/${table}/${row.id}`, { method: 'PUT', body: { active: next } });
+      toast(next ? `«${cellText(row, schema.titleKey)}» харагдана.` : `«${cellText(row, schema.titleKey)}» нуугдлаа.`);
+    } catch (err) {
+      setItems((list) => list.map((r) => (r.id === row.id ? { ...r, active: row.active } : r)));
+      toast(err.message, 'error');
+    }
   };
+  const sortBy = (k) => setSort((s) => (s.k !== k ? { k, dir: 1 } : s.dir === 1 ? { k, dir: -1 } : { k: '', dir: 1 }));
+  const hidden = (items || []).filter((r) => !r.active).length;
+  const filtered = q || vis || Object.values(filters).some(Boolean);
+
+  const Switch = ({ row }) => (
+    <button type="button" role="switch" aria-checked={Boolean(row.active)} className="a-toggle"
+      aria-label={`${activeLabel}: ${cellText(row, schema.titleKey)}`} title={row.active ? 'Харагдаж байна' : 'Нуусан'}
+      onClick={(e) => { e.stopPropagation(); toggle(row); }}>
+      <span />
+    </button>
+  );
 
   return (
     <div className="a-stack">
       <div className="a-toolbar">
-        <button type="button" className="a-btn" onClick={() => setEditing({})}>Шинээр нэмэх</button>
-        <button type="button" className="a-btn a-btn--ghost" onClick={load}>Шинэчлэх</button>
+        <SearchBox value={q} onChange={setQ} placeholder={`${schema.title}-аас хайх…`} />
+        {(schema.filters || []).map((k) => (
+          <label key={k} className="a-select">
+            <span className="sr">{FILTER_LABEL[k]}</span>
+            <select value={filters[k] || ''} onChange={(e) => setFilters((f) => ({ ...f, [k]: e.target.value }))}>
+              <option value="">{FILTER_LABEL[k]}</option>
+              {options[k].map((v) => <option key={v} value={v}>{k === 'topic' ? TOPIC_LABEL[v] || v : v}</option>)}
+            </select>
+          </label>
+        ))}
+        <label className="a-select">
+          <span className="sr">Харагдах байдал</span>
+          <select value={vis} onChange={(e) => setVis(e.target.value)}>
+            <option value="">Бүгд</option>
+            <option value="on">Харагдаж буй</option>
+            <option value="off">Нуусан{hidden ? ` (${hidden})` : ''}</option>
+          </select>
+        </label>
+        <span className="a-toolbar__spacer" />
+        <button type="button" className="a-icon-btn" onClick={load} aria-label="Шинэчлэх" title="Шинэчлэх"><Icon name="refresh" /></button>
+        <button type="button" className="a-icon-btn" onClick={() => download(table, shown)} disabled={!shown.length} aria-label="CSV татах" title="CSV татах"><Icon name="download" /></button>
+        <button type="button" className="a-btn" onClick={() => setEditing({})}><Icon name="plus" size={17} />Нэмэх</button>
       </div>
       {error && <p className="a-error" role="alert">{error}</p>}
-      {loading ? <p className="a-muted">Ачаалж байна…</p> : items.length === 0 ? <p className="a-muted">Мөр алга.</p> : (
-        <div className="a-scroll">
-          <table className="a-table">
-            <thead>
-              <tr>
-                {schema.cols.map(([k, l]) => <th key={k}>{l}</th>)}
-                <th>Төлөв</th>
-                <th aria-label="Үйлдэл" />
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((row) => (
-                <tr key={row.id}>
-                  {schema.cols.map(([k]) => <td key={k}>{cell(row, k)}</td>)}
-                  <td>
-                    {row.is_sample ? <span className="a-pill a-pill--sample">Жишээ</span> : null}
-                    {row.active ? <span className="a-pill a-pill--approved">Харагдана</span> : <span className="a-pill">Нуусан</span>}
-                  </td>
-                  <td className="a-row-actions">
-                    <button type="button" className="a-btn a-btn--ghost" onClick={() => setEditing(row)}>Засах</button>
-                    <Confirm label="Устгах" onConfirm={() => remove(row.id)} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {!items ? <Skeleton rows={7} card /> : shown.length === 0 ? (
+        <div className="a-panel">
+          <Empty icon={TAB[table].icon} title={items.length ? 'Тохирох мөр олдсонгүй' : 'Одоогоор хоосон байна'}
+            text={items.length ? 'Хайлт эсвэл шүүлтүүрээ өөрчилнө үү.' : 'Эхний мөрөө нэмээрэй.'}
+            action={items.length ? (
+              <button type="button" className="a-btn a-btn--ghost a-btn--sm" onClick={() => { setQ(''); setVis(''); setFilters({}); }}>Шүүлтүүр арилгах</button>
+            ) : <button type="button" className="a-btn a-btn--sm" onClick={() => setEditing({})}><Icon name="plus" size={16} />Нэмэх</button>} />
         </div>
+      ) : (
+        <>
+          <div className="a-scroll a-only-wide">
+            <table className="a-table a-table--rows">
+              <thead>
+                <tr>
+                  {schema.cols.map(([k, l]) => (
+                    <th key={k} aria-sort={sort.k === k ? (sort.dir === 1 ? 'ascending' : 'descending') : undefined}>
+                      <button type="button" className="a-th" onClick={() => sortBy(k)}>
+                        {l}<Icon name={sort.k === k && sort.dir === -1 ? 'down' : 'up'} size={13} className={sort.k === k ? 'is-on' : ''} />
+                      </button>
+                    </th>
+                  ))}
+                  <th>Харагдах</th>
+                  <th><span className="sr">Үйлдэл</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.slice(0, limit).map((row) => (
+                  <tr key={row.id} onClick={() => setEditing(row)} className={row.active ? '' : 'is-off'}>
+                    {schema.cols.map(([k], i) => (
+                      <td key={k} className={i === 0 ? 'a-td-main' : ''}>
+                        {i === 0 ? (
+                          <button type="button" className="a-rowlink" onClick={(e) => { e.stopPropagation(); setEditing(row); }}>{cellText(row, k)}</button>
+                        ) : cellText(row, k)}
+                        {i === 0 && row.is_sample ? <span className="a-pill a-pill--sample">Жишээ</span> : null}
+                      </td>
+                    ))}
+                    <td><Switch row={row} /></td>
+                    <td className="a-row-actions">
+                      <button type="button" className="a-icon-btn" aria-label="Засах" title="Засах" onClick={(e) => { e.stopPropagation(); setEditing(row); }}><Icon name="edit" /></button>
+                      <Confirm label="Устгах" compact onConfirm={() => remove(row.id)} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <ul className="a-rowcards a-only-narrow">
+            {shown.slice(0, limit).map((row) => (
+              <li key={row.id} className={row.active ? '' : 'is-off'}>
+                <button type="button" className="a-rowcard" onClick={() => setEditing(row)}>
+                  <strong>{cellText(row, schema.titleKey)}{row.is_sample ? <span className="a-pill a-pill--sample">Жишээ</span> : null}</strong>
+                  <span className="a-muted">
+                    {schema.cols.filter(([k]) => k !== schema.titleKey).map(([k]) => cellText(row, k)).filter((v) => v && v !== '—').join(' · ')}
+                  </span>
+                </button>
+                <Switch row={row} />
+              </li>
+            ))}
+          </ul>
+          <div className="a-tablefoot">
+            <span className="a-muted">{filtered ? `${items.length}-аас ${shown.length} мөр` : `${shown.length} мөр`}{hidden && !vis ? ` · ${hidden} нуусан` : ''}</span>
+            {shown.length > limit && (
+              <button type="button" className="a-btn a-btn--ghost a-btn--sm" onClick={() => setLimit((n) => n + PAGE)}>
+                Цааш үзэх ({Math.min(PAGE, shown.length - limit)})
+              </button>
+            )}
+          </div>
+        </>
       )}
       {editing && (
-        <Modal title={editing.id ? 'Засах' : 'Шинээр нэмэх'} onClose={() => setEditing(null)} wide>
-          <EditForm schema={schema} row={editing.id ? editing : null} onSave={save} onCancel={() => setEditing(null)} call={call} />
-        </Modal>
+        <Drawer title={editing.id ? cellText(editing, schema.titleKey) : 'Шинээр нэмэх'} subtitle={schema.title} onClose={() => setEditing(null)}>
+          <EditForm schema={schema} row={editing.id ? editing : null} onSave={save} onCancel={() => setEditing(null)} call={call}
+            extra={editing.id ? <Confirm label="Устгах" onConfirm={() => remove(editing.id)} /> : null} />
+        </Drawer>
       )}
     </div>
   );
 }
 
+/* ---------------- Settings ---------------- */
 function ContactSettings({ call }) {
+  const toast = useToast();
   const [values, setValues] = useState(null);
-  const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
   useEffect(() => {
     call('/settings').then(setValues).catch((err) => setError(err.message));
   }, [call]);
   const submit = async (e) => {
     e.preventDefault();
-    setMsg('');
     setError('');
+    setBusy(true);
     try {
       await call('/settings', { method: 'PUT', body: values });
-      setMsg('Хадгаллаа. Сайт дээр 1 минутын дотор шинэчлэгдэнэ.');
+      toast('Хадгаллаа. Сайт дээр 1 минутын дотор шинэчлэгдэнэ.');
     } catch (err) {
       setError(err.message);
+    } finally {
+      setBusy(false);
     }
   };
-  if (!values) return error ? <p className="a-error">{error}</p> : <p className="a-muted">Ачаалж байна…</p>;
+  if (!values) return error ? <p className="a-error">{error}</p> : <Skeleton rows={5} card />;
   return (
     <form className="a-form a-card" onSubmit={submit}>
       {SETTING_FIELDS.map(([k, l]) => (
@@ -735,21 +1097,20 @@ function ContactSettings({ call }) {
         </div>
       ))}
       {error && <p className="a-error" role="alert">{error}</p>}
-      {msg && <p className="a-note" role="status">{msg}</p>}
-      <div className="a-form__actions"><button className="a-btn" type="submit">Хадгалах</button></div>
+      <div className="a-form__actions"><button className="a-btn" type="submit" disabled={busy}>{busy ? 'Хадгалж байна…' : 'Хадгалах'}</button></div>
     </form>
   );
 }
 
-const SETTING_TABS = [['contact', 'Холбоо барих'], ['messenger', 'Messenger, Instagram'], ['ai', 'AI']];
+const SETTING_TABS = [['contact', 'Холбоо барих', 'phone'], ['messenger', 'Messenger, Instagram', 'chat'], ['ai', 'AI туслах', 'spark']];
 
 function Settings({ call, tab, onTab, onChange, go }) {
   return (
     <div className="a-stack">
       <div className="a-tabs" role="tablist" aria-label="Тохиргоо">
-        {SETTING_TABS.map(([id, label]) => (
+        {SETTING_TABS.map(([id, label, icon]) => (
           <button key={id} type="button" role="tab" id={`st-tab-${id}`} aria-selected={tab === id} aria-controls={`st-panel-${id}`} onClick={() => onTab(id)}>
-            {label}
+            <Icon name={icon} size={16} />{label}
           </button>
         ))}
       </div>
@@ -762,7 +1123,185 @@ function Settings({ call, tab, onTab, onChange, go }) {
   );
 }
 
-export default function Admin() {
+/* ---------------- Shell: sidebar, top bar, mobile tab bar, quick jump ---------------- */
+function readHash() {
+  const [t, s] = window.location.hash.replace(/^#\/?/, '').split('/');
+  return { tab: TAB[t] ? t : 'overview', sub: s || '' };
+}
+
+const WEEK = ['Ням', 'Даваа', 'Мягмар', 'Лхагва', 'Пүрэв', 'Баасан', 'Бямба'];
+function greeting() {
+  const d = new Date();
+  const h = d.getHours();
+  return {
+    hello: h < 5 ? 'Оройн мэнд' : h < 12 ? 'Өглөөний мэнд' : h < 18 ? 'Өдрийн мэнд' : 'Оройн мэнд',
+    date: `${d.getFullYear()} оны ${d.getMonth() + 1}-р сарын ${d.getDate()}, ${WEEK[d.getDay()]} гараг`,
+  };
+}
+
+function NavItem({ t, current, counts, onGo }) {
+  const n = t.count ? counts[t.count] : 0;
+  return (
+    <a href={`#/${t.id}`} className="a-nav__item" aria-current={current ? 'page' : undefined} onClick={onGo}>
+      <Icon name={t.icon} />
+      <span className="a-nav__label">{t.label}</span>
+      {n > 0 && <span className="a-badge">{n}</span>}
+    </a>
+  );
+}
+
+function Palette({ onClose, go }) {
+  const [q, setQ] = useState('');
+  const [i, setI] = useState(0);
+  const list = TABS.filter((t) => !q.trim() || `${t.label} ${t.sub}`.toLowerCase().includes(q.trim().toLowerCase()));
+  const pick = (t) => { go(t.id); onClose(); };
+  return (
+    <Drawer title="Хаашаа очих вэ?" onClose={onClose} variant="cmd">
+      <div className="a-cmd">
+        <SearchBox value={q} onChange={(v) => { setQ(v); setI(0); }} placeholder="Цэсний нэр бичнэ үү…" label="Цэс хайх" autoFocus />
+        <ul role="listbox" aria-label="Цэс">
+          {list.map((t, idx) => (
+            <li key={t.id} role="option" aria-selected={idx === i}>
+              <button type="button" onClick={() => pick(t)} onMouseEnter={() => setI(idx)}>
+                <Icon name={t.icon} />
+                <span><strong>{t.label}</strong>{t.sub && <small>{t.sub}</small>}</span>
+              </button>
+            </li>
+          ))}
+          {list.length === 0 && <li className="a-muted">Олдсонгүй.</li>}
+        </ul>
+        <p className="a-hint">↑ ↓ сонгоод Enter. Хаах: Esc.</p>
+      </div>
+      <PaletteKeys list={list} i={i} setI={setI} pick={pick} />
+    </Drawer>
+  );
+}
+
+function PaletteKeys({ list, i, setI, pick }) {
+  const ref = useRef({ list, i });
+  ref.current = { list, i };
+  useEffect(() => {
+    const onKey = (e) => {
+      const { list: l, i: idx } = ref.current;
+      if (e.key === 'ArrowDown') { e.preventDefault(); setI(Math.min(l.length - 1, idx + 1)); }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setI(Math.max(0, idx - 1)); }
+      if (e.key === 'Enter' && l[idx]) { e.preventDefault(); pick(l[idx]); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [setI, pick]);
+  return null;
+}
+
+const MOBILE_TABS = [
+  { id: 'overview', label: 'Тойм', icon: 'home' },
+  { id: 'messenger', label: 'Чат', icon: 'chat', count: ['messenger_unread'] },
+  { sheet: 'inbox', label: 'Хүсэлт', icon: 'inbox', count: ['partners_new', 'questions_new', 'reviews_pending', 'locations_new'] },
+  { sheet: 'content', label: 'Агуулга', icon: 'layers' },
+  { sheet: 'more', label: 'Цэс', icon: 'menu' },
+];
+
+function Shell({ route, go, counts, logout, children }) {
+  const { theme, cycle } = useTheme();
+  const [sheet, setSheet] = useState('');
+  const [palette, setPalette] = useState(false);
+  const cur = TAB[route.tab];
+  const hi = greeting();
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPalette((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const themeBtn = (
+    <button type="button" className="a-side__btn" onClick={cycle} title="Өнгөний горим солих">
+      <Icon name={THEME_ICON[theme]} /><span>{THEME_LABEL[theme]}</span>
+    </button>
+  );
+  const sheetTabs = sheet === 'more' ? TABS.filter((t) => t.group === 'system') : TABS.filter((t) => t.group === sheet && t.id !== 'messenger');
+  const inGroup = (m) => (m.id ? m.id === route.tab : (m.sheet === 'more' ? cur.group === 'system' : cur.group === m.sheet && route.tab !== 'messenger'));
+
+  return (
+    <div className={`admin a-shell is-${route.tab}`}>
+      <a className="a-skip" href="#a-main">Үндсэн хэсэг рүү</a>
+      <aside className="a-side" aria-label="Удирдлагын цэс">
+        <a className="a-brand" href="#/overview">
+          <span className="a-logo" aria-hidden="true">Д</span>
+          <span><strong>ДОМЧ</strong><small>Удирдлага</small></span>
+        </a>
+        <button type="button" className="a-jump" onClick={() => setPalette(true)}>
+          <Icon name="search" size={16} /><span>Хайх, шилжих</span><kbd>⌘K</kbd>
+        </button>
+        <nav className="a-nav">
+          {GROUPS.map(([g, label]) => (
+            <div key={g} className="a-nav__group">
+              {label && <p className="a-nav__title">{label}</p>}
+              {TABS.filter((t) => t.group === g).map((t) => (
+                <NavItem key={t.id} t={t} current={route.tab === t.id} counts={counts} />
+              ))}
+            </div>
+          ))}
+        </nav>
+        <div className="a-side__foot">
+          <a className="a-side__btn" href="/" target="_blank" rel="noopener noreferrer"><Icon name="external" /><span>Сайтыг нээх</span></a>
+          {themeBtn}
+          <button type="button" className="a-side__btn" onClick={logout}><Icon name="logout" /><span>Гарах</span></button>
+        </div>
+      </aside>
+
+      <div className="a-page">
+        <header className="a-top">
+          <span className="a-logo a-only-narrow" aria-hidden="true">Д</span>
+          <div className="a-top__title">
+            <h1>{route.tab === 'overview' ? hi.hello : cur.label}</h1>
+            <p className="a-muted">{route.tab === 'overview' ? hi.date : cur.sub}</p>
+          </div>
+          <button type="button" className="a-icon-btn a-only-narrow" onClick={() => setPalette(true)} aria-label="Хайх, шилжих"><Icon name="search" /></button>
+        </header>
+        <main id="a-main" className="a-main" tabIndex={-1}>{children}</main>
+      </div>
+
+      <nav className="a-tabbar" aria-label="Үндсэн цэс">
+        {MOBILE_TABS.map((m) => {
+          const n = (m.count || []).reduce((s, k) => s + (counts[k] || 0), 0);
+          const on = inGroup(m);
+          const inner = (<><span className="a-tabbar__ic"><Icon name={m.icon} size={22} />{n > 0 && <span className="a-badge">{n}</span>}</span><span>{m.label}</span></>);
+          return m.id ? (
+            <a key={m.label} href={`#/${m.id}`} aria-current={on ? 'page' : undefined}>{inner}</a>
+          ) : (
+            <button key={m.label} type="button" className={on ? 'is-on' : ''} onClick={() => setSheet(m.sheet)} aria-haspopup="dialog">{inner}</button>
+          );
+        })}
+      </nav>
+
+      {sheet && (
+        <Drawer title={{ inbox: 'Ирсэн хүсэлт', content: 'Сайтын агуулга', more: 'Цэс' }[sheet]} onClose={() => setSheet('')} variant="sheet">
+          <div className="a-sheet">
+            {sheetTabs.map((t) => (
+              <NavItem key={t.id} t={t} current={route.tab === t.id} counts={counts} onGo={() => setSheet('')} />
+            ))}
+            {sheet === 'more' && (
+              <>
+                <a className="a-nav__item" href="/" target="_blank" rel="noopener noreferrer"><Icon name="external" /><span className="a-nav__label">Сайтыг нээх</span></a>
+                <button type="button" className="a-nav__item" onClick={cycle}><Icon name={THEME_ICON[theme]} /><span className="a-nav__label">Өнгө: {THEME_LABEL[theme]}</span></button>
+                <button type="button" className="a-nav__item" onClick={logout}><Icon name="logout" /><span className="a-nav__label">Гарах</span></button>
+              </>
+            )}
+          </div>
+        </Drawer>
+      )}
+      {palette && <Palette onClose={() => setPalette(false)} go={go} />}
+    </div>
+  );
+}
+
+function AdminApp() {
   const [token, setToken] = useState(() => {
     try {
       return sessionStorage.getItem(KEY) || '';
@@ -770,8 +1309,7 @@ export default function Admin() {
       return '';
     }
   });
-  const [tab, setTab] = useState('overview');
-  const [settingsTab, setSettingsTab] = useState('contact');
+  const [route, setRoute] = useState(readHash);
   const [summary, setSummary] = useState(null);
   const logout = useCallback(() => {
     try {
@@ -782,25 +1320,37 @@ export default function Admin() {
     setToken('');
   }, []);
   const call = useAdminApi(token, logout);
+  const go = useCallback((tab, sub = '') => { window.location.hash = `/${tab}${sub ? `/${sub}` : ''}`; }, []);
+  useEffect(() => {
+    const onHash = () => {
+      setRoute(readHash());
+      window.scrollTo(0, 0);
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
   const loadSummary = useCallback(() => {
     if (!token) return;
-    call('/summary').then(setSummary).catch(() => {});
+    call('/summary').then((s) => setSummary({ ...s, full: true })).catch(() => {});
   }, [call, token]);
   // badge counts only: the 30-day statistics are read when the overview opens, not on every refresh
   const loadCounts = useCallback(() => {
     if (!token) return;
     call('/summary?events=0').then((s) => setSummary((prev) => ({ ...(prev || { events: [], daily: [] }), ...s }))).catch(() => {});
   }, [call, token]);
-  useEffect(() => { if (tab === 'overview') loadSummary(); else loadCounts(); }, [loadSummary, loadCounts, tab]);
+  useEffect(() => { if (route.tab === 'overview') loadSummary(); else loadCounts(); }, [loadSummary, loadCounts, route.tab]);
   useEffect(() => {
     // keep the badges fresh while the admin is open (new Messenger messages, form requests)
     const id = setInterval(() => { if (document.visibilityState === 'visible') loadCounts(); }, 60000);
     return () => clearInterval(id);
   }, [loadCounts]);
 
+  const counts = (summary && summary.counts) || {};
+  const unread = ['messenger_unread', 'partners_new', 'questions_new', 'reviews_pending', 'locations_new'].reduce((s, k) => s + (counts[k] || 0), 0);
   useEffect(() => {
-    document.title = 'ДОМЧ удирдлага';
-  }, []);
+    document.title = `${unread ? `(${unread}) ` : ''}${token ? `${TAB[route.tab].label} · ` : ''}ДОМЧ удирдлага`;
+  }, [unread, route.tab, token]);
 
   if (!token) {
     return (
@@ -815,35 +1365,25 @@ export default function Admin() {
       />
     );
   }
-  const current = TABS.find((t) => t.id === tab);
-  const counts = (summary && summary.counts) || {};
+  const cur = TAB[route.tab];
+  const settingsTab = SETTING_TABS.some(([id]) => id === route.sub) ? route.sub : 'contact';
   return (
-    <div className="admin">
-      <header className="a-head">
-        <a className="a-mark" href="/">DOMCH</a>
-        <span className="a-muted">Удирдлагын хэсэг</span>
-        <button type="button" className="a-btn a-btn--ghost" onClick={logout}>Гарах</button>
-      </header>
-      <div className="a-body">
-        <nav className="a-nav" aria-label="Удирдлагын цэс">
-          {TABS.map((t) => (
-            <button key={t.id} type="button" aria-current={tab === t.id ? 'page' : undefined} onClick={() => setTab(t.id)}>
-              {t.label}
-              {t.count && counts[t.count] > 0 && <span className="a-badge">{counts[t.count]}</span>}
-            </button>
-          ))}
-        </nav>
-        <main className="a-main">
-          <h1>{current.label}</h1>
-          {tab === 'overview' && <Overview call={call} summary={summary} reload={loadSummary} go={setTab} />}
-          {current.inbox && <Inbox key={tab} kind={tab} call={call} onChange={loadCounts} />}
-          {current.table && <TableView key={tab} table={tab} call={call} />}
-          {tab === 'messenger' && (
-            <MessengerInbox call={call} onChange={loadCounts} openSettings={() => { setSettingsTab('messenger'); setTab('settings'); }} />
-          )}
-          {tab === 'settings' && <Settings call={call} tab={settingsTab} onTab={setSettingsTab} onChange={loadSummary} go={setTab} />}
-        </main>
-      </div>
-    </div>
+    <Shell route={route} go={go} counts={counts} logout={logout}>
+      {route.tab === 'overview' && <Overview call={call} summary={summary} reload={loadSummary} go={go} />}
+      {cur.inbox && <Inbox key={route.tab} kind={route.tab} call={call} onChange={loadCounts} />}
+      {cur.table && <TableView key={route.tab} table={route.tab} call={call} />}
+      {route.tab === 'messenger' && (
+        <MessengerInbox call={call} onChange={loadCounts} openSettings={() => go('settings', 'messenger')} />
+      )}
+      {route.tab === 'settings' && <Settings call={call} tab={settingsTab} onTab={(id) => go('settings', id)} onChange={loadSummary} go={go} />}
+    </Shell>
+  );
+}
+
+export default function Admin() {
+  return (
+    <ToastProvider>
+      <AdminApp />
+    </ToastProvider>
   );
 }

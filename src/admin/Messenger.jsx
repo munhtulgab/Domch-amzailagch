@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatDate } from '../lib/util.js';
+import { Avatar, Empty, Icon, Skeleton, useToast } from './ui.jsx';
 
 function timeOf(value) {
   if (!value) return '';
@@ -409,15 +410,39 @@ function Channel({ value }) {
   return <span className={`a-channel a-channel--${ig ? 'ig' : 'fb'}`} title={ig ? 'Instagram' : 'Messenger'}>{ig ? 'IG' : 'FB'}</span>;
 }
 
+function clockOf(value) {
+  const d = new Date(String(value || '').replace(' ', 'T') + 'Z');
+  if (Number.isNaN(d.getTime())) return '';
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function dayOf(value) {
+  if (!value) return '';
+  const d = new Date(String(value).replace(' ', 'T') + 'Z');
+  if (Number.isNaN(d.getTime())) return '';
+  const today = new Date();
+  const y = new Date(today);
+  y.setDate(today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return 'Өнөөдөр';
+  if (d.toDateString() === y.toDateString()) return 'Өчигдөр';
+  return formatDate(value);
+}
+
+const KIND_META = { auto: 'Автомат хариу', ai: 'AI хариу', inbox: 'Page Inbox' };
+
 export function MessengerInbox({ call, onChange, openSettings }) {
+  const toast = useToast();
   const [cfg, setCfg] = useState(null);
   const [threads, setThreads] = useState(null);
   const [active, setActive] = useState(null);
   const [convo, setConvo] = useState(null);
   const [text, setText] = useState('');
+  const [q, setQ] = useState('');
+  const [onlyUnread, setOnlyUnread] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const endRef = useRef(null);
+  const boxRef = useRef(null);
 
   const loadThreads = useCallback(async () => {
     try {
@@ -433,9 +458,9 @@ export function MessengerInbox({ call, onChange, openSettings }) {
       setConvo(data);
       if (!quiet) onChange?.();
     } catch (err) {
-      setError(err.message);
+      toast(err.message, 'error');
     }
-  }, [call, onChange]);
+  }, [call, onChange, toast]);
 
   useEffect(() => {
     call('/messenger').then(setCfg).catch(() => setCfg({}));
@@ -452,13 +477,21 @@ export function MessengerInbox({ call, onChange, openSettings }) {
   }, [active, loadThreads, loadConvo]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: 'end' });
+    const list = endRef.current;
+    if (list) list.scrollTop = list.scrollHeight;
   }, [convo]);
+
+  // the reply box grows with the text, up to about six lines
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [text]);
 
   const open = async (psid) => {
     setActive(psid);
     setConvo(null);
-    setError('');
     await loadConvo(psid);
     loadThreads();
   };
@@ -467,14 +500,13 @@ export function MessengerInbox({ call, onChange, openSettings }) {
     e.preventDefault();
     if (!text.trim() || !active) return;
     setSending(true);
-    setError('');
     try {
       await call(`/messenger/threads/${encodeURIComponent(active)}/reply`, { method: 'POST', body: { text } });
       setText('');
       await loadConvo(active, true);
       loadThreads();
     } catch (err) {
-      setError(err.message);
+      toast(err.message, 'error');
     } finally {
       setSending(false);
     }
@@ -484,104 +516,147 @@ export function MessengerInbox({ call, onChange, openSettings }) {
     try {
       const res = await call(`/messenger/threads/${encodeURIComponent(active)}/ai`, { method: 'POST', body: { paused } });
       setConvo((c) => ({ ...c, ai_paused_until: res.ai_paused_until }));
+      toast(paused ? 'Энэ ярианд AI зогслоо.' : 'AI дахин хариулна.');
     } catch (err) {
-      setError(err.message);
+      toast(err.message, 'error');
     }
   };
 
   const sendWelcome = async () => {
     setSending(true);
-    setError('');
     try {
       await call(`/messenger/threads/${encodeURIComponent(active)}/welcome`, { method: 'POST', body: {} });
       await loadConvo(active, true);
       loadThreads();
+      toast('Мэндчилгээ илгээлээ.');
     } catch (err) {
-      setError(err.message);
+      toast(err.message, 'error');
     } finally {
       setSending(false);
     }
   };
 
-  if (!cfg || threads === null) return error ? <p className="a-error">{error}</p> : <p className="a-muted">Ачаалж байна…</p>;
+  if (!cfg || threads === null) return error ? <p className="a-error">{error}</p> : <Skeleton rows={6} card />;
   if (!cfg.connected_at && threads.length === 0) {
     return (
-      <div className="a-card a-empty">
-        <h2>Messenger холбогдоогүй байна</h2>
-        <p className="a-muted">Facebook Page-ийн мессежийг энд хүлээн авч, хариулахын тулд эхлээд token-уудаа оруулна уу.</p>
-        <button type="button" className="a-btn" onClick={openSettings}>Тохиргоо → Facebook Messenger</button>
+      <div className="a-panel">
+        <Empty icon="chat" title="Messenger холбогдоогүй байна"
+          text="Facebook Page-ийн мессежийг энд хүлээн авч, хариулахын тулд эхлээд token-уудаа оруулна уу."
+          action={<button type="button" className="a-btn" onClick={openSettings}><Icon name="gear" size={16} />Messenger-ийг холбох</button>} />
       </div>
     );
   }
   const label = (t) => t.name || `Хэрэглэгч …${String(t.psid).slice(-4)}`;
+  const needle = q.trim().toLowerCase();
+  const shown = threads.filter((t) => (!onlyUnread || t.unread > 0)
+    && (!needle || `${label(t)} ${t.last_text || ''}`.toLowerCase().includes(needle)));
+  const unreadTotal = threads.filter((t) => t.unread > 0).length;
+  const aiPaused = convo && convo.ai_paused_until;
+
   return (
-    <div className={`a-chat${active ? ' has-active' : ''}`}>
-      <div className="a-chat__list a-card">
-        <div className="a-chat__bar">
-          <strong>Харилцан яриа</strong>
-          <button type="button" className="a-btn a-btn--ghost" onClick={loadThreads}>Шинэчлэх</button>
+    <div className={`a-split a-split--chat${active ? ' has-sel' : ''}`}>
+      <section className="a-split__list" aria-label="Харилцан яриа">
+        <div className="a-split__tools">
+          <label className="a-search">
+            <Icon name="search" size={17} />
+            <span className="sr">Яриа хайх</span>
+            <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Нэр, мессежээр хайх…" />
+          </label>
+          <button type="button" className="a-icon-btn" onClick={loadThreads} aria-label="Шинэчлэх" title="Шинэчлэх"><Icon name="refresh" /></button>
         </div>
-        {threads.length === 0 ? <p className="a-muted">Одоогоор мессеж ирээгүй байна.</p> : (
-          <ul>
-            {threads.map((t) => (
+        <div className="a-chips" role="group" aria-label="Шүүлтүүр">
+          <button type="button" aria-pressed={!onlyUnread} onClick={() => setOnlyUnread(false)}>Бүгд <span>{threads.length}</span></button>
+          <button type="button" aria-pressed={onlyUnread} onClick={() => setOnlyUnread(true)}>Уншаагүй <span>{unreadTotal}</span></button>
+        </div>
+        {shown.length === 0 ? (
+          <Empty icon="chat" title={threads.length ? 'Тохирох яриа олдсонгүй' : 'Одоогоор мессеж ирээгүй байна'} />
+        ) : (
+          <ul className="a-mail">
+            {shown.map((t) => (
               <li key={t.psid}>
-                <button type="button" aria-current={active === t.psid ? 'true' : undefined} onClick={() => open(t.psid)}>
-                  <span className="a-chat__name">
-                    <Channel value={t.channel} />{label(t)}{t.unread > 0 && <span className="a-badge">{t.unread}</span>}
+                <button type="button" aria-current={active === t.psid ? 'true' : undefined} onClick={() => open(t.psid)}
+                  className={t.unread > 0 ? 'is-unread' : ''}>
+                  <span className="a-avatar-wrap"><Avatar name={label(t)} size={40} /><Channel value={t.channel} /></span>
+                  <span className="a-mail__main">
+                    <span className="a-mail__top">
+                      <strong>{label(t)}</strong>
+                      <time>{timeOf(t.last_at)}</time>
+                    </span>
+                    <span className="a-mail__snip">
+                      {t.last_direction === 'out' ? 'Та: ' : ''}{t.last_text}
+                      {t.unread > 0 && <span className="a-badge">{t.unread}</span>}
+                    </span>
                   </span>
-                  <span className="a-chat__last">{t.last_direction === 'out' ? 'Та: ' : ''}{t.last_text}</span>
-                  <span className="a-chat__time">{timeOf(t.last_at)}</span>
                 </button>
               </li>
             ))}
           </ul>
         )}
-      </div>
-      <div className="a-chat__panel a-card">
-        {!active ? <p className="a-muted">Зүүн талаас харилцан яриа сонгоно уу.</p> : !convo ? <p className="a-muted">Ачаалж байна…</p> : (
+      </section>
+      <section className="a-split__detail a-convo" aria-label="Яриа">
+        {!active ? (
+          <Empty icon="chat" title="Яриа сонгоно уу" text="Зүүн талаас харилцан яриа сонгож уншаад хариулна." />
+        ) : !convo ? <Skeleton rows={6} /> : (
           <>
-            <div className="a-chat__bar">
-              <button type="button" className="a-btn a-btn--ghost a-chat__back" onClick={() => { setActive(null); setConvo(null); }}>← Буцах</button>
-              <strong className="a-chat__who"><Channel value={convo.channel} />{convo.name || label({ psid: convo.psid })}</strong>
-              {convo.can_reply && cfg.auto_reply && (
-                <button type="button" className="a-btn a-btn--ghost" onClick={sendWelcome} disabled={sending}>Мэндчилгээ илгээх</button>
-              )}
-            </div>
-            {convo.ai_on && (
-              <div className={`a-ai-state${convo.ai_paused_until ? ' is-paused' : ''}`}>
-                <span>
-                  {convo.ai_paused_until
-                    ? (convo.ai_paused_until > '2100' ? 'Энэ ярианд AI зогссон.' : `AI ${timeOf(convo.ai_paused_until)} хүртэл түр зогссон (ажилтан хариулсан).`)
-                    : 'AI энэ ярианд автоматаар хариулна.'}
-                </span>
-                <button type="button" className="a-btn a-btn--ghost" onClick={() => toggleAi(!convo.ai_paused_until)} disabled={sending}>
-                  {convo.ai_paused_until ? 'AI-г үргэлжлүүлэх' : 'AI-г зогсоох'}
-                </button>
+            <header className="a-detail__head a-convo__head">
+              <button type="button" className="a-icon-btn a-back" onClick={() => { setActive(null); setConvo(null); }} aria-label="Жагсаалт руу буцах"><Icon name="arrowLeft" /></button>
+              <span className="a-avatar-wrap"><Avatar name={convo.name || label({ psid: convo.psid })} size={40} /><Channel value={convo.channel} /></span>
+              <div className="a-detail__who">
+                <h2>{convo.name || label({ psid: convo.psid })}</h2>
+                <p className="a-muted">{convo.channel === 'instagram' ? 'Instagram' : 'Messenger'}</p>
               </div>
+              <div className="a-convo__acts">
+                {convo.ai_on && (
+                  <button type="button" className={`a-ai-chip${aiPaused ? ' is-paused' : ''}`} onClick={() => toggleAi(!aiPaused)} disabled={sending}
+                    aria-pressed={!aiPaused} title={aiPaused ? 'AI-г үргэлжлүүлэх' : 'AI-г зогсоох'}>
+                    <Icon name="spark" size={15} />AI<span>{aiPaused ? ' зогссон' : ' асаалттай'}</span>
+                  </button>
+                )}
+                {convo.can_reply && cfg.auto_reply && (
+                  <button type="button" className="a-icon-btn" onClick={sendWelcome} disabled={sending} aria-label="Мэндчилгээ илгээх" title="Мэндчилгээ илгээх">
+                    <Icon name="bolt" />
+                  </button>
+                )}
+              </div>
+            </header>
+            {convo.ai_on && aiPaused && (
+              <p className="a-ai-state is-paused">
+                {aiPaused > '2100' ? 'Энэ ярианд AI зогссон. Та өөрөө хариулна.' : `AI ${timeOf(aiPaused)} хүртэл түр зогссон (ажилтан хариулсан).`}
+              </p>
             )}
-            <ol className="a-msgs">
-              {convo.items.map((m) => (
-                <li key={m.id} className={`a-msg a-msg--${m.direction}`}>
-                  <span className="a-msg__text">{m.text}</span>
-                  <span className="a-msg__meta">{{ auto: 'Автомат хариу · ', ai: 'AI хариу · ', inbox: 'Page Inbox · ' }[m.kind] || ''}{timeOf(m.created_at)}</span>
-                </li>
-              ))}
-              <li ref={endRef} aria-hidden="true" />
+            <ol className="a-msgs" ref={endRef}>
+              {convo.items.map((m, i) => {
+                const day = dayOf(m.created_at);
+                const prev = convo.items[i - 1];
+                const newDay = !prev || dayOf(prev.created_at) !== day;
+                const next = convo.items[i + 1];
+                const tail = !next || next.direction !== m.direction || dayOf(next.created_at) !== day;
+                return (
+                  <li key={m.id} className="a-msgs__row">
+                    {newDay && <p className="a-msgs__day"><span>{day}</span></p>}
+                    <div className={`a-msg a-msg--${m.direction}${m.kind ? ` a-msg--${m.kind}` : ''}${tail ? ' is-tail' : ''}`}>
+                      <span className="a-msg__text">{m.text}</span>
+                      {tail && <span className="a-msg__meta">{KIND_META[m.kind] ? `${KIND_META[m.kind]} · ` : ''}{clockOf(m.created_at)}</span>}
+                    </div>
+                  </li>
+                );
+              })}
             </ol>
             {convo.can_reply ? (
-              <form className="a-reply" onSubmit={send}>
+              <form className="a-composer" onSubmit={send}>
                 <label className="sr" htmlFor="m-reply">Хариулт</label>
-                <textarea id="m-reply" rows={2} maxLength={2000} value={text} onChange={(e) => setText(e.target.value)}
+                <textarea id="m-reply" ref={boxRef} rows={1} maxLength={2000} value={text} onChange={(e) => setText(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send(e); }} placeholder="Хариултаа бичнэ үү…" />
-                <button type="submit" className="a-btn" disabled={sending || !text.trim()}>{sending ? 'Илгээж байна…' : 'Илгээх'}</button>
+                <button type="submit" className="a-send" disabled={sending || !text.trim()} aria-label={sending ? 'Илгээж байна' : 'Илгээх'} title="Илгээх (Ctrl+Enter)">
+                  <Icon name="send" size={19} />
+                </button>
               </form>
             ) : (
-              <p className="a-note">Сүүлийн мессежээс хойш 24 цаг өнгөрсөн тул Facebook-ийн дүрмээр эндээс хариулах боломжгүй. Facebook Page Inbox-оос хариулна уу.</p>
+              <p className="a-note a-composer-note">Сүүлийн мессежээс хойш 24 цаг өнгөрсөн тул Facebook-ийн дүрмээр эндээс хариулах боломжгүй. Facebook Page Inbox-оос хариулна уу.</p>
             )}
-            {error && <p className="a-error" role="alert">{error}</p>}
           </>
         )}
-      </div>
+      </section>
     </div>
   );
 }
