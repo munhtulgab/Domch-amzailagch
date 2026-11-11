@@ -404,12 +404,28 @@ html.menu-open .mcta { display: none; }
 .tip--ask { background: var(--tint); border-color: transparent; align-items: flex-start; }
 @media (max-width: 899px) { .bento { grid-template-columns: minmax(0, 1fr); } }
 
-.reel { margin-top: 48px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.reel-wrap { position: relative; margin-top: 48px; }
+.reel {
+  display: flex; gap: 20px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory;
+  padding-bottom: 12px; scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+}
+.reel > article { flex: 0 0 calc((100% - 40px) / 3.3); min-width: 0; scroll-snap-align: start; }
+.reel__nav {
+  position: absolute; top: 38%; z-index: 2; width: 52px; height: 52px; display: grid; place-items: center;
+  border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--fg); cursor: pointer;
+  box-shadow: 0 10px 26px -12px rgba(0, 0, 0, 0.45); transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.reel__nav:hover { transform: scale(1.06); }
+.reel__nav--prev { left: -26px; }
+.reel__nav--prev svg { transform: rotate(180deg); }
+.reel__nav--next { right: -26px; }
+.reel__nav:disabled { opacity: 0; pointer-events: none; }
 .reel h3 { margin: 14px 0 0; font-size: 17px; }
 .reel p { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
 @media (max-width: 899px) {
-  .reel { display: flex; gap: 14px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 8px; }
-  .reel > article { flex: 0 0 72%; scroll-snap-align: start; }
+  .reel { gap: 14px; padding-bottom: 8px; }
+  .reel > article { flex: 0 0 72%; }
+  .reel__nav { display: none; }
 }
 
 /* Where to buy */
