@@ -1,4 +1,4 @@
-import { Adult, Arrow, ArrowDown, CareDrop, Child, DocCheck, External, Flask, NoAlcohol, Pin, Plus, Shield, Swipe } from './Icons.jsx';
+import { Adult, Arrow, ArrowDown, CareDrop, Child, External, NoAlcohol, Pin, Plus, Swipe } from './Icons.jsx';
 import { formatPrice, useInView } from '../lib/util.js';
 import { track } from '../lib/api.js';
 
@@ -259,13 +259,20 @@ export function Usage({ tab, onTab }) {
   );
 }
 
+// Certification marks shown with the guarantees they back (images supplied by Жем Интернэшнл)
+const CERTS = {
+  mnas: { src: '/media/cert-mnas.webp', w: 182, h: 240, alt: 'MNAS — Монголын итгэмжлэлийн тогтолцоо, TL 49-1, MNS ISO/IEC 17025' },
+  gem: { src: '/media/cert-gem.webp', w: 258, h: 240, alt: 'Жем Интернэшнл ХХК' },
+  iso: { src: '/media/cert-iso9001.webp', w: 240, h: 240, alt: 'ISO 9001:2015' },
+};
+
 export function Quality() {
   const items = [
-    [<Flask key="f" />, 'Өдөр бүрийн лабораторийн хяналт',
+    ['mnas', 'Өдөр бүрийн лабораторийн хяналт',
       'Дотоод хяналтын итгэмжлэгдсэн лабораторийн өдөр тутмын хяналтаар бүтээгдэхүүний чанар, аюулгүй байдлыг баталгаажуулсан.'],
-    [<DocCheck key="d" />, 'Байгууллагын стандарт',
+    ['gem', 'Байгууллагын стандарт',
       'Жем Интернэшнл ХХК-ийн чанарын бодлогод нийцүүлэн Монгол Улсын стандартаас илүү өндөр шаардлага бүхий «Байгууллагын стандарт»-ын шаардлагыг хангасан.'],
-    [<Shield key="s" />, 'Аюулгүйн тэмдэг · ISO 9001',
+    ['iso', 'Аюулгүйн тэмдэг · ISO 9001',
       'Бүтээгдэхүүний чанарыг Стандарт, хэмжил зүйн газраас олгодог «Аюулгүйн тэмдгийн гэрчилгээ»-гээр, үйл ажиллагааны чанарыг ISO 9001 стандартаар баталгаажуулсан.'],
   ];
   return (
@@ -274,9 +281,10 @@ export function Quality() {
         <p className="eyebrow">Чанар хангалт</p>
         <h2 className="h2" id="q-title">Чанар, аюулгүй байдлын <em>баталгаа</em></h2>
         <div className="q-grid">
-          {items.map(([icon, title, text]) => (
+          {items.map(([cert, title, text]) => (
             <article className="q" key={title}>
-              <div className="q__icon">{icon}</div>
+              <img className={`q__logo q__logo--${cert}`} src={CERTS[cert].src} alt={CERTS[cert].alt}
+                width={CERTS[cert].w} height={CERTS[cert].h} loading="lazy" decoding="async" />
               <h3>{title}</h3>
               <p>{text}</p>
             </article>
