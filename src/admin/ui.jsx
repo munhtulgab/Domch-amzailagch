@@ -180,7 +180,10 @@ export const THEME_ICON = { system: 'monitor', light: 'sun', dark: 'moon' };
 /* ---------- Initials avatar ---------- */
 export function Avatar({ name, size = 36 }) {
   const text = String(name || '?').trim();
-  const letters = text.split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
+  // initials from words that start with a letter ("Хэрэглэгч …1279" → "Х", "Янжмаа А." → "ЯА")
+  const words = text.split(/\s+/).map((w) => w.replace(/[^\p{L}\p{N}]/gu, '')).filter(Boolean);
+  const named = words.filter((w) => /^\p{L}/u.test(w));
+  const letters = (named.length ? named : words).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
   let h = 0;
   for (let i = 0; i < text.length; i += 1) h = (h * 31 + text.charCodeAt(i)) % 360;
   return (
