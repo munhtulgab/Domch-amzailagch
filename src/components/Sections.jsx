@@ -1,4 +1,4 @@
-import { Arrow, ArrowDown, CareDrop, DocCheck, External, Flask, NoAlcohol, Plus, Shield, Swipe } from './Icons.jsx';
+import { Adult, Arrow, ArrowDown, CareDrop, Child, DocCheck, External, Flask, NoAlcohol, Pin, Plus, Shield, Swipe } from './Icons.jsx';
 import { formatPrice, useInView } from '../lib/util.js';
 import { track } from '../lib/api.js';
 
@@ -39,7 +39,7 @@ export function Hero({ actions }) {
           </ul>
           <div className="actions">
             <a className="btn" href="#where" onClick={(e) => { e.preventDefault(); track('where_click', { from: 'hero' }); actions.goTo('where'); }}>
-              Хаанаас авах вэ?
+              <Pin /> Хаанаас авах вэ?
             </a>
             <a className="tlink" href="#ingredients" onClick={(e) => { e.preventDefault(); actions.goTo('ingredients'); }}>
               Найрлагатай танилцах <ArrowDown />
@@ -196,7 +196,7 @@ const STEPS = {
 };
 
 export function Usage({ tab, onTab }) {
-  const tabs = [['adult', 'Насанд хүрэгчид'], ['kid', 'Хүүхдийн хэрэглээ']];
+  const tabs = [['adult', 'Насанд хүрэгчид', Adult], ['kid', 'Хүүхдийн хэрэглээ', Child]];
   const select = (id) => {
     onTab(id);
     track('usage_view', { tab: id });
@@ -215,7 +215,7 @@ export function Usage({ tab, onTab }) {
           <h2 className="h2">Гэр бүлийн <em>зөв хэрэглээ</em></h2>
           <p className="body">Хэрэглэгчийн насанд тохирох зааврыг сонгоно уу.</p>
           <div className="tabs" role="tablist" aria-label="Хэрэглэгч" onKeyDown={onKey}>
-            {tabs.map(([id, label]) => (
+            {tabs.map(([id, label, Icon]) => (
               <button
                 key={id}
                 type="button"
@@ -227,7 +227,7 @@ export function Usage({ tab, onTab }) {
                 className="tab"
                 onClick={() => select(id)}
               >
-                {label}
+                <Icon size={18} />{label}
               </button>
             ))}
           </div>

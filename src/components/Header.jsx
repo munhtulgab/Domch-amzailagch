@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Arrow, Chevron, Close, Menu, Search } from './Icons.jsx';
+import { Arrow, Chevron, Close, Menu, Pin, Search } from './Icons.jsx';
 import { track } from '../lib/api.js';
 
 export const NAV = [
@@ -135,7 +135,7 @@ export default function Header({ actions }) {
           <Search />
         </button>
         <a className="btn btn--sm head__cta" href="#where" onClick={(e) => { e.preventDefault(); track('where_click', { from: 'header' }); run({ go: 'where' }); }}>
-          Хаанаас авах вэ?
+          <Pin size={16} /> Хаанаас авах вэ?
         </a>
         <button
           type="button"

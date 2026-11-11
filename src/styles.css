@@ -306,7 +306,8 @@ html.menu-open .mcta { display: none; }
 .ing-photo--mint { width: min(300px, 64%); }
 
 .tabs { margin-top: 28px; display: inline-flex; padding: 4px; border-radius: 999px; background: var(--tint-2); }
-.tab { min-height: 44px; padding: 0 20px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: 600 15px/1 var(--body); cursor: pointer; }
+.tab { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 20px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: 600 15px/1 var(--body); cursor: pointer; }
+.tab svg, .btn svg { flex: none; }
 .tab[aria-selected="true"] { background: var(--surface); color: var(--fg); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12); }
 .age { margin: 18px 0 0; display: inline-flex; padding: 8px 14px; border-radius: 12px; background: var(--tint-2); font-size: 14px; font-weight: 600; }
 .steps { list-style: none; margin: 22px 0 0; padding: 0; }
@@ -617,4 +618,14 @@ html.menu-open .msgr, html.modal-open .msgr { display: none; }
   .cue i::after { animation: none; }
   .btn, .opt, .tlink svg, .gl, .pm { transition: none; }
   .ing-photo { opacity: 1; transform: none; transition: none; }
+}
+
+/* Phones: buttons sit in the middle (kept last so it wins over the section rules above) */
+@media (max-width: 819px) {
+  .actions { justify-content: center; }
+  .tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+  .tab { justify-content: center; gap: 5px; padding: 0 4px; font-size: 12.5px; letter-spacing: -0.01em; white-space: nowrap; min-width: 0; }
+  .tab svg { width: 16px; height: 16px; }
+  .sec__head { justify-content: center; }
+  .sec__head > .btn, .tip--ask .btn, .no-alcohol { display: flex; width: fit-content; margin-inline: auto; }
 }

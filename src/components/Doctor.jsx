@@ -1,4 +1,4 @@
-import { Arrow, Chat } from './Icons.jsx';
+import { Arrow, Chat, Send } from './Icons.jsx';
 import { VideoBox, coverOf } from './Media.jsx';
 import { TIP_KINDS } from '../data/static.js';
 import { formatDate } from '../lib/util.js';
@@ -64,7 +64,7 @@ export function Doctor({ tips, actions }) {
               <article className="tip tip--ask">
                 <h3>Эмчээс асуух зүйл байна уу?</h3>
                 <p className="meta">Асуултыг тань эмчийн дараагийн зөвлөгөөнд хариулах сэдэв болгон хүлээн авна.</p>
-                <button type="button" className="btn btn--sm" onClick={() => actions.open('question')}>Асуулт илгээх</button>
+                <button type="button" className="btn btn--sm" onClick={() => actions.open('question')}><Send size={16} /> Асуулт илгээх</button>
               </article>
             </div>
           </div>
@@ -73,7 +73,7 @@ export function Doctor({ tips, actions }) {
             <div className="empty__icon"><Chat /></div>
             <h3>Эмчийн зөвлөгөө удахгүй нэмэгдэнэ</h3>
             <p>Асуух зүйлээ илгээвэл эмчийн дараагийн зөвлөгөөнд ашиглана.</p>
-            <button type="button" className="btn" onClick={() => actions.open('question')}>Эмчээс асууя</button>
+            <button type="button" className="btn" onClick={() => actions.open('question')}><Chat size={18} /> Эмчээс асууя</button>
           </div>
         )}
       </div>

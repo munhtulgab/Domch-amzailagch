@@ -15,7 +15,6 @@ const BOTTLES = {
     neck: { y0: 242, y1: 302, r: 90, threads: [258, 274, 290] },
     body: [[302, 90, 0], [308, 134, 0.15], [316, 196, 0.4], [330, 241, 0.65], [350, 262, 0.82], [370, 278, 0.93], [390, 292, 1], [410, 296, 1], [580, 296, 1], [595, 288, 1], [610, 272, 1], [625, 255, 1], [640, 248, 1], [1100, 248, 1], [1115, 256, 1], [1130, 268, 1], [1150, 282, 1], [1170, 289, 1], [1190, 292, 1], [1360, 292, 1], [1385, 282, 1], [1405, 264, 1], [1420, 240, 1], [1430, 205, 1], [1436, 150, 1], [1439, 80, 1], [1440, 4, 1]],
     labels: { upper: [408, 578, 252], main: [645, 1135, 238], back: [665, 1095, 224], strip: [1178, 1226, 246] },
-    recess: [1190, 1418, 168, 64],
   },
   small: {
     H: 1182, volume: '250 мл', seed: 19, drops: 190, capDrops: 20,
@@ -24,7 +23,6 @@ const BOTTLES = {
     neck: { y0: 226, y1: 257, r: 76, threads: [236, 248] },
     body: [[257, 76, 0], [262, 134, 0.3], [272, 186, 0.55], [282, 216, 0.72], [302, 234, 0.86], [322, 251, 0.96], [342, 257, 1], [482, 257, 1], [502, 240, 1], [522, 222, 1], [542, 214, 1], [922, 214, 1], [942, 221, 1], [962, 234, 1], [982, 247, 1], [1002, 250, 1], [1102, 250, 1], [1122, 243, 1], [1142, 222, 1], [1162, 196, 1], [1172, 178, 1], [1178, 140, 1], [1181, 70, 1], [1182, 4, 1]],
     labels: { upper: [332, 486, 218], main: [524, 938, 199], back: [548, 905, 190], strip: [990, 1030, 210] },
-    recess: [1006, 1160, 144, 54],
   },
 };
 
@@ -450,32 +448,6 @@ function stripTexture(b) {
   g.fillText('ЭРДСИЙН ТУНАДАС ҮҮСЭЖ БОЛНО.', W / 2, H * 0.54);
   return canvasTexture(cv);
 }
-// The moulded grip recess on the lower body, drawn as a thin glass ridge that follows the surface.
-function recessGeometry(b, side) {
-  const [y0, y1, hw, rad] = b.recess;
-  const pts = [];
-  const seg = 18;
-  const corner = (cx, cy, a0) => {
-    for (let i = 0; i <= seg; i += 1) {
-      const a = a0 + (i / seg) * (Math.PI / 2);
-      pts.push([cx + Math.cos(a) * rad, cy + Math.sin(a) * rad]);
-    }
-  };
-  corner(hw - rad, y0 + rad, -Math.PI / 2);
-  corner(hw - rad, y1 - rad, 0);
-  corner(-hw + rad, y1 - rad, Math.PI / 2);
-  corner(-hw + rad, y0 + rad, Math.PI);
-  const curve = new THREE.CatmullRomCurve3(pts.map(([xp, yp]) => {
-    const sh = shapeAt(b.R, yp);
-    const xw = xp * S * side;
-    const c = sgnPow(clamp(xw / sh.w, -0.995, 0.995), sh.n / 2);
-    const phi = Math.atan2(Math.sqrt(Math.max(0, 1 - c * c)) * side, c);
-    const { p, n } = surfacePoint(b, yp, phi);
-    return p.addScaledVector(n, 0.0004);
-  }), true);
-  return new THREE.TubeGeometry(curve, 220, 0.0032, 6, true);
-}
-
 // ---- Ingredient forms ----
 // A chunk of rock salt: a box knocked into an irregular, faceted crystal (vertices moved by position,
 // so shared corners stay joined).
@@ -691,9 +663,6 @@ export async function createScene({ canvas, media = '/media/', initialSize = 'bi
       color: 0xb4cdc6, roughness: 0.04, metalness: 0, transparent: true, opacity: 0.14, clearcoat: 1, envMapIntensity: 1.6,
       depthWrite: false, side: THREE.DoubleSide,
     }), 0.7);
-  const ridgeMat = new THREE.MeshPhysicalMaterial({
-    color: 0xf4fffb, roughness: 0.04, metalness: 0, transparent: true, opacity: 0.42, clearcoat: 1, envMapIntensity: 2.6, depthWrite: false,
-  });
   // dark espresso-brown ribbed cap, as on the bottle
   const capMat = new THREE.MeshPhysicalMaterial({ color: 0x3a2b27, roughness: 0.38, metalness: 0.08, clearcoat: 0.5, clearcoatRoughness: 0.3 });
   const beadMat = new THREE.MeshPhysicalMaterial({ color: 0xf2fffa, roughness: 0, metalness: 0, transparent: true, opacity: 0.3, clearcoat: 1, envMapIntensity: 3 });
@@ -738,8 +707,6 @@ export async function createScene({ canvas, media = '/media/', initialSize = 'bi
     const stripTex = stripTexture(b);
     stripTex.anisotropy = aniso;
     add(new THREE.Mesh(labelGeometry(b, b.labels.strip, -1), labelMat(stripTex)), 2);
-    add(new THREE.Mesh(recessGeometry(b, 1), ridgeMat), 4);
-    add(new THREE.Mesh(recessGeometry(b, -1), ridgeMat), 2);
     const neck = add(new THREE.Mesh(new THREE.CylinderGeometry(b.neck.r * S, b.neck.r * S, (b.neck.y1 - b.neck.y0) * S, 56, 1, true), glass), 4);
     neck.position.y = yWorld(b, (b.neck.y0 + b.neck.y1) / 2);
     b.neck.threads.forEach((ty) => {

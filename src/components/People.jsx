@@ -1,4 +1,5 @@
 import { VideoBox } from './Media.jsx';
+import { Video } from './Icons.jsx';
 
 export function People({ videos, actions }) {
   return (
@@ -10,7 +11,7 @@ export function People({ videos, actions }) {
             <h2 className="h2" id="people-title">Домчийг <em>сонгосон хүмүүс</em></h2>
           </div>
           <button type="button" className="btn btn--ghost" onClick={() => actions.open('partner', { kind: 'creator' })}>
-            Контент бүтээгчээр хамтрах
+            <Video size={18} /> Контент бүтээгчээр хамтрах
           </button>
         </div>
         {videos.length ? (

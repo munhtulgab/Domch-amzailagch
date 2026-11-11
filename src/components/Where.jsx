@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { api, query, track } from '../lib/api.js';
 import { CITIES, UB, UB_DISTRICTS } from '../data/static.js';
 import { distanceKm, formatDate, useInView } from '../lib/util.js';
-import { External, Info, Locate, Phone, Pin } from './Icons.jsx';
+import { External, Info, Locate, Phone, Pin, Plus, Search } from './Icons.jsx';
 
 const BranchMap = lazy(() => import('./BranchMap.jsx'));
 const PAGE = 6; // branches shown at a time: the nearest ones once the visitor's location is known
@@ -139,7 +139,7 @@ export function Where({ filters, settings, actions }) {
                 <input id="w-q" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Жишээ: Зайсан" />
               </div>
               <button className="btn" type="submit" disabled={state.status === 'loading'}>
-                {state.status === 'loading' ? 'Хайж байна…' : 'Салбар олох'}
+                <Search /> {state.status === 'loading' ? 'Хайж байна…' : 'Салбар олох'}
               </button>
             </form>
             <button type="button" className="btn btn--ghost locate" onClick={() => locate()} disabled={locating}>
@@ -224,7 +224,7 @@ export function Where({ filters, settings, actions }) {
           {more > 0 && (
             <div className="results__more">
               <button type="button" className="btn btn--ghost" onClick={() => setShown((n) => n + PAGE)}>
-                Дараагийн {Math.min(PAGE, more)} салбар ({more} үлдсэн)
+                <Plus /> Дараагийн {Math.min(PAGE, more)} салбар ({more} үлдсэн)
               </button>
             </div>
           )}

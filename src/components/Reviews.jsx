@@ -1,4 +1,4 @@
-import { Chat } from './Icons.jsx';
+import { Chat, Star } from './Icons.jsx';
 import { SIZE_LABEL } from '../data/static.js';
 import { formatDate } from '../lib/util.js';
 
@@ -35,7 +35,7 @@ export function Reviews({ reviews, stats, actions }) {
             <div className="empty__icon"><Chat /></div>
             <h3>Та анхны сэтгэгдлээ үлдээгээрэй</h3>
             <p>Домчийг хэрэглэсэн туршлагаа бусадтай хуваалцаарай.</p>
-            <button type="button" className="btn" onClick={() => actions.open('review')}>Сэтгэгдэл үлдээх</button>
+            <button type="button" className="btn" onClick={() => actions.open('review')}><Star /> Сэтгэгдэл үлдээх</button>
           </div>
         ) : (
           <>
@@ -52,7 +52,7 @@ export function Reviews({ reviews, stats, actions }) {
               ))}
             </div>
             <div className="center">
-              <button type="button" className="btn" onClick={() => actions.open('review')}>Сэтгэгдэл үлдээх</button>
+              <button type="button" className="btn" onClick={() => actions.open('review')}><Star /> Сэтгэгдэл үлдээх</button>
             </div>
           </>
         )}

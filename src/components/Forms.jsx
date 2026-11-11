@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api, track } from '../lib/api.js';
 import { CITIES, PARTNER_KINDS, UB, UB_DISTRICTS } from '../data/static.js';
-import { Check } from './Icons.jsx';
+import { Check, Send } from './Icons.jsx';
 import { Privacy } from './Privacy.jsx';
 
 function useForm(initial, path, event) {
@@ -102,7 +102,7 @@ function Done({ message, onClose, again }) {
       <div className="done__icon"><Check /></div>
       <h3>{message}</h3>
       <div className="done__actions">
-        <button type="button" className="btn" onClick={onClose}>Хаах</button>
+        <button type="button" className="btn" onClick={onClose}><Check size={18} /> Хаах</button>
         {again && <button type="button" className="tlink" onClick={again}>Дахин илгээх</button>}
       </div>
     </div>
@@ -114,7 +114,7 @@ function FormFoot({ status, message }) {
     <>
       {status === 'error' && message && <p className="notice notice--error" role="alert">{message}</p>}
       <button className="btn btn--block" type="submit" disabled={status === 'sending'}>
-        {status === 'sending' ? 'Илгээж байна…' : 'Илгээх'}
+        <Send /> {status === 'sending' ? 'Илгээж байна…' : 'Илгээх'}
       </button>
     </>
   );

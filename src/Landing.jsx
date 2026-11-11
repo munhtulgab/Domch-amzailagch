@@ -10,7 +10,7 @@ import { Dialogs } from './components/Dialogs.jsx';
 import { FALLBACK } from './data/static.js';
 import { api, track } from './lib/api.js';
 import { scrollToId } from './lib/util.js';
-import { Chat } from './components/Icons.jsx';
+import { Chat, Pin } from './components/Icons.jsx';
 
 function useToasts() {
   const [toasts, setToasts] = useState([]);
@@ -134,7 +134,7 @@ export default function Landing() {
       )}
       <div className="mcta">
         <a className="btn" href="#where" onClick={(e) => { e.preventDefault(); track('where_click', { from: 'mobile-bar' }); scrollToId('where'); }}>
-          Хаанаас авах вэ?
+          <Pin /> Хаанаас авах вэ?
         </a>
       </div>
       <Dialogs dialog={dialog} onClose={() => setDialog(null)} actions={actions} content={content} />

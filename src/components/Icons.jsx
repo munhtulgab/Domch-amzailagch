@@ -65,6 +65,21 @@ export const Shield = ({ size = 24 }) => (
 export const Plus = ({ size = 14 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
 );
+export const Send = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...base}><path d="M21 3L3.5 10.2l6.8 3 3 6.8z" /><path d="M21 3l-10.7 10.2" /></svg>
+);
+export const Star = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...base}><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z" /></svg>
+);
+export const Video = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...base}><rect x="3" y="6.5" width="12" height="11" rx="2.5" /><path d="M15 10.5l6-3.5v10l-6-3.5" /></svg>
+);
+export const Adult = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...base}><circle cx="12" cy="7" r="3.4" /><path d="M5 20.5c0-4 3.1-7.2 7-7.2s7 3.2 7 7.2" /></svg>
+);
+export const Child = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" {...base}><circle cx="12" cy="10" r="2.8" /><path d="M7.4 20.5c0-3 2-5.4 4.6-5.4s4.6 2.4 4.6 5.4" /><path d="M10.4 6.9c.4-1.4 1.6-2.2 3-1.9" /></svg>
+);
 export const Check = ({ size = 22 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" {...base}><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
 );
