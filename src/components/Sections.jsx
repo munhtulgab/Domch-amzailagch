@@ -270,7 +270,7 @@ export function Quality() {
   const items = [
     ['mnas', 'Өдөр бүрийн лабораторийн хяналт',
       'Дотоод хяналтын итгэмжлэгдсэн лабораторийн өдөр тутмын хяналтаар бүтээгдэхүүний чанар, аюулгүй байдлыг баталгаажуулсан.'],
-    ['gem', 'Байгууллагын стандарт',
+    ['gem', 'Жем Интернэшнл ХХК-ийн дотоод лабораторийн стандарт',
       'Жем Интернэшнл ХХК-ийн чанарын бодлогод нийцүүлэн Монгол Улсын стандартаас илүү өндөр шаардлага бүхий «Байгууллагын стандарт»-ын шаардлагыг хангасан.'],
     ['iso', 'Аюулгүйн тэмдэг · ISO 9001',
       'Бүтээгдэхүүний чанарыг Стандарт, хэмжил зүйн газраас олгодог «Аюулгүйн тэмдгийн гэрчилгээ»-гээр, үйл ажиллагааны чанарыг ISO 9001 стандартаар баталгаажуулсан.'],
@@ -283,9 +283,11 @@ export function Quality() {
         <div className="q-grid">
           {items.map(([cert, title, text]) => (
             <article className="q" key={title}>
-              <img className={`q__logo q__logo--${cert}`} src={CERTS[cert].src} alt={CERTS[cert].alt}
-                width={CERTS[cert].w} height={CERTS[cert].h} loading="lazy" decoding="async" />
-              <h3>{title}</h3>
+              <div className="q__top">
+                <img className={`q__logo q__logo--${cert}`} src={CERTS[cert].src} alt={CERTS[cert].alt}
+                  width={CERTS[cert].w} height={CERTS[cert].h} loading="lazy" decoding="async" />
+                <h3>{title}</h3>
+              </div>
               <p>{text}</p>
             </article>
           ))}
