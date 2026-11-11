@@ -282,6 +282,14 @@ html.menu-open .mcta { display: none; }
 .ing-list { list-style: none; margin: 26px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 10px; }
 .ing-list li { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 999px; border: 1px solid var(--deep-line); font-size: 15px; }
 .ing-list img { width: 40px; height: 26px; margin: -6px 0 -6px -8px; object-fit: contain; }
+/* «Спирт агуулаагүй»: a badge you notice, not a footnote */
+.no-alcohol {
+  display: inline-flex; align-items: center; gap: 12px; margin: 26px 0 0; padding: 14px 22px 14px 16px;
+  border-radius: 16px; border: 2px solid var(--mint); background: rgba(127, 224, 190, 0.14);
+  color: var(--deep-fg); font-size: clamp(18px, 2vw, 22px); font-weight: 700; letter-spacing: 0.02em;
+  box-shadow: 0 0 0 6px rgba(127, 224, 190, 0.07), 0 14px 34px rgba(0, 0, 0, 0.28);
+}
+.no-alcohol svg { width: 30px; height: 30px; flex: none; color: var(--mint); }
 
 /* Ingredient photos (cut-outs on the deep green) */
 .ing-photo {

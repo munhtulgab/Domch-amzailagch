@@ -650,9 +650,8 @@ export async function createScene({ canvas, media = '/media/', initialSize = 'bi
   if (disposed) return null;
 
   // ---- Materials ----
-  // The real liquid is clear (see the product photo): a nearly colourless body whose edges catch the light.
-  // LIQUID = 'green' brings back the earlier tinted look.
-  const LIQUID = 'clear';
+  // LIQUID = 'green': the brand's tinted mouthwash; 'clear' shows the colourless liquid of the product photo.
+  const LIQUID = 'green';
   // Glass edges look dark against a light page and bright against the dark ingredient section: uEdge 0..1.
   const edgeTone = { value: 0 };
   const fresnelEdges = (mat, edge) => {

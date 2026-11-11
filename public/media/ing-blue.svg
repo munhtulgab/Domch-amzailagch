@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 52" width="80" height="52">
+  <title>FD&amp;C Blue No.1</title>
+  <defs>
+    <radialGradient id="b" cx="38%" cy="55%" r="72%">
+      <stop offset="0" stop-color="#6fb2ff"/>
+      <stop offset="0.5" stop-color="#1f6ee6"/>
+      <stop offset="1" stop-color="#0a2f9a"/>
+    </radialGradient>
+    <radialGradient id="d" cx="40%" cy="35%" r="70%">
+      <stop offset="0" stop-color="#4f98ff"/>
+      <stop offset="1" stop-color="#0d3cae"/>
+    </radialGradient>
+  </defs>
+  <ellipse cx="38" cy="48" rx="22" ry="2.8" fill="#000" opacity="0.25"/>
+  <!-- a small heap of blue powder beside the drop -->
+  <path d="M46 47 C49 41 52.5 38 56 38 C59.5 38 63 41 66 47 Z" fill="url(#d)"/>
+  <g fill="#2d7cf0"><circle cx="69" cy="46" r="1.2"/><circle cx="44" cy="46.5" r="1"/><circle cx="71.5" cy="43.5" r="0.8"/></g>
+  <path d="M30 4 C37 15.5 43.5 23 43.5 31.5 A13.5 13.5 0 0 1 16.5 31.5 C16.5 23 23 15.5 30 4 Z" fill="url(#b)" stroke="#9cc8ff" stroke-opacity="0.6" stroke-width="1"/>
+  <path d="M23.5 29.5 C23.5 24.5 25.6 20.6 28 17.6" fill="none" stroke="#e6f1ff" stroke-width="2.6" stroke-linecap="round" opacity="0.85"/>
+  <circle cx="25.5" cy="37" r="1.8" fill="#e6f1ff" opacity="0.7"/>
+</svg>

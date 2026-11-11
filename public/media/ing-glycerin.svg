@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 52" width="80" height="52">
+  <title>Глицерин</title>
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fffbea"/>
+      <stop offset="0.5" stop-color="#f1e3b4"/>
+      <stop offset="1" stop-color="#c9a85a"/>
+    </linearGradient>
+    <radialGradient id="p" cx="45%" cy="35%" r="75%">
+      <stop offset="0" stop-color="#fffaf0"/>
+      <stop offset="1" stop-color="#d8bd77"/>
+    </radialGradient>
+  </defs>
+  <ellipse cx="40" cy="46" rx="24" ry="5" fill="#000" opacity="0.2"/>
+  <!-- thick syrupy pool with a slow drip falling into it -->
+  <path d="M17 44 C17 38.5 27 36.5 40 36.5 C53 36.5 63 38.5 63 44 C63 47 53 48.5 40 48.5 C27 48.5 17 47 17 44 Z" fill="url(#p)" opacity="0.95"/>
+  <path d="M38 36.8 C38 31 38.6 26 39.3 21" fill="none" stroke="url(#g)" stroke-width="3.2" stroke-linecap="round"/>
+  <path d="M40 2 C45.5 9.5 50 14.5 50 20 A10 10 0 0 1 30 20 C30 14.5 34.5 9.5 40 2 Z" fill="url(#g)" stroke="#fff8e1" stroke-opacity="0.8" stroke-width="1"/>
+  <path d="M35 19 C35 15.5 36.6 12.6 38.4 10.4" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" opacity="0.9"/>
+  <ellipse cx="31" cy="41.5" rx="6" ry="1.6" fill="#fff" opacity="0.7"/>
+</svg>

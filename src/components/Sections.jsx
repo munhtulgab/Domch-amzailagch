@@ -7,6 +7,9 @@ const ING = {
   salt: { src: '/media/ing-salt.webp', w: 774, h: 460, alt: 'Монгол жамц давс' },
   clove: { src: '/media/ing-clove.webp', w: 754, h: 545, alt: 'Хадаасан цэцэг (башир цэцэг)' },
   mint: { src: '/media/ing-mint.webp', w: 519, h: 339, alt: 'Гааны навч' },
+  water: { src: '/media/ing-water.svg' },
+  glycerin: { src: '/media/ing-glycerin.svg' },
+  blue: { src: '/media/ing-blue.svg' },
 };
 
 function IngPhoto({ kind }) {
@@ -164,14 +167,14 @@ export function Ingredients() {
           <div className="copy">
             <p className="eyebrow">Бүрэн найрлага</p>
             <ul className="ing-list">
-              <li>Шүүсэн ус</li>
+              <li><img src={ING.water.src} alt="" width="40" height="26" loading="lazy" />Шүүсэн ус</li>
               <li><img src={ING.salt.src} alt="" width="40" height="24" loading="lazy" />Жамц давс</li>
               <li><img src={ING.clove.src} alt="" width="40" height="29" loading="lazy" />Хадаасан цэцгийн ханд (башир цэцэг)</li>
               <li><img src={ING.mint.src} alt="" width="40" height="26" loading="lazy" />Гаа</li>
-              <li>Глицерин</li>
-              <li>FD&amp;C Blue No.1</li>
+              <li><img src={ING.glycerin.src} alt="" width="40" height="26" loading="lazy" />Глицерин</li>
+              <li><img src={ING.blue.src} alt="" width="40" height="26" loading="lazy" />FD&amp;C Blue No.1</li>
             </ul>
-            <p className="body">Спирт агуулаагүй.</p>
+            <p className="no-alcohol"><NoAlcohol />Спирт агуулаагүй</p>
           </div>
         </div>
       </div>
