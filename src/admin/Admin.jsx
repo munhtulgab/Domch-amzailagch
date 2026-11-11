@@ -1414,6 +1414,7 @@ function AdminApp() {
     keep('');
   }, [keep]);
   const onSession = useCallback((res) => {
+    if (!res || !res.token) return;
     keep(res.token);
     setAccount({ user: res.user, default_password: res.default_password });
   }, [keep]);

@@ -651,3 +651,12 @@ html.menu-open .msgr, html.modal-open .msgr { display: none; }
   .sec__head { justify-content: center; }
   .sec__head > .btn, .tip--ask .btn, .no-alcohol { display: flex; width: fit-content; margin-inline: auto; }
 }
+
+/* Admin failed to load: say so instead of leaving an empty page */
+.admin-crash { max-width: 560px; margin: 0 auto; padding: 48px 16px; color: var(--fg); font-family: var(--body); }
+.admin-crash h1 { margin: 0 0 8px; font-size: 22px; line-height: 1.25; }
+.admin-crash p { margin: 0 0 14px; color: var(--muted); }
+.admin-crash pre { margin: 0 0 16px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.admin-crash__btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-crash button { min-height: 42px; padding: 0 16px; border: 1px solid var(--accent); border-radius: 999px; background: var(--accent); color: var(--on-accent); font: 600 14px/1 var(--body); cursor: pointer; }
+.admin-crash button + button { background: transparent; color: var(--fg); border-color: var(--line); }
