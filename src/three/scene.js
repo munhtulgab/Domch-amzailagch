@@ -1,7 +1,7 @@
 // Scroll-driven 3D bottles. The DOM marks story stops with [data-pose]; the bottles move between them.
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 const S = 1 / 1000; // photo pixels -> scene units
 
@@ -477,73 +477,61 @@ function recessGeometry(b, side) {
 }
 
 // ---- Ingredient forms ----
-function leafGeometry() {
-  const U = 12;
-  const V = 72;
-  const pos = [];
-  const uv = [];
-  const idx = [];
-  const half = (y) => 0.36 * Math.sin(Math.PI * Math.min(1, y ** 0.82)) ** 0.92
-    + (y > 0.12 && y < 0.93 ? 0.022 * Math.abs(Math.sin(y * Math.PI * 9)) : 0);
-  for (let j = 0; j <= V; j += 1) {
-    const y = j / V;
-    const h = half(y);
-    for (let i = 0; i <= U; i += 1) {
-      const u = i / U;
-      const x = (u * 2 - 1) * h;
-      pos.push(x, y - 0.5, 0.55 * x * x + 0.07 * Math.sin(y * Math.PI) - 0.12 * y * y);
-      uv.push(u, y);
+// A chunk of rock salt: a box knocked into an irregular, faceted crystal (vertices moved by position,
+// so shared corners stay joined).
+function saltGeometry(seed) {
+  const rand = rng(seed);
+  const g = new THREE.BoxGeometry(1, 0.82 + rand() * 0.3, 0.86 + rand() * 0.3, 2, 2, 2);
+  const p = g.attributes.position;
+  const moved = new Map();
+  for (let i = 0; i < p.count; i += 1) {
+    const key = `${p.getX(i).toFixed(3)},${p.getY(i).toFixed(3)},${p.getZ(i).toFixed(3)}`;
+    if (!moved.has(key)) {
+      const corner = Math.abs(p.getX(i)) > 0.45 && Math.abs(p.getY(i)) > 0.38 && Math.abs(p.getZ(i)) > 0.38;
+      const cut = corner ? 0.62 + rand() * 0.25 : 1;
+      moved.set(key, [
+        p.getX(i) * cut + (rand() - 0.5) * 0.22,
+        p.getY(i) * cut + (rand() - 0.5) * 0.22,
+        p.getZ(i) * cut + (rand() - 0.5) * 0.22,
+      ]);
     }
+    p.setXYZ(i, ...moved.get(key));
   }
-  for (let j = 0; j < V; j += 1) {
-    for (let i = 0; i < U; i += 1) {
-      const a = j * (U + 1) + i;
-      const b = a + 1;
-      const c = a + U + 1;
-      const d = c + 1;
-      idx.push(a, b, c, b, d, c);
-    }
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-  g.setIndex(idx);
   g.computeVertexNormals();
   return g;
 }
-function leafTexture() {
-  const cv = document.createElement('canvas');
-  cv.width = 256;
-  cv.height = 512;
-  const g = cv.getContext('2d');
-  const grad = g.createLinearGradient(0, 0, 256, 0);
-  grad.addColorStop(0, '#2b7a45');
-  grad.addColorStop(0.5, '#52b06c');
-  grad.addColorStop(1, '#2b7a45');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 256, 512);
-  g.lineCap = 'round';
-  g.strokeStyle = 'rgba(214, 245, 222, 0.75)';
-  g.lineWidth = 5;
-  g.beginPath(); g.moveTo(128, 512); g.lineTo(128, 24); g.stroke();
-  g.strokeStyle = 'rgba(200, 240, 212, 0.45)';
-  g.lineWidth = 2.2;
-  for (let k = 1; k <= 7; k += 1) {
-    const y = 512 - k * 60;
-    g.beginPath(); g.moveTo(128, y); g.quadraticCurveTo(170, y - 26, 236, y - 70); g.stroke();
-    g.beginPath(); g.moveTo(128, y); g.quadraticCurveTo(86, y - 26, 20, y - 70); g.stroke();
+// A dried clove: tapering stalk, four pointed sepals and the round bud between them.
+function cloveGeometries() {
+  const stalk = new THREE.LatheGeometry([
+    [0.0, -0.5], [0.03, -0.5], [0.042, -0.46], [0.05, -0.3], [0.056, -0.05], [0.066, 0.12], [0.085, 0.22], [0.1, 0.27], [0.07, 0.29], [0, 0.29],
+  ].map(([r, y]) => new THREE.Vector2(r, y)), 14);
+  const sepals = [];
+  for (let k = 0; k < 4; k += 1) {
+    const c = new THREE.ConeGeometry(0.045, 0.15, 6);
+    c.translate(0, 0.075, 0);
+    c.rotateZ(-0.55);
+    c.rotateY((k * Math.PI) / 2 + Math.PI / 4);
+    c.translate(0, 0.25, 0);
+    sepals.push(c);
   }
-  const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
+  const head = mergeGeometries([stalk, ...sepals].map((g) => g.toNonIndexed()));
+  head.scale(1.35, 1, 1.35);
+  const bud = new THREE.SphereGeometry(0.088, 18, 12);
+  bud.scale(1.35, 1.28, 1.35);
+  bud.translate(0, 0.38, 0);
+  return { body: head, bud };
 }
-function dropGeometry() {
-  const pts = [];
-  for (let i = 0; i <= 24; i += 1) {
-    const a = Math.PI - (i / 24) * Math.PI;
-    pts.push(new THREE.Vector2(Math.max(0.0001, 0.62 * Math.sin(a) * Math.sin(a / 2) ** 1.2), Math.cos(a)));
+// A mint sprig photo on a gently curved card (leaves are thin, so a card reads true from most angles).
+function sprigGeometry(aspect) {
+  const g = new THREE.PlaneGeometry(1, aspect, 10, 8);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i += 1) {
+    const x = p.getX(i);
+    const y = p.getY(i);
+    p.setZ(i, -0.22 * x * x - 0.12 * y * y + 0.04 * Math.sin(x * 7));
   }
-  return new THREE.LatheGeometry(pts, 32);
+  g.computeVertexNormals();
+  return g;
 }
 function radialTexture(stops) {
   const cv = document.createElement('canvas');
@@ -620,20 +608,37 @@ export async function createScene({ canvas, media = '/media/', initialSize = 'bi
   const loader = new THREE.TextureLoader();
   let upperTex;
   let mainTex;
+  let saltPhoto;
+  let clovePhoto;
+  let mintPhoto;
   try {
-    [upperTex, mainTex] = await Promise.all([
+    [upperTex, mainTex, saltPhoto, clovePhoto, mintPhoto] = await Promise.all([
       loader.loadAsync(`${media}label_upper.webp`),
       loader.loadAsync(`${media}label_main.webp`),
+      loader.loadAsync(`${media}ing-salt.webp`),
+      loader.loadAsync(`${media}ing-clove.webp`),
+      loader.loadAsync(`${media}ing-mint.webp`),
     ]);
   } catch {
     renderer.dispose();
     return null;
   }
   const aniso = renderer.capabilities.getMaxAnisotropy();
-  [upperTex, mainTex].forEach((t) => {
+  [upperTex, mainTex, saltPhoto, clovePhoto, mintPhoto].forEach((t) => {
     t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = aniso;
   });
+  // one salt crystal face and a wrinkled clove stalk, cut from the ingredient photos
+  const crop = (tex, img, x, y, w, h) => {
+    const t = tex.clone();
+    t.repeat.set(w / img[0], h / img[1]);
+    t.offset.set(x / img[0], 1 - (y + h) / img[1]);
+    t.needsUpdate = true;
+    return t;
+  };
+  const saltTex = crop(saltPhoto, [774, 460], 232, 212, 116, 96);
+  const stalkTex = crop(clovePhoto, [754, 545], 252, 248, 156, 44);
+  const budTex = crop(clovePhoto, [754, 545], 150, 395, 70, 60);
   try {
     await Promise.race([
       Promise.all([
@@ -697,13 +702,17 @@ export async function createScene({ canvas, media = '/media/', initialSize = 'bi
   });
   const upperMat = labelMat(upperTex);
   const mainMat = labelMat(mainTex);
+  // pale pink rock salt: faceted, a little glassy
   const saltMat = new THREE.MeshPhysicalMaterial({
-    color: 0xf6f9f7, roughness: 0.3, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.2, sheen: 0.6, sheenColor: new THREE.Color(0xffffff), envMapIntensity: 1.3,
+    map: saltTex, color: 0xf6c9b9, roughness: 0.5, metalness: 0, flatShading: true,
+    clearcoat: 0.45, clearcoatRoughness: 0.3, sheen: 0.4, sheenColor: new THREE.Color(0xffd9cc), envMapIntensity: 0.85,
   });
-  const extractMat = new THREE.MeshPhysicalMaterial({
-    color: 0xe9fff6, roughness: 0.02, metalness: 0, transparent: true, opacity: 0.6, clearcoat: 1, iridescence: 0.6, iridescenceIOR: 1.3, envMapIntensity: 2.4,
+  const cloveMat = new THREE.MeshStandardMaterial({ map: stalkTex, color: 0x9c7462, roughness: 0.86, metalness: 0 });
+  const budMat = new THREE.MeshStandardMaterial({ map: budTex, color: 0xb08a72, roughness: 0.8, metalness: 0 });
+  const mintMat = new THREE.MeshStandardMaterial({
+    map: mintPhoto, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.55, metalness: 0,
+    emissive: 0xffffff, emissiveMap: mintPhoto, emissiveIntensity: 0.12,
   });
-  const leafMat = new THREE.MeshStandardMaterial({ map: leafTexture(), roughness: 0.5, side: THREE.DoubleSide });
   const shadowTex = radialTexture([[0, 'rgba(255,255,255,1)'], [0.55, 'rgba(255,255,255,0.4)'], [1, 'rgba(255,255,255,0)']]);
   const haloTex = radialTexture([[0, 'rgba(255,255,255,0.9)'], [0.4, 'rgba(255,255,255,0.35)'], [1, 'rgba(255,255,255,0)']]);
 
@@ -792,14 +801,23 @@ export async function createScene({ canvas, media = '/media/', initialSize = 'bi
   const elems = [];
   {
     const rand = rng(31);
+    const saltGeos = [3, 8, 13, 21].map(saltGeometry);
+    const clove = cloveGeometries();
+    const sprig = sprigGeometry(339 / 519);
+    const makeClove = () => {
+      const o = new THREE.Group();
+      o.add(new THREE.Mesh(clove.body, cloveMat), new THREE.Mesh(clove.bud, budMat));
+      return o;
+    };
+    // salt crystals, cloves (the extract) and mint sprigs
     const kinds = [
-      { g: 0, n: 14, geo: new RoundedBoxGeometry(1, 1, 1, 3, 0.1), mat: saltMat, size: [0.05, 0.09] },
-      { g: 1, n: 11, geo: dropGeometry(), mat: extractMat, size: [0.045, 0.075] },
-      { g: 2, n: 9, geo: leafGeometry(), mat: leafMat, size: [0.17, 0.26] },
+      { g: 0, n: 14, make: (i) => new THREE.Mesh(saltGeos[i % saltGeos.length], saltMat), size: [0.07, 0.115] },
+      { g: 1, n: 11, make: makeClove, size: [0.2, 0.28] },
+      { g: 2, n: 8, make: () => new THREE.Mesh(sprig, mintMat), size: [0.32, 0.44] },
     ];
-    kinds.forEach(({ g, n, geo, mat, size }) => {
+    kinds.forEach(({ g, n, make, size }) => {
       for (let i = 0; i < n; i += 1) {
-        const mesh = new THREE.Mesh(geo, mat);
+        const mesh = make(i);
         mesh.visible = false;
         ingGroup.add(mesh);
         elems.push({
