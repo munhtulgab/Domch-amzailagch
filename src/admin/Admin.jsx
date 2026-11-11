@@ -29,7 +29,7 @@ const TABS = [
     sub: 'Messenger-ийн AI зөвхөн эндхийн баталгаатай мэдээллээр хариулна.' },
   { id: 'videos', label: 'Видео', icon: 'video', group: 'content', table: true, sub: 'Контент бүтээгчид болон «Манай гэрийн Домч» бичлэгүүд.' },
   { id: 'faqs', label: 'Түгээмэл асуулт', icon: 'help', group: 'content', table: true, sub: 'Сайтын асуулт, хариултын хэсэг.' },
-  { id: 'settings', label: 'Тохиргоо', icon: 'gear', group: 'system', sub: 'Холбоо барих мэдээлэл, Messenger, Instagram, AI туслах.' },
+  { id: 'settings', label: 'Тохиргоо', icon: 'gear', group: 'system', sub: 'Холбоо барих мэдээлэл, Messenger, Instagram, AI туслах, нэвтрэх нууц үг.' },
 ];
 const TAB = Object.fromEntries(TABS.map((t) => [t.id, t]));
 const GROUPS = [['main', ''], ['inbox', 'Ирсэн'], ['content', 'Агуулга'], ['system', 'Систем']];
@@ -231,8 +231,9 @@ function SearchBox({ value, onChange, placeholder = 'Хайх…', label = 'Ха
 }
 
 /* ---------------- Login ---------------- */
-function Login({ onDone }) {
-  const [token, setToken] = useState('');
+function Login({ onDone, notice }) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [show, setShow] = useState(false);
@@ -241,11 +242,10 @@ function Login({ onDone }) {
     setBusy(true);
     setError('');
     try {
-      await api('/admin/summary?events=0', { token: token.trim() });
-      onDone(token.trim());
+      const res = await api('/auth/login', { method: 'POST', body: { username: username.trim(), password } });
+      onDone(res);
     } catch (err) {
-      setError(err.status === 401 ? 'Нэвтрэх түлхүүр буруу байна.' : err.message);
-    } finally {
+      setError(err.message);
       setBusy(false);
     }
   };
@@ -256,17 +256,23 @@ function Login({ onDone }) {
         <p className="a-mark">DOMCH</p>
         <h1>Удирдлагын хэсэг</h1>
         <p className="a-muted">Сайт, Messenger, AI туслахаа нэг дороос удирдана.</p>
-        <label htmlFor="a-token">Нэвтрэх түлхүүр</label>
+        {notice && <p className="a-note" role="status">{notice}</p>}
+        <label htmlFor="a-user">Нэвтрэх нэр</label>
         <div className="a-login__field">
-          <input id="a-token" type={show ? 'text' : 'password'} value={token} onChange={(e) => setToken(e.target.value)}
-            autoComplete="current-password" required autoFocus />
+          <input id="a-user" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username"
+            autoCapitalize="none" spellCheck={false} required autoFocus />
+        </div>
+        <label htmlFor="a-token">Нууц үг</label>
+        <div className="a-login__field">
+          <input id="a-token" type={show ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password" required />
           <button type="button" className="a-icon-btn" onClick={() => setShow(!show)} aria-pressed={show}
-            aria-label={show ? 'Түлхүүрийг нуух' : 'Түлхүүрийг харах'}>
+            aria-label={show ? 'Нууц үгийг нуух' : 'Нууц үгийг харах'}>
             <Icon name={show ? 'eyeOff' : 'eye'} />
           </button>
         </div>
         {error && <p className="a-error" role="alert">{error}</p>}
-        <button className="a-btn a-btn--lg" type="submit" disabled={busy || !token.trim()}>
+        <button className="a-btn a-btn--lg" type="submit" disabled={busy || !username.trim() || !password}>
           {busy ? 'Шалгаж байна…' : <>Нэвтрэх <Icon name="arrowRight" size={17} /></>}
         </button>
         <a className="a-link" href="/">← Сайт руу буцах</a>
@@ -1102,9 +1108,74 @@ function ContactSettings({ call }) {
   );
 }
 
-const SETTING_TABS = [['contact', 'Холбоо барих', 'phone'], ['messenger', 'Messenger, Instagram', 'chat'], ['ai', 'AI туслах', 'spark']];
+function AccountSettings({ call, account, onSession }) {
+  const toast = useToast();
+  const [values, setValues] = useState({ username: account ? account.user : '', current: '', next: '', confirm: '' });
+  const [errors, setErrors] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    if (account) setValues((v) => (v.username ? v : { ...v, username: account.user }));
+  }, [account]);
+  const set = (k) => (e) => {
+    setValues((v) => ({ ...v, [k]: e.target.value }));
+    setErrors((s) => ({ ...s, [k]: undefined, form: undefined }));
+  };
+  const submit = async (e) => {
+    e.preventDefault();
+    if (values.next && values.next !== values.confirm) {
+      setErrors({ confirm: 'Шинэ нууц үг таарахгүй байна.' });
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await call('/account', {
+        method: 'PUT',
+        body: { username: values.username.trim(), current_password: values.current, new_password: values.next },
+      });
+      onSession(res);
+      setValues({ username: res.user, current: '', next: '', confirm: '' });
+      setErrors({});
+      toast(values.next ? 'Нууц үг солигдлоо. Бусад төхөөрөмж дээрх нэвтрэлт хаагдана.' : 'Нэвтрэх нэр солигдлоо.');
+    } catch (err) {
+      const f = err.fields || {};
+      setErrors({ username: f.username, current: f.current_password, next: f.new_password, form: err.fields ? '' : err.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const type = show ? 'text' : 'password';
+  const field = (k, label, props = {}, hint = '') => (
+    <div className={`a-field${errors[k] ? ' has-error' : ''}`}>
+      <label htmlFor={`acc-${k}`}>{label}</label>
+      <input id={`acc-${k}`} value={values[k]} onChange={set(k)} {...props} />
+      {errors[k] ? <p className="a-error">{errors[k]}</p> : hint && <p className="a-hint">{hint}</p>}
+    </div>
+  );
+  return (
+    <form className="a-form a-card" onSubmit={submit} noValidate>
+      {account && account.default_password && (
+        <p className="a-alert a-field--wide"><Icon name="lock" />Та анхны нууц үгээр нэвтэрч байна. Хэн ч таах боломжтой тул шинэ нууц үг тохируулна уу.</p>
+      )}
+      {field('username', 'Нэвтрэх нэр', { autoComplete: 'username', autoCapitalize: 'none', spellCheck: false }, 'Том, жижиг үсэг ялгахгүй.')}
+      {field('current', 'Одоогийн нууц үг', { type, autoComplete: 'current-password' })}
+      {field('next', 'Шинэ нууц үг', { type, autoComplete: 'new-password' }, 'Хамгийн багадаа 8 тэмдэгт. Үсэг, тоо холивол илүү найдвартай.')}
+      {field('confirm', 'Шинэ нууц үгээ давтах', { type, autoComplete: 'new-password' })}
+      <div className="a-field a-field--check">
+        <label htmlFor="acc-show"><input id="acc-show" type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} /> Нууц үгийг харуулах</label>
+      </div>
+      {errors.form && <p className="a-error" role="alert">{errors.form}</p>}
+      <div className="a-form__actions">
+        <button className="a-btn" type="submit" disabled={busy || !values.current}>{busy ? 'Хадгалж байна…' : 'Хадгалах'}</button>
+      </div>
+    </form>
+  );
+}
 
-function Settings({ call, tab, onTab, onChange, go }) {
+const SETTING_TABS = [['contact', 'Холбоо барих', 'phone'], ['messenger', 'Messenger, Instagram', 'chat'], ['ai', 'AI туслах', 'spark'],
+  ['account', 'Нэвтрэх, нууц үг', 'lock']];
+
+function Settings({ call, tab, onTab, onChange, go, account, onSession }) {
   return (
     <div className="a-stack">
       <div className="a-tabs" role="tablist" aria-label="Тохиргоо">
@@ -1118,6 +1189,7 @@ function Settings({ call, tab, onTab, onChange, go }) {
         {tab === 'messenger' && <MessengerSettings call={call} onChange={onChange} />}
         {tab === 'ai' && <AiSettings call={call} go={go} />}
         {tab === 'contact' && <ContactSettings call={call} />}
+        {tab === 'account' && <AccountSettings call={call} account={account} onSession={onSession} />}
       </div>
     </div>
   );
@@ -1201,7 +1273,7 @@ const MOBILE_TABS = [
   { sheet: 'more', label: 'Цэс', icon: 'menu' },
 ];
 
-function Shell({ route, go, counts, logout, children }) {
+function Shell({ route, go, counts, logout, account, children }) {
   const { theme, cycle } = useTheme();
   const [sheet, setSheet] = useState('');
   const [palette, setPalette] = useState(false);
@@ -1233,7 +1305,7 @@ function Shell({ route, go, counts, logout, children }) {
       <aside className="a-side" aria-label="Удирдлагын цэс">
         <a className="a-brand" href="#/overview">
           <span className="a-logo" aria-hidden="true">Д</span>
-          <span><strong>ДОМЧ</strong><small>Удирдлага</small></span>
+          <span><strong>ДОМЧ</strong><small>{account ? account.user : 'Удирдлага'}</small></span>
         </a>
         <button type="button" className="a-jump" onClick={() => setPalette(true)}>
           <Icon name="search" size={16} /><span>Хайх, шилжих</span><kbd>⌘K</kbd>
@@ -1264,7 +1336,16 @@ function Shell({ route, go, counts, logout, children }) {
           </div>
           <button type="button" className="a-icon-btn a-only-narrow" onClick={() => setPalette(true)} aria-label="Хайх, шилжих"><Icon name="search" /></button>
         </header>
-        <main id="a-main" className="a-main" tabIndex={-1}>{children}</main>
+        <main id="a-main" className="a-main" tabIndex={-1}>
+          {account && account.default_password && !(route.tab === 'settings' && route.sub === 'account') && (
+            <div className="a-alert a-alert--top" role="status">
+              <Icon name="lock" />
+              <p><strong>Анхны нууц үгээ солино уу.</strong> Admin / admin123 нь хэн ч таах боломжтой нууц үг.</p>
+              <a className="a-btn a-btn--sm" href="#/settings/account">Нууц үг солих</a>
+            </div>
+          )}
+          {children}
+        </main>
       </div>
 
       <nav className="a-tabbar" aria-label="Үндсэн цэс">
@@ -1311,15 +1392,35 @@ function AdminApp() {
   });
   const [route, setRoute] = useState(readHash);
   const [summary, setSummary] = useState(null);
-  const logout = useCallback(() => {
+  const [account, setAccount] = useState(null);
+  const [notice, setNotice] = useState('');
+  const keep = useCallback((t) => {
     try {
-      sessionStorage.removeItem(KEY);
+      if (t) sessionStorage.setItem(KEY, t);
+      else sessionStorage.removeItem(KEY);
     } catch {
-      /* ignore */
+      /* private mode: the session lasts while the page is open */
     }
-    setToken('');
+    setToken(t);
   }, []);
-  const call = useAdminApi(token, logout);
+  const logout = useCallback(() => {
+    setNotice('');
+    setAccount(null);
+    keep('');
+  }, [keep]);
+  const expired = useCallback(() => {
+    setNotice('Нэвтрэх хугацаа дууссан. Дахин нэвтэрнэ үү.');
+    setAccount(null);
+    keep('');
+  }, [keep]);
+  const onSession = useCallback((res) => {
+    keep(res.token);
+    setAccount({ user: res.user, default_password: res.default_password });
+  }, [keep]);
+  const call = useAdminApi(token, expired);
+  useEffect(() => {
+    if (token && !account) call('/account').then(setAccount).catch(() => {});
+  }, [token, account, call]);
   const go = useCallback((tab, sub = '') => { window.location.hash = `/${tab}${sub ? `/${sub}` : ''}`; }, []);
   useEffect(() => {
     const onHash = () => {
@@ -1354,28 +1455,23 @@ function AdminApp() {
 
   if (!token) {
     return (
-      <Login onDone={(t) => {
-        try {
-          sessionStorage.setItem(KEY, t);
-        } catch {
-          /* ignore */
-        }
-        setToken(t);
-      }}
-      />
+      <Login notice={notice} onDone={(res) => { setNotice(''); onSession(res); }} />
     );
   }
   const cur = TAB[route.tab];
   const settingsTab = SETTING_TABS.some(([id]) => id === route.sub) ? route.sub : 'contact';
   return (
-    <Shell route={route} go={go} counts={counts} logout={logout}>
+    <Shell route={route} go={go} counts={counts} logout={logout} account={account}>
       {route.tab === 'overview' && <Overview call={call} summary={summary} reload={loadSummary} go={go} />}
       {cur.inbox && <Inbox key={route.tab} kind={route.tab} call={call} onChange={loadCounts} />}
       {cur.table && <TableView key={route.tab} table={route.tab} call={call} />}
       {route.tab === 'messenger' && (
         <MessengerInbox call={call} onChange={loadCounts} openSettings={() => go('settings', 'messenger')} />
       )}
-      {route.tab === 'settings' && <Settings call={call} tab={settingsTab} onTab={(id) => go('settings', id)} onChange={loadSummary} go={go} />}
+      {route.tab === 'settings' && (
+        <Settings call={call} tab={settingsTab} onTab={(id) => go('settings', id)} onChange={loadSummary} go={go}
+          account={account} onSession={onSession} />
+      )}
     </Shell>
   );
 }

@@ -13,7 +13,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .common import FieldErrors, ago, fail, now_utc, require_admin
 from .db import SCHEMA_PATH, DBError, NotConfigured, get_db
-from . import ai, media, messenger
+from . import ai, auth, media, messenger
 
 app = FastAPI(
     title="DOMCH API",
@@ -726,6 +726,8 @@ def admin_migrate():
 
 
 app.include_router(admin)
+app.include_router(auth.public)
+app.include_router(auth.admin)
 app.include_router(messenger.admin)
 app.include_router(ai.admin)
 app.include_router(media.admin)

@@ -132,6 +132,14 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT
 );
 
+-- failed admin sign-ins, for throttling (rows older than a day are removed)
+CREATE TABLE IF NOT EXISTS admin_logins (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ip_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_admin_logins ON admin_logins (ip_hash, created_at);
+
 -- Integrations (Facebook Messenger). Never exposed by the public API.
 CREATE TABLE IF NOT EXISTS integrations (
   key TEXT PRIMARY KEY,

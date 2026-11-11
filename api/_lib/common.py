@@ -1,10 +1,9 @@
 """Helpers shared by the API modules."""
-import hmac
 import os
 import re
 from datetime import datetime, timedelta, timezone
 
-from fastapi import Header, HTTPException, Request
+from fastapi import Header, Request
 
 SITE_URL = "https://domch.gem.mn"  # primary address; the SITE_URL environment variable overrides it
 LOCAL_HOST = re.compile(r"^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|[^.:]+|[^:]*\.local|[^:]*\.test)(:\d+)?$", re.I)
@@ -58,9 +57,7 @@ def ago(minutes: int = 0, days: int = 0, hours: int = 0) -> str:
 
 
 def require_admin(authorization: str = Header("")):
-    expected = os.getenv("ADMIN_TOKEN", "")
-    if not expected:
-        raise HTTPException(503, "ADMIN_TOKEN тохируулагдаагүй байна.")
-    given = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
-    if not given or not hmac.compare_digest(given.encode(), expected.encode()):
-        raise HTTPException(401, "Нэвтрэх түлхүүр буруу байна.")
+    """Admin guard: a signed session from /api/auth/login, or the ADMIN_TOKEN environment value."""
+    from .auth import require_admin as check  # imported here: auth itself imports this module
+
+    return check(authorization)
