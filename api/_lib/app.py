@@ -144,7 +144,7 @@ def health():
 @app.get("/api/content")
 def content(response: Response):
     db = get_db()
-    products, faqs, tips, videos, reviews, stats, places, settings, msgr = db.batch([
+    products, faqs, tips, videos, reviews, stats, places, chain_rows, settings, msgr = db.batch([
         "SELECT id, slug, name, volume_ml, price, online_url FROM products WHERE active = 1 ORDER BY sort, id",
         "SELECT id, question, answer FROM faqs WHERE active = 1 ORDER BY sort, id",
         "SELECT id, kind, title, summary, body, doctor_name, doctor_title, video_url, image_url, source, published_at, featured, is_sample"
@@ -154,6 +154,7 @@ def content(response: Response):
         " ORDER BY created_at DESC, id DESC LIMIT 12",
         "SELECT COUNT(*) AS count, ROUND(AVG(rating), 1) AS average FROM reviews WHERE status = 'approved'",
         "SELECT DISTINCT city, district, chain FROM branches WHERE active = 1",
+        "SELECT chain, COUNT(*) AS n FROM branches WHERE active = 1 GROUP BY chain",
         "SELECT key, value FROM settings",
         "SELECT key, value FROM integrations WHERE key IN"
         " ('messenger.button', 'messenger.page_id', 'messenger.page_link')",
@@ -174,11 +175,17 @@ def content(response: Response):
         "filters": {
             "cities": sorted({p["city"] for p in places if p.get("city")}),
             "districts": {city: sorted(values) for city, values in districts.items()},
-            "chains": sorted({p["chain"] for p in places if p.get("chain")}),
+            # chains with two or more branches get their own button, biggest first; one-branch shops share «Сүлжээ бус»
+            "chains": [r["chain"] for r in sorted(chain_rows, key=lambda r: (-int(r["n"]), r["chain"])) if int(r["n"]) > 1],
+            "chainCounts": {r["chain"]: int(r["n"]) for r in chain_rows if int(r["n"]) > 1},
+            "single": sum(int(r["n"]) for r in chain_rows if int(r["n"]) == 1),
         },
         "settings": {row["key"]: row["value"] or "" for row in settings if row["key"] in SETTING_KEYS},
         "messenger": messenger.public_info({row["key"][len(messenger.PREFIX):]: row["value"] or "" for row in msgr}),
     }
+
+
+SINGLE_CHAIN = "__single__"  # «Сүлжээ бус»: shops that have a single branch
 
 
 @app.get("/api/branches")
@@ -192,6 +199,9 @@ def branches(
     limit: int = Query(200, ge=1, le=500),
 ):
     where, params = ["active = 1"], []
+    if chain.strip() == SINGLE_CHAIN:
+        where.append("chain IN (SELECT chain FROM branches WHERE active = 1 GROUP BY chain HAVING COUNT(*) = 1)")
+        chain = ""
     for column, value in (("city", city), ("district", district), ("chain", chain)):
         if value.strip():
             where.append(f"{column} = ?")

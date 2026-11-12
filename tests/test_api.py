@@ -266,3 +266,18 @@ def test_image_field_rejects_video_links(client):
     ok = client.put("/api/admin/t/tips/1", headers=AUTH, json={"image_url": "https://example.com/a.jpg"})
     assert ok.status_code == 200
     assert client.put("/api/admin/t/tips/1", headers=AUTH, json={"image_url": ""}).status_code == 200
+
+
+def test_chain_buttons_and_single_shops(client):
+    for chain, name in (("Сүлжээ А", "1"), ("Сүлжээ А", "2"), ("Сүлжээ А", "3"), ("Сүлжээ Б", "1"), ("Сүлжээ Б", "2"),
+                        ("Ганц эмийн сан", "Төв"), ("Өөр дэлгүүр", "Зах")):
+        assert client.post("/api/admin/t/branches", headers=AUTH,
+                           json={"chain": chain, "name": name, "city": "Улаанбаатар"}).status_code == 201
+    filters = client.get("/api/content").json()["filters"]
+    chains = filters["chains"]
+    assert chains.index("Сүлжээ А") < chains.index("Сүлжээ Б")  # more branches first
+    assert "Ганц эмийн сан" not in filters["chains"] and filters["chainCounts"]["Сүлжээ А"] == 3
+    singles = client.get("/api/branches?chain=__single__").json()["items"]
+    assert {b["chain"] for b in singles} >= {"Ганц эмийн сан", "Өөр дэлгүүр"}
+    assert not {b["chain"] for b in singles} & {"Сүлжээ А", "Сүлжээ Б"}
+    assert filters["single"] == len(singles)

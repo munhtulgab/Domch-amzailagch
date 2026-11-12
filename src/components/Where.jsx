@@ -4,6 +4,8 @@ import { CITIES, UB, UB_DISTRICTS } from '../data/static.js';
 import { distanceKm, formatDate, useInView } from '../lib/util.js';
 import { External, Info, Locate, Phone, Pin, Plus, Search } from './Icons.jsx';
 
+const SINGLE = '__single__'; // one-branch shops, shown together as «Сүлжээ бус»
+
 const BranchMap = lazy(() => import('./BranchMap.jsx'));
 const PAGE = 6; // branches shown at a time: the nearest ones once the visitor's location is known
 
@@ -145,13 +147,20 @@ export function Where({ filters, settings, actions }) {
             <button type="button" className="btn btn--ghost locate" onClick={() => locate()} disabled={locating}>
               <Locate /> {locating ? 'Байршил тодорхойлж байна…' : origin ? 'Ойрын салбараар эрэмбэлсэн' : 'Миний ойролцоо'}
             </button>
-            {filters.chains && filters.chains.length > 0 && (
+            {((filters.chains && filters.chains.length > 0) || filters.single > 0) && (
               <div className="chains">
-                <p>Хамтрагч эмийн сангууд</p>
+                <p>Хамтрагч эмийн сангууд болон сүлжээ дэлгүүр</p>
                 <div>
-                  {filters.chains.map((c) => (
-                    <button key={c} type="button" aria-pressed={chain === c} onClick={() => pickChain(c)}>{c}</button>
+                  {(filters.chains || []).map((c) => (
+                    <button key={c} type="button" aria-pressed={chain === c} onClick={() => pickChain(c)}>
+                      {c}{filters.chainCounts && filters.chainCounts[c] ? <span>{filters.chainCounts[c]}</span> : null}
+                    </button>
                   ))}
+                  {filters.single > 0 && (
+                    <button type="button" aria-pressed={chain === SINGLE} onClick={() => pickChain(SINGLE)}>
+                      Сүлжээ бус<span>{filters.single}</span>
+                    </button>
+                  )}
                 </div>
               </div>
             )}
