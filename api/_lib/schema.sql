@@ -104,6 +104,8 @@ CREATE TABLE IF NOT EXISTS partner_requests (
   message TEXT,
   status TEXT NOT NULL DEFAULT 'new',
   ip_hash TEXT,
+  source TEXT NOT NULL DEFAULT 'site',     -- site, messenger, instagram
+  source_ref TEXT,                         -- messenger:<psid> for requests found in chats (one per conversation)
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -122,6 +124,7 @@ CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   meta TEXT,
+  visitor TEXT,                -- daily hash of address + browser, to count people rather than clicks
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_events_name ON events (name, created_at);

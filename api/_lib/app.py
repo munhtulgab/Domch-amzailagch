@@ -13,7 +13,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .common import FieldErrors, ago, fail, now_utc, require_admin
 from .db import SCHEMA_PATH, DBError, NotConfigured, get_db
-from . import ai, auth, media, messenger, push
+from . import ai, auth, insights, media, messenger, push
 
 app = FastAPI(
     title="DOMCH API",
@@ -435,14 +435,38 @@ EVENT_NAMES = {
 }
 
 
-@app.post("/api/events", status_code=204)
-def create_event(data: EventIn):
-    if data.name in EVENT_NAMES:
+_event_visitor = set()
+
+
+def ensure_event_visitor(db) -> None:
+    """Older databases have no visitor column on events; add it once."""
+    if id(db) in _event_visitor:
+        return
+    try:
+        db.one("SELECT visitor FROM events LIMIT 1")
+    except DBError:
         try:
-            get_db().run(
-                "INSERT INTO events (name, meta) VALUES (?, ?)",
-                (data.name, json.dumps(data.meta, ensure_ascii=False)[:500]),
-            )
+            db.run("ALTER TABLE events ADD COLUMN visitor TEXT")
+        except DBError:
+            pass  # added by another request in the meantime
+    _event_visitor.add(id(db))
+
+
+def visitor_of(request: Request) -> str:
+    """Counts people, not clicks: the same address and browser on the same day is one visitor."""
+    salt = os.getenv("IP_HASH_SALT") or os.getenv("ADMIN_TOKEN") or "domch"
+    raw = f"{salt}|{client_ip(request)}|{request.headers.get('user-agent', '')}|{ago(days=0)[:10]}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+@app.post("/api/events", status_code=204)
+def create_event(data: EventIn, request: Request):
+    if data.name in EVENT_NAMES:
+        db = get_db()
+        row = (data.name, json.dumps(data.meta, ensure_ascii=False)[:500], visitor_of(request))
+        try:
+            ensure_event_visitor(db)
+            db.run("INSERT INTO events (name, meta, visitor) VALUES (?, ?, ?)", row)
         except DBError:
             pass
     return Response(status_code=204)
@@ -594,8 +618,10 @@ def admin_summary(events: int = Query(1, ge=0, le=1)):
     if not events:
         return {"counts": counts or {}, "driver": db.driver}
     since = ago(days=30)
+    ensure_event_visitor(db)
     events = db.all(
-        "SELECT name, COUNT(*) AS count FROM events WHERE created_at >= ? GROUP BY name ORDER BY count DESC",
+        "SELECT name, COUNT(*) AS count, COUNT(DISTINCT visitor) AS people FROM events WHERE created_at >= ?"
+        " GROUP BY name ORDER BY count DESC",
         (since,),
     )
     daily = db.all(
@@ -660,6 +686,8 @@ def admin_delete(table: str, row_id: int):
 @admin.get("/inbox/{kind}")
 def admin_inbox(kind: str, status: str = Query("", max_length=20)):
     spec = inbox_spec(kind)
+    if kind == "partners":
+        insights.ensure_partner_columns(get_db())
     sql, params = f"SELECT * FROM {spec['table']}", []
     if status:
         if status not in spec["statuses"]:
@@ -695,6 +723,12 @@ def admin_inbox_status(kind: str, row_id: int, data: StatusIn):
 @admin.delete("/inbox/{kind}/{row_id}")
 def admin_inbox_delete(kind: str, row_id: int):
     spec = inbox_spec(kind)
+    if kind == "partners":
+        db = get_db()
+        insights.ensure_partner_columns(db)
+        row = db.one("SELECT source_ref FROM partner_requests WHERE id = ?", (row_id,))
+        if row and row["source_ref"]:
+            insights.dismiss(db, row["source_ref"])
     res = get_db().run(f"DELETE FROM {spec['table']} WHERE id = ?", (row_id,))
     if not res["changes"]:
         raise HTTPException(404, "Мөр олдсонгүй.")
@@ -739,6 +773,7 @@ app.include_router(admin)
 app.include_router(auth.public)
 app.include_router(auth.admin)
 app.include_router(push.admin)
+app.include_router(insights.admin)
 app.include_router(messenger.admin)
 app.include_router(ai.admin)
 app.include_router(media.admin)

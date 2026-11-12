@@ -386,6 +386,102 @@ function Spark({ values }) {
   );
 }
 
+const TOPIC_ICON = {
+  partner: 'handshake', price: 'tag', where: 'pin', order: 'inbox', delivery: 'send', usage: 'book', ingredients: 'layers',
+  health: 'doctor', stock: 'question', info: 'help', other: 'chat',
+};
+
+function timeAgo(value) {
+  const d = new Date(String(value || '').replace(' ', 'T') + 'Z');
+  if (Number.isNaN(d.getTime())) return '';
+  const min = Math.round((Date.now() - d.getTime()) / 60000);
+  if (min < 1) return 'дөнгөж сая';
+  if (min < 60) return `${min} мин өмнө`;
+  if (min < 24 * 60) return `${Math.round(min / 60)} цагийн өмнө`;
+  return formatDate(value);
+}
+
+/** What people ask on Messenger and Instagram, grouped by topic (last 30 days). */
+function ChatInsights({ call }) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState('');
+  const [open, setOpen] = useState('');
+  useEffect(() => {
+    call('/messenger/insights').then(setData).catch((err) => setError(err.message));
+  }, [call]);
+  const topics = data ? data.topics.filter((t) => !['greeting', 'media'].includes(t.key)) : [];
+  const max = Math.max(1, ...topics.map((t) => t.people));
+  return (
+    <section className="a-panel a-chatq" aria-labelledby="ov-chatq">
+      <header className="a-panel__head">
+        <h2 id="ov-chatq">Messenger, Instagram-аар юу асууж байна</h2>
+        {data && (
+          <span className="a-muted">
+            30 хоног · {fmt(data.people)} хүн · {fmt(data.messages)} мессеж
+          </span>
+        )}
+      </header>
+      {error ? <p className="a-error">{error}</p> : !data ? <Skeleton rows={6} /> : data.messages === 0 ? (
+        <Empty icon="chat" title="Сүүлийн 30 хоногт мессеж ирээгүй" />
+      ) : (
+        <div className="a-chatq__grid">
+          <div>
+            <p className="a-chatq__channels">
+              <span className="a-channel a-channel--fb">FB</span> Messenger {fmt(data.channels.messenger || 0)} хүн
+              <span className="a-channel a-channel--ig">IG</span> Instagram {fmt(data.channels.instagram || 0)} хүн
+            </p>
+            {data.partners_added > 0 && (
+              <a className="a-alert a-alert--info a-chatq__new" href="#/partners">
+                <Icon name="handshake" />
+                <p><strong>Чатаас {data.partners_added} хамтын ажиллагааны хүсэлт нэмэгдлээ.</strong> Хамтын ажиллагаа хэсэгт харах</p>
+              </a>
+            )}
+            <ol className="a-topics">
+              {topics.map((t) => (
+                <li key={t.key}>
+                  <button type="button" aria-expanded={open === t.key} onClick={() => setOpen(open === t.key ? '' : t.key)}>
+                    <span className="a-topics__icon"><Icon name={TOPIC_ICON[t.key] || 'chat'} size={16} /></span>
+                    <span className="a-topics__label">{t.label}</span>
+                    <span className="a-bars__track"><i style={{ width: `${(t.people / max) * 100}%` }} /></span>
+                    <span className="a-bars__n">{fmt(t.people)} <small>хүн</small></span>
+                  </button>
+                  {open === t.key && (
+                    <ul className="a-topics__ex">
+                      {t.examples.map((x) => <li key={x}>«{x}»</li>)}
+                      {t.key === 'partner' && <li><a href="#/partners">Хамтын ажиллагааны хүсэлтүүдийг харах →</a></li>}
+                    </ul>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </div>
+          <div className="a-chatq__side">
+            <h3>Олон давтагдсан асуулт</h3>
+            <ol className="a-topq">
+              {data.top_questions.slice(0, 8).map((q) => (
+                <li key={q.text}><span>{q.text}</span><b>{fmt(q.people)} хүн</b></li>
+              ))}
+            </ol>
+            <h3>Сүүлд ирсэн асуултууд</h3>
+            <ul className="a-recentq">
+              {data.recent.slice(0, 8).map((r) => (
+                <li key={`${r.psid}-${r.at}`}>
+                  <a href={`#/messenger/${encodeURIComponent(r.psid)}`}>
+                    <span className="a-recentq__text">{r.text}</span>
+                    <span className="a-muted">
+                      {r.channel === 'instagram' ? 'IG' : 'FB'} · {r.name || `Хэрэглэгч …${String(r.psid).slice(-4)}`} · {timeAgo(r.at)}
+                    </span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 const TODO = [
   ['messenger', 'messenger_unread', 'уншаагүй мессеж', 'Хариулах'],
   ['reviews', 'reviews_pending', 'сэтгэгдэл нийтлэхийг хүлээж байна', 'Шалгах'],
@@ -493,12 +589,17 @@ function Overview({ call, summary, reload, go }) {
               <li key={e.name}>
                 <span className="a-bars__label">{EVENT_LABEL[e.name] || e.name}</span>
                 <span className="a-bars__track"><i style={{ width: `${(e.count / maxEvent) * 100}%` }} /></span>
-                <span className="a-bars__n">{fmt(e.count)}</span>
+                <span className="a-bars__n">{fmt(e.count)}{e.people > 0 && <small>{fmt(e.people)} хүн</small>}</span>
               </li>
             ))}
           </ol>
         )}
+        {ready && events.length > 0 && (
+          <p className="a-hint a-bars__hint">Тоо: дарсан удаа. «хүн»: нэг хүн өдөрт олон дарсан ч нэг гэж тоолно (2026.11.12-ноос хойш бүртгэж эхэлсэн).</p>
+        )}
       </section>
+
+      <ChatInsights call={call} />
 
       <section className="a-panel a-daily" aria-labelledby="ov-daily">
         <header className="a-panel__head">
@@ -522,15 +623,20 @@ function inboxTitle(kind, r) {
 function inboxSnippet(kind, r) {
   if (kind === 'reviews') return r.body;
   if (kind === 'questions') return r.question;
-  if (kind === 'partners') return [KIND_LABEL[r.kind] || r.kind, r.message].filter(Boolean).join(' · ');
+  if (kind === 'partners') return [SOURCE_LABEL[r.source], KIND_LABEL[r.kind] || r.kind, r.message].filter(Boolean).join(' · ');
   return r.note;
 }
+const SOURCE_LABEL = { messenger: 'Messenger чатаас', instagram: 'Instagram чатаас' };
+
 function contactLinks(r) {
   const out = [];
   const phone = r.phone || (/\d[\d\s-]{5,}/.test(r.contact || '') && !/@/.test(r.contact || '') ? r.contact : '');
   const email = r.email || (/@/.test(r.contact || '') ? r.contact : '');
   if (phone) out.push(['phone', `Залгах: ${phone}`, `tel:${String(phone).replace(/[^\d+]/g, '')}`]);
   if (email) out.push(['mail', 'И-мэйл бичих', `mailto:${email}`]);
+  if (r.source_ref && /^(messenger|instagram):/.test(r.source_ref)) {
+    out.push(['chat', 'Чатыг нээх', `#/messenger/${encodeURIComponent(r.source_ref.split(':').slice(1).join(':'))}`]);
+  }
   return out;
 }
 
@@ -708,6 +814,7 @@ function InboxBody({ kind, r }) {
   if (kind === 'partners') {
     return (
       <dl>
+        <Row label="Эх сурвалж" value={SOURCE_LABEL[r.source] || 'Сайтын маягт'} />
         <Row label="Төрөл" value={KIND_LABEL[r.kind] || r.kind} />
         <Row label="Байгууллага" value={r.org} />
         <Row label="Холбоо барих" value={r.contact_name} />
@@ -1528,7 +1635,7 @@ function AdminApp() {
       {cur.inbox && <Inbox key={route.tab} kind={route.tab} call={call} onChange={loadCounts} />}
       {cur.table && <TableView key={route.tab} table={route.tab} call={call} />}
       {route.tab === 'messenger' && (
-        <MessengerInbox call={call} onChange={loadCounts} openSettings={() => go('settings', 'messenger')} />
+        <MessengerInbox call={call} onChange={loadCounts} openSettings={() => go('settings', 'messenger')} initial={route.sub} />
       )}
       {route.tab === 'settings' && (
         <Settings call={call} tab={settingsTab} onTab={(id) => go('settings', id)} onChange={loadSummary} go={go}

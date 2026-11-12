@@ -431,7 +431,7 @@ function dayOf(value) {
 const THREAD_PAGE = 50;
 const KIND_META = { auto: 'Автомат хариу', ai: 'AI хариу', inbox: 'Page Inbox' };
 
-export function MessengerInbox({ call, onChange, openSettings }) {
+export function MessengerInbox({ call, onChange, openSettings, initial = '' }) {
   const toast = useToast();
   const [cfg, setCfg] = useState(null);
   const [list, setList] = useState({ items: null, hasMore: false, total: 0, unread: 0 });
@@ -530,6 +530,11 @@ export function MessengerInbox({ call, onChange, openSettings }) {
     await loadConvo(psid);
     loadThreads({ quiet: true });
   };
+
+  // #/messenger/<psid> (a tapped notification, a question on the overview) opens that conversation
+  useEffect(() => {
+    if (initial && initial !== active) open(initial);
+  }, [initial]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const send = async (e) => {
     e.preventDefault();

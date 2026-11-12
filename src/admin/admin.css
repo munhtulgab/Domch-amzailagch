@@ -517,7 +517,7 @@ p.a-alert { margin: 0; font-size: 14px; }
 
 /* Overview */
 .a-ov { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 16px; align-items: start; }
-.a-kpis, .a-daily { grid-column: 1 / -1; }
+.a-kpis, .a-daily, .a-chatq { grid-column: 1 / -1; }
 .a-kpis { display: grid; grid-template-columns: 1.35fr repeat(3, minmax(0, 1fr)); gap: 14px; }
 .a-kpi {
   position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 18px 20px; overflow: hidden;
@@ -721,4 +721,45 @@ p.a-alert { margin: 0; font-size: 14px; }
 /* iPhone zooms into any field with text under 16px; keep fields at 16px on touch screens */
 @media (pointer: coarse) {
   .admin input, .admin select, .admin textarea, .a-drawer input, .a-drawer select, .a-drawer textarea, .a-login input { font-size: 16px; }
+}
+
+/* Chat insights on the overview */
+.a-bars__n small { display: block; color: var(--muted); font-size: 11.5px; font-weight: 500; }
+.a-bars__hint { margin-top: 12px; }
+.a-chatq__grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 28px; }
+.a-chatq__channels { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0 0 14px; color: var(--muted); font-size: 13px; }
+.a-chatq__channels .a-channel + * { margin-right: 8px; }
+.a-chatq__new { margin: 0 0 14px; color: var(--fg); text-decoration: none; }
+.a-topics { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.a-topics > li > button {
+  display: grid; grid-template-columns: 30px minmax(0, 1.3fr) minmax(0, 1fr) 64px; align-items: center; gap: 10px; width: 100%;
+  padding: 7px 6px; border: 0; border-radius: 12px; background: none; color: var(--fg); font: inherit; font-size: 14px; text-align: left; cursor: pointer;
+}
+.a-topics > li > button:hover, .a-topics > li > button[aria-expanded="true"] { background: var(--tint-2); }
+.a-topics__icon { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 9px; background: var(--tint); color: var(--accent); }
+.a-topics__label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.a-topics .a-bars__n { text-align: right; font-weight: 650; }
+.a-topics .a-bars__n small { display: inline; }
+.a-topics__ex { list-style: none; margin: 2px 0 8px 46px; padding: 0; display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 13px; }
+.a-topics__ex a { color: var(--link); }
+.a-chatq__side h3 { margin: 0 0 8px; font-size: 13px; font-weight: 700; color: var(--muted); letter-spacing: 0.02em; }
+.a-chatq__side h3 + * { margin-bottom: 20px; }
+.a-topq { list-style: none; margin: 0; padding: 0; counter-reset: q; }
+.a-topq li { display: flex; align-items: baseline; gap: 10px; padding: 7px 0; border-bottom: 1px dashed var(--line); font-size: 14px; counter-increment: q; }
+.a-topq li::before { content: counter(q); color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; width: 14px; }
+.a-topq li span { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.a-topq li b { flex: 0 0 auto; font-size: 13px; }
+.a-recentq { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.a-recentq a { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 12px; color: var(--fg); text-decoration: none; }
+.a-recentq a:hover { background: var(--tint-2); }
+.a-recentq__text { font-size: 14px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.a-recentq .a-muted { font-size: 12px; }
+@media (max-width: 1000px) { .a-chatq__grid { grid-template-columns: minmax(0, 1fr); gap: 18px; } }
+@media (max-width: 560px) {
+  .a-topics > li > button { grid-template-columns: 30px minmax(0, 1fr) auto; }
+  .a-topics > li > button .a-topics__icon { grid-column: 1; grid-row: 1 / span 2; align-self: start; }
+  .a-topics > li > button .a-topics__label { grid-column: 2; grid-row: 1; white-space: normal; }
+  .a-topics > li > button .a-bars__n { grid-column: 3; grid-row: 1; }
+  .a-topics > li > button .a-bars__track { grid-column: 2 / -1; grid-row: 2; }
+  .a-topics__ex { margin-left: 8px; }
 }

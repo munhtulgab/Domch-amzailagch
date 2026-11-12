@@ -143,8 +143,20 @@ def test_location_request(client):
 def test_events(client):
     assert client.post("/api/events", json={"name": "where_click", "meta": {"from": "hero"}}).status_code == 204
     assert client.post("/api/events", json={"name": "not_allowed"}).status_code == 204
+    client.post("/api/events", json={"name": "where_click", "meta": {"from": "nav"}})
     events = client.get("/api/admin/summary", headers=AUTH).json()["events"]
-    assert events == [{"name": "where_click", "count": 1}]
+    assert events == [{"name": "where_click", "count": 2, "people": 1}]  # two clicks by one visitor
+
+
+def test_events_on_an_older_database_without_visitor_column(client):
+    db = dbmod.get_db()
+    db.script("DROP TABLE events; CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, meta TEXT,"
+              " created_at TEXT NOT NULL DEFAULT (datetime('now')));")
+    from _lib import app as appmod
+    appmod._event_visitor.clear()
+    assert client.get("/api/admin/summary", headers=AUTH).status_code == 200
+    assert client.post("/api/events", json={"name": "call_click"}).status_code == 204
+    assert client.get("/api/admin/summary", headers=AUTH).json()["events"] == [{"name": "call_click", "count": 1, "people": 1}]
 
 
 def test_admin_auth(client):

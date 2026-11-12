@@ -847,3 +847,40 @@ def test_thread_list_pages_counts_and_filters(client, fb):
     assert [t["psid"] for t in unread] == ["p6", "p3", "p0"]
     found = client.get("/api/admin/messenger/threads?q=мессеж 4", headers=AUTH).json()["items"]
     assert [t["psid"] for t in found] == ["p4"]
+
+
+def test_insights_topics_and_partner_requests_from_chats(client, fb):
+    from _lib import insights
+
+    connect(client)
+    for i, (psid, text) in enumerate([("a", "Үнэ хэд вэ?"), ("b", "une hed we"), ("a", "Хүргэлт байгаа юу"),
+                                      ("c", "Манай эмийн сан борлуулмаар байна, бөөний үнэ хэд вэ"), ("c", "99112233 руу залгаарай"),
+                                      ("d", "Hi"), ("e", "Азид байхгүй байна"), ("c", "Гэрээт борлуулагч болох уу")]):
+        assert post_event(client, event(psid=psid, text=text, mid=f"mx{i}")).status_code == 200
+    # the chat already made one partner request for «c»; a second partnership message updates it, never duplicates
+    rows = dbmod.get_db().all("SELECT * FROM partner_requests WHERE source_ref = 'messenger:c'")
+    assert len(rows) == 1 and "Гэрээт" in rows[0]["message"] and rows[0]["source"] == "messenger" and rows[0]["kind"] == "pharmacy"
+    insights._cache.clear()
+    data = client.get("/api/admin/messenger/insights", headers=AUTH).json()
+    topics = {t["key"]: t for t in data["topics"]}
+    assert topics["price"]["people"] == 3 and topics["delivery"]["people"] == 1 and topics["stock"]["people"] == 1
+    assert topics["partner"]["people"] == 1 and topics["greeting"]["people"] == 1
+    assert data["people"] == 5 and data["top_questions"][0]["people"] == 2  # «Үнэ хэд вэ?» and «une hed we» are one question
+    assert data["partners_added"] == 0
+    inbox = client.get("/api/admin/inbox/partners", headers=AUTH).json()["items"]
+    assert len(inbox) == 1 and inbox[0]["source"] == "messenger"
+    # deleting it is remembered: the next look at the chats does not bring it back
+    client.delete(f"/api/admin/inbox/partners/{inbox[0]['id']}", headers=AUTH)
+    insights._cache.clear()
+    client.get("/api/admin/messenger/insights", headers=AUTH)
+    post_event(client, event(psid="c", text="Хамтран ажиллах уу", mid="mx99"))
+    assert client.get("/api/admin/inbox/partners", headers=AUTH).json()["items"] == []
+
+
+def test_chat_partner_links_to_site_request_with_same_phone(client, fb):
+    connect(client)
+    client.post("/api/partners", json={"kind": "pharmacy", "org": "Номин эмийн сан", "contact_name": "Сараа", "phone": "9911 2233",
+                                       "consent": True})
+    post_event(client, event(psid="z", text="Бөөнөөр авмаар байна 9911-2233", mid="mz1"))
+    items = client.get("/api/admin/inbox/partners", headers=AUTH).json()["items"]
+    assert len(items) == 1 and items[0]["source_ref"] == "messenger:z"

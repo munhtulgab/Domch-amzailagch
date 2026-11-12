@@ -1023,7 +1023,13 @@ def handle_event(db, cfg: dict, event: dict, site: str = "", channel: str = "mes
     from . import push  # imported here to keep this module importable on its own
 
     push.notify("messages", f"{contact.get('name') or 'Шинэ мессеж'} · {'Instagram' if channel == 'instagram' else 'Messenger'}",
-                text, "/admin#/messenger", f"msg-{psid[-12:]}", db)
+                text, f"/admin#/messenger/{psid}", f"msg-{psid[-12:]}", db)
+    try:
+        from . import insights
+
+        insights.on_message(db, psid, text, channel)  # partnership talk becomes a partner request
+    except Exception:  # noqa: BLE001 — never let this stop the reply
+        pass
     try:
         auto_respond(db, cfg, psid, text, payload, contact.get("welcomed_at"), previous.get("at"), site=site,
                      attachment=attachment, sticker=sticker, received_at=when)
