@@ -706,15 +706,33 @@ def admin_inbox(kind: str, status: str = Query("", max_length=20)):
 
 
 class StatusIn(BaseModel):
-    status: str
+    status: str | None = None
+    phone: str | None = Field(None, max_length=40)  # partner requests: the contact number, added by hand
 
 
 @admin.patch("/inbox/{kind}/{row_id}")
 def admin_inbox_status(kind: str, row_id: int, data: StatusIn):
     spec = inbox_spec(kind)
-    if data.status not in spec["statuses"]:
-        fail({"status": "Төлөв буруу байна."})
-    res = get_db().run(f"UPDATE {spec['table']} SET status = ? WHERE id = ?", (data.status, row_id))
+    sets, params = [], []
+    if data.status is not None:
+        if data.status not in spec["statuses"]:
+            fail({"status": "Төлөв буруу байна."})
+        sets.append("status = ?")
+        params.append(data.status)
+    if data.phone is not None:
+        if kind != "partners":
+            fail({"phone": "Утасны дугаарыг зөвхөн хамтын ажиллагааны хүсэлтэд нэмнэ."})
+        phone = data.phone.strip()
+        digits = re.sub(r"\D", "", phone)
+        if phone and not (6 <= len(digits) <= 15):
+            fail({"phone": "Утасны дугаар буруу байна."})
+        if len(digits) == 8 and not phone.startswith("+"):
+            phone = f"{digits[:4]}-{digits[4:]}"
+        sets.append("phone = ?")
+        params.append(phone or None)
+    if not sets:
+        fail({"status": "Өөрчлөх зүйл алга."})
+    res = get_db().run(f"UPDATE {spec['table']} SET {', '.join(sets)} WHERE id = ?", (*params, row_id))
     if not res["changes"]:
         raise HTTPException(404, "Мөр олдсонгүй.")
     return {"ok": True}

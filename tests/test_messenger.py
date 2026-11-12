@@ -884,3 +884,40 @@ def test_chat_partner_links_to_site_request_with_same_phone(client, fb):
     post_event(client, event(psid="z", text="Бөөнөөр авмаар байна 9911-2233", mid="mz1"))
     items = client.get("/api/admin/inbox/partners", headers=AUTH).json()["items"]
     assert len(items) == 1 and items[0]["source_ref"] == "messenger:z"
+
+
+def test_chat_partner_request_asks_for_phone_once_and_saves_it(client, fb):
+    from _lib import insights
+
+    connect(client)
+    post_event(client, event(psid="w", text="Бөөний үнээр авч зарах гэсэн юм", mid="w1"))
+    texts = [m.get("text", "") for m in sent_texts(fb)]
+    assert texts.count(insights.ASK_PHONE) == 1
+    post_event(client, event(psid="w", text="Гэрээт борлуулагч болох уу", mid="w2"))
+    assert [m.get("text", "") for m in sent_texts(fb)].count(insights.ASK_PHONE) == 1  # asked once only
+    before = len(sent_texts(fb))
+    post_event(client, event(psid="w", text="9911 2233", mid="w3"))
+    after = [m.get("text", "") for m in sent_texts(fb)][before:]
+    assert after == [insights.THANK_PHONE.format(phone="9911-2233")]  # just the thanks, no AI answer to a bare number
+    row = dbmod.get_db().one("SELECT phone FROM partner_requests WHERE source_ref = 'messenger:w'")
+    assert row["phone"] == "9911-2233"
+
+
+def test_chat_partner_with_phone_in_first_message_is_not_asked(client, fb):
+    from _lib import insights
+
+    connect(client)
+    post_event(client, event(psid="v", text="Эмийн сандаа нийлүүлмээр байна, утас 8811-2233", mid="v1"))
+    assert insights.ASK_PHONE not in [m.get("text", "") for m in sent_texts(fb)]
+    assert dbmod.get_db().one("SELECT phone FROM partner_requests WHERE source_ref = 'messenger:v'")["phone"] == "8811-2233"
+
+
+def test_admin_sets_partner_phone(client, fb):
+    connect(client)
+    post_event(client, event(psid="u", text="Хамтран ажиллах уу", mid="u1"))
+    row = client.get("/api/admin/inbox/partners", headers=AUTH).json()["items"][0]
+    assert row["phone"] is None
+    assert client.patch(f"/api/admin/inbox/partners/{row['id']}", headers=AUTH, json={"phone": "abc"}).status_code == 422
+    assert client.patch(f"/api/admin/inbox/partners/{row['id']}", headers=AUTH, json={"phone": "99001122"}).status_code == 200
+    assert client.get("/api/admin/inbox/partners", headers=AUTH).json()["items"][0]["phone"] == "9900-1122"
+    assert client.patch(f"/api/admin/inbox/questions/{row['id']}", headers=AUTH, json={"phone": "99001122"}).status_code == 422

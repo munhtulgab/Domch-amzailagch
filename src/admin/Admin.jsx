@@ -683,6 +683,13 @@ function Inbox({ kind, call, onChange }) {
       toast(err.message, 'error');
     }
   };
+  const savePhone = async (id, phone) => {
+    await call(`/inbox/${kind}/${id}`, { method: 'PATCH', body: { phone } });
+    const shown = phone.replace(/\D/g, '').length === 8 && !phone.trim().startsWith('+')
+      ? `${phone.replace(/\D/g, '').slice(0, 4)}-${phone.replace(/\D/g, '').slice(4)}` : phone.trim();
+    setData((d) => ({ ...d, items: d.items.map((r) => (r.id === id ? { ...r, phone: shown || null } : r)) }));
+    toast(shown ? `Утасны дугаар хадгаллаа: ${shown}` : 'Утасны дугаарыг хаслаа.');
+  };
   const remove = async (id) => {
     try {
       await call(`/inbox/${kind}/${id}`, { method: 'DELETE' });
@@ -730,7 +737,10 @@ function Inbox({ kind, call, onChange }) {
                     </span>
                     {kind === 'reviews' && <span className="a-stars a-stars--sm" aria-label={`5-аас ${r.rating}`}>{'★'.repeat(r.rating)}<span>{'★'.repeat(5 - r.rating)}</span></span>}
                     <span className="a-mail__snip">{inboxSnippet(kind, r) || '—'}</span>
-                    <span className={`a-pill a-pill--${r.status}`}>{STATUS_LABEL[r.status] || r.status}</span>
+                    <span className="a-mail__pills">
+                      <span className={`a-pill a-pill--${r.status}`}>{STATUS_LABEL[r.status] || r.status}</span>
+                      {kind === 'partners' && !r.phone && !r.email && <span className="a-pill a-pill--rejected">Утасгүй</span>}
+                    </span>
                   </span>
                 </button>
               </li>
@@ -752,7 +762,10 @@ function Inbox({ kind, call, onChange }) {
               </div>
               <span className={`a-pill a-pill--${current.status}`}>{STATUS_LABEL[current.status] || current.status}</span>
             </header>
-            <div className="a-detail__body"><InboxBody kind={kind} r={current} /></div>
+            <div className="a-detail__body">
+              <InboxBody kind={kind} r={current} />
+              {kind === 'partners' && <PartnerPhone r={current} onSave={(phone) => savePhone(current.id, phone)} />}
+            </div>
             {contactLinks(current).length > 0 && (
               <div className="a-detail__links">
                 {contactLinks(current).map(([icon, label, href]) => (
@@ -779,6 +792,59 @@ function Inbox({ kind, call, onChange }) {
         )}
       </section>
     </div>
+  );
+}
+
+/** A partner request must have a number to call: shown as a prompt when it is missing, editable otherwise. */
+function PartnerPhone({ r, onSave }) {
+  const [edit, setEdit] = useState(!r.phone);
+  const [value, setValue] = useState(r.phone || '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    setEdit(!r.phone);
+    setValue(r.phone || '');
+    setError('');
+  }, [r.id, r.phone]);
+  const asked = r.details && r.details.asked_phone;
+  if (!edit) {
+    return <button type="button" className="a-link a-phonefix__edit" onClick={() => setEdit(true)}>Утасны дугаар засах</button>;
+  }
+  const submit = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      await onSave(value);
+    } catch (err) {
+      setError((err.fields && err.fields.phone) || err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form className={`a-phonefix${r.phone ? '' : ' is-missing'}`} onSubmit={submit}>
+      {!r.phone && (
+        <p>
+          <Icon name="phone" size={16} />
+          <span>
+            <strong>Холбоо барих утасны дугаар алга.</strong>{' '}
+            {r.source && r.source !== 'site'
+              ? asked ? 'Чатаар дугаар асуусан: хариу ирэхэд энд автоматаар бөглөгдөнө.' : 'Чатаар дугаар асууж болно.'
+              : ''}
+            {' '}Утсаар холбогдсон бол дугаарыг энд бичээрэй.
+          </span>
+        </p>
+      )}
+      <div className="a-copy">
+        <label className="sr" htmlFor={`pp-${r.id}`}>Утасны дугаар</label>
+        <input id={`pp-${r.id}`} type="tel" inputMode="tel" autoComplete="off" placeholder="9911-2233" value={value}
+          onChange={(e) => { setValue(e.target.value); setError(''); }} />
+        <button type="submit" className="a-btn a-btn--sm" disabled={busy || value.trim() === (r.phone || '')}>Хадгалах</button>
+        {r.phone && <button type="button" className="a-btn a-btn--ghost a-btn--sm" onClick={() => setEdit(false)}>Болих</button>}
+      </div>
+      {error && <p className="a-error">{error}</p>}
+    </form>
   );
 }
 
@@ -821,7 +887,7 @@ function InboxBody({ kind, r }) {
         <Row label="Утас" value={r.phone} href={r.phone ? `tel:${r.phone.replace(/\s/g, '')}` : ''} />
         <Row label="И-мэйл" value={r.email} href={r.email ? `mailto:${r.email}` : ''} />
         <Row label="Байршил" value={r.location} />
-        {Object.entries(r.details || {}).map(([k, v]) => <Row key={k} label={DETAIL_LABEL[k] || k} value={v} />)}
+        {Object.entries(r.details || {}).filter(([k]) => k !== 'asked_phone').map(([k, v]) => <Row key={k} label={DETAIL_LABEL[k] || k} value={v} />)}
         <Row label="Мессеж" value={r.message} />
       </dl>
     );

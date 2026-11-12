@@ -54,7 +54,24 @@ GREETING_WORDS = {_fold(w) for w in ("сайн", "байна", "бна", "бну
                                      "hello", "сн", "hey", "мэнд", "mend", "сайнуу", "sainuu", "өглөөний", "оройн")}
 QUICK_WHERE = {_fold(w) for w in ("орон нутаг", "өөр байршил", "хаяг", "хаая")}
 MEDIA = re.compile(r"^\[[^\]]*(хавсралт|стикер)\]$|^👍$")
-PHONE = re.compile(r"(?<!\d)(\d{4})[\s-]?(\d{4})(?!\d)")
+# Mongolian numbers: 8 digits starting 5–9 (mobile and Ulaanbaatar lines), optionally after +976
+PHONE = re.compile(r"(?<![\d.,])(?:\+?976[\s-]?)?([5-9]\d{3})[\s-]?(\d{4})(?![\d.,]|\s?(?:₮|төг|tug|мл|ml|гр|gr))")
+ASK_PHONE = ("🤝 Хамтран ажиллах хүсэлтийг тань хүлээн авлаа. Манай хариуцсан ажилтан тантай холбогдохын тулд "
+             "утасны дугаараа энд бичээд үлдээнэ үү.")
+THANK_PHONE = "Баярлалаа! Утасны дугаарыг тань ({phone}) хүлээн авлаа. Манай ажилтан удахгүй холбогдоно. 🙏"
+
+
+def find_phone(texts) -> str | None:
+    """The last phone number written in the messages, as 8 digits."""
+    phone = None
+    for text in texts:
+        for m in PHONE.finditer(str(text or "")):
+            phone = f"{m.group(1)}{m.group(2)}"
+    return phone
+
+
+def pretty_phone(phone: str) -> str:
+    return f"{phone[:4]}-{phone[4:]}" if phone and len(phone) == 8 else phone
 CACHE_SECONDS = 600
 
 _cache: dict = {}
@@ -141,7 +158,8 @@ def dismiss(db, ref: str) -> None:
            (json.dumps(refs),))
 
 
-def record_partner(db, psid: str, name: str | None, channel: str, texts: list, at: str | None = None) -> bool:
+def record_partner(db, psid: str, name: str | None, channel: str, texts: list, at: str | None = None,
+                   phone: str | None = None) -> bool:
     """One partner request per conversation. A conversation already recorded only gets its message updated; a
     phone number that is already in a site request links to that request instead of making a second one."""
     ensure_partner_columns(db)
@@ -153,13 +171,13 @@ def record_partner(db, psid: str, name: str | None, channel: str, texts: list, a
     ref = f"{source}:{psid}"
     if ref in dismissed(db):
         return False  # the admin deleted this one; do not bring it back
-    existing = db.one("SELECT id, message FROM partner_requests WHERE source_ref = ?", (ref,))
+    phone = phone or find_phone(texts)
+    existing = db.one("SELECT id, message, phone FROM partner_requests WHERE source_ref = ?", (ref,))
     if existing:
-        if body != (existing["message"] or ""):
-            db.run("UPDATE partner_requests SET message = ? WHERE id = ?", (body, existing["id"]))
+        if body != (existing["message"] or "") or (phone and not existing["phone"]):
+            db.run("UPDATE partner_requests SET message = ?, phone = COALESCE(phone, ?) WHERE id = ?",
+                   (body, pretty_phone(phone) if phone else None, existing["id"]))
         return False
-    phone_match = PHONE.search(body)
-    phone = f"{phone_match.group(1)}{phone_match.group(2)}" if phone_match else None
     if phone:
         same = db.one("SELECT id FROM partner_requests WHERE REPLACE(REPLACE(phone, ' ', ''), '-', '') = ? LIMIT 1", (phone,))
         if same:
@@ -170,19 +188,51 @@ def record_partner(db, psid: str, name: str | None, channel: str, texts: list, a
     db.run(
         "INSERT OR IGNORE INTO partner_requests (kind, org, contact_name, phone, details, message, source, source_ref, created_at)"
         " VALUES (?, NULL, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')))",
-        (_partner_kind(body), who, phone, json.dumps(details, ensure_ascii=False), body, source, ref, at),
+        (_partner_kind(body), who, pretty_phone(phone) if phone else None, json.dumps(details, ensure_ascii=False), body, source,
+         ref, at),
     )
     return True
 
 
-def on_message(db, psid: str, text: str, channel: str) -> bool:
-    """Called for each new incoming message: a partnership message becomes (or updates) a partner request."""
-    if "partner" not in classify(text):
-        return False
+def _ref(psid: str, channel: str) -> str:
+    return f"{'instagram' if channel == 'instagram' else 'messenger'}:{psid}"
+
+
+def on_message(db, psid: str, text: str, channel: str) -> str:
+    """Called for each new incoming message. Returns what to say next, if anything:
+    'ask'    — a partnership message and no phone yet: ask for one (once per conversation);
+    'thanks' — the phone the request was waiting for has arrived;
+    ''       — nothing."""
+    partner = "partner" in classify(text)
+    phone = find_phone([text])
+    if not partner and not phone:
+        return ""
+    ensure_partner_columns(db)
+    ref = _ref(psid, channel)
+    if not partner:
+        # a number sent later in the same conversation completes the request
+        row = db.one("SELECT id, phone FROM partner_requests WHERE source_ref = ?", (ref,))
+        if not row or row["phone"]:
+            return ""
+        db.run("UPDATE partner_requests SET phone = ? WHERE id = ?", (pretty_phone(phone), row["id"]))
+        return "thanks"
     rows = db.all("SELECT text FROM messenger_messages WHERE psid = ? AND direction = 'in' ORDER BY created_at DESC LIMIT 30", (psid,))
-    texts = [r["text"] for r in reversed(rows) if "partner" in classify(r["text"])]
+    texts = [r["text"] for r in reversed(rows)]
     contact = db.one("SELECT name FROM messenger_contacts WHERE psid = ?", (psid,)) or {}
-    return record_partner(db, psid, contact.get("name"), channel, texts or [text])
+    record_partner(db, psid, contact.get("name"), channel, [t for t in texts if "partner" in classify(t)] or [text],
+                   phone=find_phone(texts))
+    row = db.one("SELECT id, phone, details FROM partner_requests WHERE source_ref = ?", (ref,))
+    if not row or row["phone"]:
+        return ""
+    try:
+        details = json.loads(row["details"] or "{}")
+    except ValueError:
+        details = {}
+    if details.get("asked_phone"):
+        return ""
+    details["asked_phone"] = "1"
+    db.run("UPDATE partner_requests SET details = ? WHERE id = ?", (json.dumps(details, ensure_ascii=False), row["id"]))
+    return "ask"
 
 
 # ---------------------------------------------------------------- overview
@@ -211,6 +261,11 @@ def messenger_insights(days: int = Query(30, ge=1, le=90), fresh: int = Query(0,
     questions: dict = {}
     recent = []
     partners: dict = {}
+    phones: dict = {}
+    for r in reversed(rows):  # oldest first, so the latest number wins
+        found = find_phone([r["text"]])
+        if found:
+            phones[r["psid"]] = found
     for r in rows:
         keys = classify(r["text"])
         channels.setdefault(r["channel"], set()).add(r["psid"])
@@ -240,7 +295,7 @@ def messenger_insights(days: int = Query(30, ge=1, le=90), fresh: int = Query(0,
     added = 0
     for psid, p in partners.items():
         try:
-            added += record_partner(db, psid, p["name"], p["channel"], p["texts"], p["at"])
+            added += record_partner(db, psid, p["name"], p["channel"], p["texts"], p["at"], phone=phones.get(psid))
         except DBError:
             break
     out = {

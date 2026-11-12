@@ -1024,15 +1024,28 @@ def handle_event(db, cfg: dict, event: dict, site: str = "", channel: str = "mes
 
     push.notify("messages", f"{contact.get('name') or 'Шинэ мессеж'} · {'Instagram' if channel == 'instagram' else 'Messenger'}",
                 text, f"/admin#/messenger/{psid}", f"msg-{psid[-12:]}", db)
-    try:
-        from . import insights
+    from . import insights
 
-        insights.on_message(db, psid, text, channel)  # partnership talk becomes a partner request
-    except Exception:  # noqa: BLE001 — never let this stop the reply
-        pass
     try:
-        auto_respond(db, cfg, psid, text, payload, contact.get("welcomed_at"), previous.get("at"), site=site,
-                     attachment=attachment, sticker=sticker, received_at=when)
+        partner = insights.on_message(db, psid, text, channel)  # partnership talk becomes a partner request
+    except Exception:  # noqa: BLE001 — never let this stop the reply
+        partner = ""
+    only_number = partner == "thanks" and not LETTERS.search(insights.PHONE.sub("", text))
+    try:
+        if not only_number:  # a bare phone number needs no AI answer, only the thanks below
+            auto_respond(db, cfg, psid, text, payload, contact.get("welcomed_at"), previous.get("at"), site=site,
+                         attachment=attachment, sticker=sticker, received_at=when)
+        if partner and not ai_paused_until(db, psid):  # staff talking in this chat: leave it to them
+            if partner == "ask":
+                send_text(db, cfg, psid, insights.ASK_PHONE, kind="auto")
+                decide(db, psid, "Хамтын ажиллагааны хүсэлтэд утасны дугаар асуусан.")
+            else:
+                phone = insights.find_phone([text])
+                send_text(db, cfg, psid, insights.THANK_PHONE.format(phone=insights.pretty_phone(phone)), kind="auto")
+                decide(db, psid, "Хамтын ажиллагааны хүсэлтэд утасны дугаар ирсэн.")
+                push.notify("requests", "Хамтын ажиллагааны хүсэлт · утас ирлээ",
+                            f"{contact.get('name') or 'Messenger хэрэглэгч'}: {insights.pretty_phone(phone)}", "/admin#/partners",
+                            f"partner-{psid[-12:]}", db)
     except GraphError as exc:
         note_error(db, "Автомат хариу илгээх", exc)
 
