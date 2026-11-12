@@ -830,3 +830,20 @@ def test_thread_list_is_backfilled_for_older_databases(client, monkeypatch):
     assert (t["unread"], t["last_text"], t["last_in_at"]) == (1, "хариу", "2026-11-01 01:00:00")
     _msg(db, "old", "in", "дахиад", "2026-11-01 02:00:00", mid="o2")  # triggers work after the upgrade
     assert _threads(client)["old"]["unread"] == 2
+
+
+def test_thread_list_pages_counts_and_filters(client, fb):
+    connect(client)
+    db = dbmod.get_db()
+    for i in range(7):
+        db.run("INSERT INTO messenger_messages (psid, direction, kind, text, mid, created_at, is_read)"
+               " VALUES (?, 'in', 'message', ?, ?, ?, ?)", (f"p{i}", f"мессеж {i}", f"m{i}", f"2026-11-0{i + 1} 10:00:00", i % 3 != 0))
+    first = client.get("/api/admin/messenger/threads?limit=3", headers=AUTH).json()
+    assert [t["psid"] for t in first["items"]] == ["p6", "p5", "p4"] and first["has_more"]
+    assert first["total"] == 7 and first["unread_total"] == 3  # p0, p3, p6
+    rest = client.get("/api/admin/messenger/threads?limit=3&offset=6&counts=0", headers=AUTH).json()
+    assert [t["psid"] for t in rest["items"]] == ["p0"] and not rest["has_more"] and "total" not in rest
+    unread = client.get("/api/admin/messenger/threads?unread=1", headers=AUTH).json()["items"]
+    assert [t["psid"] for t in unread] == ["p6", "p3", "p0"]
+    found = client.get("/api/admin/messenger/threads?q=мессеж 4", headers=AUTH).json()["items"]
+    assert [t["psid"] for t in found] == ["p4"]

@@ -18,6 +18,8 @@ function adminPage() {
       const html = readFileSync(resolve(outDir, 'index.html'), 'utf8');
       const swaps = [
         [/<title>[^<]*<\/title>/, '<title>ДОМЧ Удирдлага</title>'],
+        // no automatic zoom when a field is tapped (people can still pinch to zoom)
+        [/<meta name="viewport" content="[^"]*">/, '<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">'],
         [/<link rel="manifest" href="[^"]*">/, '<link rel="manifest" href="/admin.webmanifest">'],
         [/<meta name="theme-color" content="[^"]*">/, '<meta name="theme-color" content="#024B42">'],
         [/<meta name="apple-mobile-web-app-title" content="[^"]*">/,

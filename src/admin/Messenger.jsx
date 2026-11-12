@@ -428,12 +428,15 @@ function dayOf(value) {
   return formatDate(value);
 }
 
+const THREAD_PAGE = 50;
 const KIND_META = { auto: 'Автомат хариу', ai: 'AI хариу', inbox: 'Page Inbox' };
 
 export function MessengerInbox({ call, onChange, openSettings }) {
   const toast = useToast();
   const [cfg, setCfg] = useState(null);
-  const [threads, setThreads] = useState(null);
+  const [list, setList] = useState({ items: null, hasMore: false, total: 0, unread: 0 });
+  const [term, setTerm] = useState('');
+  const [more, setMore] = useState(false);
   const [active, setActive] = useState(null);
   const [convo, setConvo] = useState(null);
   const [text, setText] = useState('');
@@ -444,13 +447,45 @@ export function MessengerInbox({ call, onChange, openSettings }) {
   const endRef = useRef(null);
   const boxRef = useRef(null);
 
-  const loadThreads = useCallback(async () => {
+  // search runs on the server (all conversations, not just the loaded page), a moment after typing stops
+  useEffect(() => {
+    const t = setTimeout(() => setTerm(q.trim()), 300);
+    return () => clearTimeout(t);
+  }, [q]);
+  const url = useCallback((extra) => `/messenger/threads?${new URLSearchParams({
+    limit: String(THREAD_PAGE), q: term, unread: onlyUnread ? '1' : '0', ...extra })}`, [term, onlyUnread]);
+
+  /** quiet: the 20-second refresh — newest page only, older pages already loaded are kept, total not recounted */
+  const loadThreads = useCallback(async ({ quiet = false } = {}) => {
     try {
-      setThreads((await call('/messenger/threads')).items);
+      const res = await call(url({ counts: quiet ? '0' : '1' }));
+      setList((cur) => {
+        if (!quiet || !cur.items) {
+          return { items: res.items, hasMore: res.has_more, total: res.total ?? cur.total, unread: res.unread_total };
+        }
+        const fresh = new Set(res.items.map((t) => t.psid));
+        const older = cur.items.slice(THREAD_PAGE).filter((t) => !fresh.has(t.psid));
+        return { ...cur, items: [...res.items, ...older], hasMore: older.length ? cur.hasMore : res.has_more, unread: res.unread_total };
+      });
     } catch (err) {
       setError(err.message);
     }
-  }, [call]);
+  }, [call, url]);
+
+  const loadMore = async () => {
+    setMore(true);
+    try {
+      const res = await call(url({ offset: String(list.items.length), counts: '0' }));
+      setList((cur) => {
+        const have = new Set(cur.items.map((t) => t.psid));
+        return { ...cur, items: [...cur.items, ...res.items.filter((t) => !have.has(t.psid))], hasMore: res.has_more };
+      });
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      setMore(false);
+    }
+  };
 
   const loadConvo = useCallback(async (psid, quiet = false) => {
     try {
@@ -464,13 +499,13 @@ export function MessengerInbox({ call, onChange, openSettings }) {
 
   useEffect(() => {
     call('/messenger').then(setCfg).catch(() => setCfg({}));
-    loadThreads();
-  }, [call, loadThreads]);
+  }, [call]);
+  useEffect(() => { loadThreads(); }, [loadThreads]);
 
   useEffect(() => {
     const id = setInterval(() => {
       if (document.visibilityState !== 'visible') return;
-      loadThreads();
+      loadThreads({ quiet: true });
       if (active) loadConvo(active, true);
     }, 20000);
     return () => clearInterval(id);
@@ -493,7 +528,7 @@ export function MessengerInbox({ call, onChange, openSettings }) {
     setActive(psid);
     setConvo(null);
     await loadConvo(psid);
-    loadThreads();
+    loadThreads({ quiet: true });
   };
 
   const send = async (e) => {
@@ -504,7 +539,7 @@ export function MessengerInbox({ call, onChange, openSettings }) {
       await call(`/messenger/threads/${encodeURIComponent(active)}/reply`, { method: 'POST', body: { text } });
       setText('');
       await loadConvo(active, true);
-      loadThreads();
+      loadThreads({ quiet: true });
     } catch (err) {
       toast(err.message, 'error');
     } finally {
@@ -527,7 +562,7 @@ export function MessengerInbox({ call, onChange, openSettings }) {
     try {
       await call(`/messenger/threads/${encodeURIComponent(active)}/welcome`, { method: 'POST', body: {} });
       await loadConvo(active, true);
-      loadThreads();
+      loadThreads({ quiet: true });
       toast('Мэндчилгээ илгээлээ.');
     } catch (err) {
       toast(err.message, 'error');
@@ -536,8 +571,9 @@ export function MessengerInbox({ call, onChange, openSettings }) {
     }
   };
 
+  const threads = list.items;
   if (!cfg || threads === null) return error ? <p className="a-error">{error}</p> : <Skeleton rows={6} card />;
-  if (!cfg.connected_at && threads.length === 0) {
+  if (!cfg.connected_at && threads.length === 0 && !term && !onlyUnread) {
     return (
       <div className="a-panel">
         <Empty icon="chat" title="Messenger холбогдоогүй байна"
@@ -547,10 +583,7 @@ export function MessengerInbox({ call, onChange, openSettings }) {
     );
   }
   const label = (t) => t.name || `Хэрэглэгч …${String(t.psid).slice(-4)}`;
-  const needle = q.trim().toLowerCase();
-  const shown = threads.filter((t) => (!onlyUnread || t.unread > 0)
-    && (!needle || `${label(t)} ${t.last_text || ''}`.toLowerCase().includes(needle)));
-  const unreadTotal = threads.filter((t) => t.unread > 0).length;
+  const shown = threads;
   const aiPaused = convo && convo.ai_paused_until;
 
   return (
@@ -562,14 +595,14 @@ export function MessengerInbox({ call, onChange, openSettings }) {
             <span className="sr">Яриа хайх</span>
             <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Нэр, мессежээр хайх…" />
           </label>
-          <button type="button" className="a-icon-btn" onClick={loadThreads} aria-label="Шинэчлэх" title="Шинэчлэх"><Icon name="refresh" /></button>
+          <button type="button" className="a-icon-btn" onClick={() => loadThreads()} aria-label="Шинэчлэх" title="Шинэчлэх"><Icon name="refresh" /></button>
         </div>
         <div className="a-chips" role="group" aria-label="Шүүлтүүр">
-          <button type="button" aria-pressed={!onlyUnread} onClick={() => setOnlyUnread(false)}>Бүгд <span>{threads.length}</span></button>
-          <button type="button" aria-pressed={onlyUnread} onClick={() => setOnlyUnread(true)}>Уншаагүй <span>{unreadTotal}</span></button>
+          <button type="button" aria-pressed={!onlyUnread} onClick={() => setOnlyUnread(false)}>Бүгд <span>{list.total}</span></button>
+          <button type="button" aria-pressed={onlyUnread} onClick={() => setOnlyUnread(true)}>Уншаагүй <span>{list.unread}</span></button>
         </div>
         {shown.length === 0 ? (
-          <Empty icon="chat" title={threads.length ? 'Тохирох яриа олдсонгүй' : 'Одоогоор мессеж ирээгүй байна'} />
+          <Empty icon="chat" title={term || onlyUnread ? (onlyUnread && !term ? 'Уншаагүй яриа алга' : 'Тохирох яриа олдсонгүй') : 'Одоогоор мессеж ирээгүй байна'} />
         ) : (
           <ul className="a-mail">
             {shown.map((t) => (
@@ -591,6 +624,13 @@ export function MessengerInbox({ call, onChange, openSettings }) {
               </li>
             ))}
           </ul>
+        )}
+        {list.hasMore && (
+          <div className="a-more">
+            <button type="button" className="a-btn a-btn--ghost a-btn--sm" onClick={loadMore} disabled={more}>
+              {more ? 'Ачаалж байна…' : `Цааш үзэх (${threads.length} / ${onlyUnread ? list.unread : term ? '…' : list.total})`}
+            </button>
+          </div>
         )}
       </section>
       <section className="a-split__detail a-convo" aria-label="Яриа">

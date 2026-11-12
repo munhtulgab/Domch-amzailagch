@@ -1316,22 +1316,48 @@ def admin_disconnect(request: Request):
     return {"ok": True, "config": admin_view(load(db), request)}
 
 
+_unread_index = set()
+
+
 @admin.get("/threads")
-def threads():
+def threads(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), q: str = Query("", max_length=80),
+            unread: int = Query(0, ge=0, le=1), counts: int = Query(1, ge=0, le=1)):
+    """One page of conversations, newest first. Totals are counted only when asked (not on the 20-second refresh)."""
     db = get_db()
     ensure_schema(db)
+    if id(db) not in _unread_index:
+        # lets «Уншаагүй» read only the unread threads instead of the whole table
+        db.run("CREATE INDEX IF NOT EXISTS idx_messenger_threads_unread ON messenger_threads (last_at) WHERE unread > 0")
+        _unread_index.add(id(db))
+    where, params = [], []
+    if unread:
+        where.append("t.unread > 0")
+    needle = q.strip()
+    if needle:
+        like = f"%{needle.replace('%', '').replace('_', '')}%"
+        where.append("(c.name LIKE ? OR t.last_text LIKE ? OR t.psid LIKE ?)")
+        params += [like, like, like]
+    sql_where = f" WHERE {' AND '.join(where)}" if where else ""
     rows = db.all(
         "SELECT t.psid, c.name, COALESCE(c.channel, 'messenger') AS channel, t.last_at, t.unread, t.last_in_at,"
         " t.last_text, t.last_direction FROM messenger_threads t LEFT JOIN messenger_contacts c ON c.psid = t.psid"
-        " ORDER BY t.last_at DESC LIMIT 200"
+        f"{sql_where} ORDER BY t.last_at DESC LIMIT ? OFFSET ?",
+        (*params, limit + 1, offset),
     )
+    has_more = len(rows) > limit
+    rows = rows[:limit]
     window = ago(hours=24)
     for row in rows:
         row["last_text"] = row.get("last_text") or ""
         row["last_direction"] = row.get("last_direction") or ""
         row["can_reply"] = bool(row.get("last_in_at") and row["last_in_at"] >= window)
         row["unread"] = int(row.get("unread") or 0)
-    return {"items": rows}
+    waiting = db.one("SELECT COUNT(*) AS n FROM messenger_threads WHERE unread > 0") or {}  # partial index: unread rows only
+    out = {"items": rows, "has_more": has_more, "unread_total": int(waiting.get("n") or 0)}
+    if counts:
+        total = db.one("SELECT COUNT(*) AS n FROM messenger_threads") or {}
+        out["total"] = int(total.get("n") or 0)
+    return out
 
 
 @admin.get("/threads/{psid}")
