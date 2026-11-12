@@ -253,8 +253,7 @@ function Login({ onDone, notice }) {
   return (
     <div className="a-login">
       <form onSubmit={submit} className="a-login__card">
-        <span className="a-logo" aria-hidden="true">Д</span>
-        <p className="a-mark">DOMCH</p>
+        <img className="a-logo a-logo--hero" src="/icons/icon-192.png" alt="DOMCH — жамц давсны уусмал" width="96" height="96" />
         <h1>Удирдлагын хэсэг</h1>
         <p className="a-muted">Сайт, Messenger, AI туслахаа нэг дороос удирдана.</p>
         {notice && <p className="a-note" role="status">{notice}</p>}
@@ -1350,7 +1349,7 @@ function Shell({ route, go, counts, logout, account, call, children }) {
       <a className="a-skip" href="#a-main">Үндсэн хэсэг рүү</a>
       <aside className="a-side" aria-label="Удирдлагын цэс">
         <a className="a-brand" href="#/overview">
-          <span className="a-logo" aria-hidden="true">Д</span>
+          <img className="a-logo" src="/icons/logo-mark.png" alt="" width="36" height="36" />
           <span><strong>ДОМЧ</strong><small>{account ? account.user : 'Удирдлага'}</small></span>
         </a>
         <button type="button" className="a-jump" onClick={() => setPalette(true)}>
@@ -1375,7 +1374,7 @@ function Shell({ route, go, counts, logout, account, call, children }) {
 
       <div className="a-page">
         <header className="a-top">
-          <span className="a-logo a-only-narrow" aria-hidden="true">Д</span>
+          <img className="a-logo a-only-narrow" src="/icons/logo-mark.png" alt="" width="36" height="36" />
           <div className="a-top__title">
             <h1>{route.tab === 'overview' ? hi.hello : cur.label}</h1>
             <p className="a-muted">{route.tab === 'overview' ? hi.date : cur.sub}</p>
