@@ -94,7 +94,7 @@ DIRECT = ("салбар", "худалдаалах цэг", "борлуулах �
           "зарагддаг", "худалдаж ав", "hudaldaj aw", "hudaldaj av", "zaragddag",
           "аль дэлгүүр", "ямар дэлгүүр", "хайпермаркет", "супермаркет", "al delguur", "yamar delguur",
           "hypermarket", "supermarket", "minii hyper", "minii delguur", "minii discounter",
-          "эфэс", "efes", "effes", "бсб", "bsb")
+          "эфэс", "efes", "effes", "бсб", "bsb", "монос", "monos", "emonos", "е-монос")
 NOT_WHERE = ("үйлдвэрл", "uildwerl", "uildverl")  # «хаана үйлдвэрлэдэг вэ» asks where it is made
 
 
