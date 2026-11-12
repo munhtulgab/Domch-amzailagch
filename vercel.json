@@ -37,11 +37,11 @@
     },
     {
       "source": "/admin",
-      "destination": "/index.html"
+      "destination": "/admin.html"
     },
     {
       "source": "/admin/(.*)",
-      "destination": "/index.html"
+      "destination": "/admin.html"
     }
   ],
   "headers": [
@@ -51,6 +51,15 @@
         {
           "key": "Cache-Control",
           "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/admin.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
         }
       ]
     },
