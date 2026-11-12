@@ -694,3 +694,23 @@ p.a-alert { margin: 0; font-size: 14px; }
 @media (prefers-reduced-motion: reduce) {
   .admin *, .a-drawer, .a-drawer *, .a-toast { animation: none !important; transition: none !important; }
 }
+
+/* Notifications and app install */
+.a-alert--info { background: color-mix(in srgb, var(--accent) 10%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent); }
+.a-alert--info > .a-ic { color: var(--accent); }
+.a-notify .a-status { align-items: flex-start; }
+.a-notify .a-status__dot { margin-top: 6px; }
+.a-notify__btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.a-notify__kinds { display: flex; flex-direction: column; gap: 8px; margin: 18px 0 0; padding: 0; border: 0; }
+.a-notify__kinds legend { margin-bottom: 8px; font-size: 14px; font-weight: 600; }
+.a-install { margin-top: 0; }
+.a-notify .a-install { margin-top: 16px; padding: 14px 16px; border-radius: 14px; background: var(--tint-2); }
+.a-install p { margin: 0 0 8px; }
+.a-devices { list-style: none; margin: 0; padding: 0; }
+.a-devices li { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.a-devices li:last-child { border-bottom: 0; }
+.a-devices li > .a-ic { color: var(--muted); }
+.a-devices li > div { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.a-devices strong { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 14px; }
+.a-devices .a-muted { font-size: 12.5px; overflow-wrap: anywhere; }
+.a-bell { text-decoration: none; }

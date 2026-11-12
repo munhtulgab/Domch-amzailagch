@@ -132,6 +132,19 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT
 );
 
+-- devices that receive admin notifications (Web Push)
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  label TEXT,
+  kinds TEXT NOT NULL DEFAULT 'messages,requests',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  last_ok_at TEXT,
+  last_error TEXT
+);
+
 -- failed admin sign-ins, for throttling (rows older than a day are removed)
 CREATE TABLE IF NOT EXISTS admin_logins (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

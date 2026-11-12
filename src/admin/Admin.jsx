@@ -4,6 +4,7 @@ import { CITIES } from '../data/static.js';
 import { formatDate } from '../lib/util.js';
 import { MessengerInbox, MessengerSettings } from './Messenger.jsx';
 import { AiSettings } from './Ai.jsx';
+import { NotifySettings, enablePush, isStandalone, useAdminApp, useAppBadge, usePushState } from './Notify.jsx';
 import { Avatar, Drawer, Empty, Icon, Skeleton, THEME_ICON, THEME_LABEL, ToastProvider, useTheme, useToast } from './ui.jsx';
 import './admin.css';
 
@@ -29,7 +30,7 @@ const TABS = [
     sub: 'Messenger-ийн AI зөвхөн эндхийн баталгаатай мэдээллээр хариулна.' },
   { id: 'videos', label: 'Видео', icon: 'video', group: 'content', table: true, sub: 'Контент бүтээгчид болон «Манай гэрийн Домч» бичлэгүүд.' },
   { id: 'faqs', label: 'Түгээмэл асуулт', icon: 'help', group: 'content', table: true, sub: 'Сайтын асуулт, хариултын хэсэг.' },
-  { id: 'settings', label: 'Тохиргоо', icon: 'gear', group: 'system', sub: 'Холбоо барих мэдээлэл, Messenger, Instagram, AI туслах, нэвтрэх нууц үг.' },
+  { id: 'settings', label: 'Тохиргоо', icon: 'gear', group: 'system', sub: 'Холбоо барих мэдээлэл, Messenger, Instagram, AI туслах, мэдэгдэл, нэвтрэх нууц үг.' },
 ];
 const TAB = Object.fromEntries(TABS.map((t) => [t.id, t]));
 const GROUPS = [['main', ''], ['inbox', 'Ирсэн'], ['content', 'Агуулга'], ['system', 'Систем']];
@@ -1173,7 +1174,7 @@ function AccountSettings({ call, account, onSession }) {
 }
 
 const SETTING_TABS = [['contact', 'Холбоо барих', 'phone'], ['messenger', 'Messenger, Instagram', 'chat'], ['ai', 'AI туслах', 'spark'],
-  ['account', 'Нэвтрэх, нууц үг', 'lock']];
+  ['notify', 'Мэдэгдэл, апп', 'bell'], ['account', 'Нэвтрэх, нууц үг', 'lock']];
 
 function Settings({ call, tab, onTab, onChange, go, account, onSession }) {
   return (
@@ -1189,6 +1190,7 @@ function Settings({ call, tab, onTab, onChange, go, account, onSession }) {
         {tab === 'messenger' && <MessengerSettings call={call} onChange={onChange} />}
         {tab === 'ai' && <AiSettings call={call} go={go} />}
         {tab === 'contact' && <ContactSettings call={call} />}
+        {tab === 'notify' && <NotifySettings call={call} />}
         {tab === 'account' && <AccountSettings call={call} account={account} onSession={onSession} />}
       </div>
     </div>
@@ -1273,7 +1275,51 @@ const MOBILE_TABS = [
   { sheet: 'more', label: 'Цэс', icon: 'menu' },
 ];
 
-function Shell({ route, go, counts, logout, account, children }) {
+const PROMPT_KEY = 'domch_admin_push_prompt';
+
+function PushPrompt({ call }) {
+  const toast = useToast();
+  const [state, refresh] = usePushState();
+  const [hidden, setHidden] = useState(() => {
+    try {
+      return localStorage.getItem(PROMPT_KEY) === 'no';
+    } catch {
+      return false;
+    }
+  });
+  const [busy, setBusy] = useState(false);
+  if (hidden || !(state === 'off' && typeof Notification !== 'undefined' && Notification.permission === 'default')) return null;
+  const later = () => {
+    try {
+      localStorage.setItem(PROMPT_KEY, 'no');
+    } catch {
+      /* ignore */
+    }
+    setHidden(true);
+  };
+  const on = async () => {
+    setBusy(true);
+    try {
+      await enablePush(call, ['messages', 'requests']);
+      toast('Мэдэгдэл асаалаа. Шинэ мессеж, хүсэлт ирэхэд мэдэгдэнэ.');
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      setBusy(false);
+      refresh();
+    }
+  };
+  return (
+    <div className="a-alert a-alert--top a-alert--info" role="status">
+      <Icon name="bell" />
+      <p><strong>Шинэ мессеж ирэхэд мэдэгдэл авах уу?</strong> Апп хаалттай байсан ч утас, компьютер дээр тань гарна.</p>
+      <button type="button" className="a-btn a-btn--sm" onClick={on} disabled={busy}>Асаах</button>
+      <button type="button" className="a-btn a-btn--ghost a-btn--sm" onClick={later}>Дараа</button>
+    </div>
+  );
+}
+
+function Shell({ route, go, counts, logout, account, call, children }) {
   const { theme, cycle } = useTheme();
   const [sheet, setSheet] = useState('');
   const [palette, setPalette] = useState(false);
@@ -1335,6 +1381,9 @@ function Shell({ route, go, counts, logout, account, children }) {
             <p className="a-muted">{route.tab === 'overview' ? hi.date : cur.sub}</p>
           </div>
           <button type="button" className="a-icon-btn a-only-narrow" onClick={() => setPalette(true)} aria-label="Хайх, шилжих"><Icon name="search" /></button>
+          <a className="a-icon-btn a-bell" href="#/settings/notify" aria-label="Мэдэгдлийн тохиргоо" title="Мэдэгдэл">
+            <Icon name="bell" />
+          </a>
         </header>
         <main id="a-main" className="a-main" tabIndex={-1}>
           {account && account.default_password && !(route.tab === 'settings' && route.sub === 'account') && (
@@ -1344,6 +1393,7 @@ function Shell({ route, go, counts, logout, account, children }) {
               <a className="a-btn a-btn--sm" href="#/settings/account">Нууц үг солих</a>
             </div>
           )}
+          {!(route.tab === 'settings' && route.sub === 'notify') && <PushPrompt call={call} />}
           {children}
         </main>
       </div>
@@ -1450,6 +1500,18 @@ function AdminApp() {
 
   const counts = (summary && summary.counts) || {};
   const unread = ['messenger_unread', 'partners_new', 'questions_new', 'reviews_pending', 'locations_new'].reduce((s, k) => s + (counts[k] || 0), 0);
+  useAdminApp();
+  useAppBadge(token ? unread : 0);
+  const toast = useToast();
+  const seen = useRef(null);
+  useEffect(() => {
+    if (!summary) return;
+    const prev = seen.current;
+    seen.current = counts;
+    if (!prev) return;
+    const grew = TODO.filter(([, k]) => (counts[k] || 0) > (prev[k] || 0));
+    if (grew.length) toast(`Шинээр ирлээ: ${grew.map(([tab]) => TAB[tab].label).join(', ')}`);
+  }, [summary]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     document.title = `${unread ? `(${unread}) ` : ''}${token ? `${TAB[route.tab].label} · ` : ''}ДОМЧ удирдлага`;
   }, [unread, route.tab, token]);
@@ -1462,7 +1524,7 @@ function AdminApp() {
   const cur = TAB[route.tab];
   const settingsTab = SETTING_TABS.some(([id]) => id === route.sub) ? route.sub : 'contact';
   return (
-    <Shell route={route} go={go} counts={counts} logout={logout} account={account}>
+    <Shell route={route} go={go} counts={counts} logout={logout} account={account} call={call}>
       {route.tab === 'overview' && <Overview call={call} summary={summary} reload={loadSummary} go={go} />}
       {cur.inbox && <Inbox key={route.tab} kind={route.tab} call={call} onChange={loadCounts} />}
       {cur.table && <TableView key={route.tab} table={route.tab} call={call} />}

@@ -13,7 +13,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .common import FieldErrors, ago, fail, now_utc, require_admin
 from .db import SCHEMA_PATH, DBError, NotConfigured, get_db
-from . import ai, auth, media, messenger
+from . import ai, auth, media, messenger, push
 
 app = FastAPI(
     title="DOMCH API",
@@ -329,6 +329,7 @@ def create_review(data: ReviewIn, request: Request):
         "INSERT INTO reviews (name, rating, size, body, status, ip_hash) VALUES (?, ?, ?, ?, 'pending', ?)",
         (data.name, data.rating, data.size, data.body, visitor),
     )
+    push.notify("requests", f"Шинэ сэтгэгдэл {'★' * data.rating}", f"{data.name}: {data.body}", "/admin#/reviews", "reviews", db)
     return {"ok": True, "message": message}
 
 
@@ -351,6 +352,8 @@ def create_question(data: QuestionIn, request: Request):
         "INSERT INTO questions (name, contact, question, ip_hash) VALUES (?, ?, ?, ?)",
         (data.name or None, data.contact or None, data.question, visitor),
     )
+    push.notify("requests", "Эмчид шинэ асуулт", f"{data.name + ': ' if data.name else ''}{data.question}",
+                "/admin#/questions", "questions", db)
     return {"ok": True, "message": message}
 
 
@@ -393,6 +396,9 @@ def create_partner(data: PartnerIn, request: Request):
         (data.kind, data.org or None, data.contact_name, data.phone or None, data.email or None,
          data.location or None, json.dumps(details, ensure_ascii=False), data.message or None, visitor),
     )
+    push.notify("requests", f"Хамтын ажиллагааны хүсэлт · {PARTNER_LABEL.get(data.kind, data.kind)}",
+                " · ".join(x for x in (data.org, data.contact_name, data.phone or data.email) if x),
+                "/admin#/partners", "partners", db)
     return {"ok": True, "message": message}
 
 
@@ -415,8 +421,12 @@ def create_location_request(data: LocationIn, request: Request):
         "INSERT INTO location_requests (city, district, note, contact, ip_hash) VALUES (?, ?, ?, ?, ?)",
         (data.city, data.district or None, data.note or None, data.contact or None, visitor),
     )
+    push.notify("requests", "Байршлын шинэ санал", " · ".join(x for x in (data.city, data.district, data.note) if x),
+                "/admin#/locations", "locations", db)
     return {"ok": True, "message": message}
 
+
+PARTNER_LABEL = {"pharmacy": "Эмийн сан", "clinic": "Шүдний эмнэлэг", "corporate": "Байгууллага", "creator": "Контент бүтээгч"}
 
 EVENT_NAMES = {
     "where_click", "branch_search", "online_click", "direction_click", "call_click", "usage_view", "video_play",
@@ -728,6 +738,7 @@ def admin_migrate():
 app.include_router(admin)
 app.include_router(auth.public)
 app.include_router(auth.admin)
+app.include_router(push.admin)
 app.include_router(messenger.admin)
 app.include_router(ai.admin)
 app.include_router(media.admin)

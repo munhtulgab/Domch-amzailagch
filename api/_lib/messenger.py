@@ -1019,7 +1019,11 @@ def handle_event(db, cfg: dict, event: dict, site: str = "", channel: str = "mes
     if not res.get("changes"):
         return  # a retried delivery
     save_contact(db, cfg, psid, channel)
-    contact = db.one("SELECT welcomed_at FROM messenger_contacts WHERE psid = ?", (psid,)) or {}
+    contact = db.one("SELECT welcomed_at, name FROM messenger_contacts WHERE psid = ?", (psid,)) or {}
+    from . import push  # imported here to keep this module importable on its own
+
+    push.notify("messages", f"{contact.get('name') or 'Шинэ мессеж'} · {'Instagram' if channel == 'instagram' else 'Messenger'}",
+                text, "/admin#/messenger", f"msg-{psid[-12:]}", db)
     try:
         auto_respond(db, cfg, psid, text, payload, contact.get("welcomed_at"), previous.get("at"), site=site,
                      attachment=attachment, sticker=sticker, received_at=when)
