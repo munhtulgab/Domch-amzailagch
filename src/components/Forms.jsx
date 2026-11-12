@@ -229,7 +229,7 @@ export function PartnerForm({ kind: initialKind = 'pharmacy', onClose }) {
     const e = {};
     if (v.kind !== 'creator' && len(v.org) < 2) e.org = 'Байгууллагын нэрээ оруулна уу.';
     if (len(v.contact_name) < 2) e.contact_name = v.kind === 'creator' ? 'Нэрээ оруулна уу.' : 'Холбоо барих ажилтны нэрийг оруулна уу.';
-    if (!len(v.phone) && !len(v.email)) e.phone = 'Утас эсвэл и-мэйлийн аль нэгийг оруулна уу.';
+    if (!len(v.phone)) e.phone = 'Утасны дугаараа оруулна уу.';
     if (v.kind === 'clinic' && !len(v.direction)) e.direction = 'Хамтрах чиглэлээ бичнэ үү.';
     if (v.kind === 'corporate' && !len(v.quantity)) e.quantity = 'Ойролцоо тоо хэмжээг оруулна уу.';
     if (v.kind === 'creator') {
@@ -302,7 +302,7 @@ export function PartnerForm({ kind: initialKind = 'pharmacy', onClose }) {
         {(id, a) => <input id={id} value={v.contact_name} onChange={f.set('contact_name')} maxLength={80} autoComplete="name" {...a} />}
       </Field>
       <div className="form__row">
-        <Field name="phone" label="Утас" error={f.errors.phone}>
+        <Field name="phone" label="Утас" required error={f.errors.phone}>
           {(id, a) => <input id={id} type="tel" value={v.phone} onChange={f.set('phone')} maxLength={40} autoComplete="tel" {...a} />}
         </Field>
         <Field name="email" label="И-мэйл" error={f.errors.email}>

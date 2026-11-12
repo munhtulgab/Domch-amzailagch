@@ -121,7 +121,7 @@ def test_partner_rules(client):
     assert {"org", "phone", "quantity"} <= set(fields)
     creator = client.post("/api/partners", json={"kind": "creator", "contact_name": "Сараа", "email": "a@b.mn",
                                                   "details": {"social": "@saraa"}, "message": "богино", "consent": True})
-    assert {"focus", "message"} <= set(creator.json()["fields"])
+    assert {"focus", "message", "phone"} <= set(creator.json()["fields"])  # an e-mail alone is not enough
     ok = client.post("/api/partners", json={
         "kind": "corporate", "org": "ABC ХХК", "contact_name": "Сараа", "phone": "+976 9911 2233",
         "details": {"size": "500", "quantity": "200 ширхэг", "timeline": "12-р сар", "junk": "x"}, "consent": True,

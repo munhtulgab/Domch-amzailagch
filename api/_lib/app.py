@@ -363,8 +363,8 @@ def create_partner(data: PartnerIn, request: Request):
     errors = {}
     if data.kind != "creator" and len(data.org) < 2:
         errors["org"] = "Байгууллагын нэрээ оруулна уу."
-    if not data.phone and not data.email:
-        errors["phone"] = "Утас эсвэл и-мэйлийн аль нэгийг оруулна уу."
+    if not data.phone:
+        errors["phone"] = "Утасны дугаараа оруулна уу."  # a partner request is only shown once there is a number to call
     if data.phone and not PHONE_RE.fullmatch(data.phone):
         errors["phone"] = "Утасны дугаараа шалгана уу."
     if data.email and not EMAIL_RE.fullmatch(data.email):
@@ -609,7 +609,7 @@ def admin_summary(events: int = Query(1, ge=0, le=1)):
         "SELECT"
         " (SELECT COUNT(*) FROM reviews WHERE status = 'pending') AS reviews_pending,"
         " (SELECT COUNT(*) FROM questions WHERE status = 'new') AS questions_new,"
-        " (SELECT COUNT(*) FROM partner_requests WHERE status = 'new') AS partners_new,"
+        f" (SELECT COUNT(*) FROM partner_requests WHERE status = 'new' AND {PARTNER_HAS_PHONE}) AS partners_new,"
         " (SELECT COUNT(*) FROM location_requests WHERE status = 'new') AS locations_new,"
         " (SELECT COUNT(*) FROM branches WHERE is_sample = 1) + (SELECT COUNT(*) FROM tips WHERE is_sample = 1)"
         " + (SELECT COUNT(*) FROM videos WHERE is_sample = 1) AS samples,"
@@ -688,12 +688,16 @@ def admin_inbox(kind: str, status: str = Query("", max_length=20)):
     spec = inbox_spec(kind)
     if kind == "partners":
         insights.ensure_partner_columns(get_db())
-    sql, params = f"SELECT * FROM {spec['table']}", []
+    sql, params, where = f"SELECT * FROM {spec['table']}", [], []
+    if kind == "partners":
+        where.append(PARTNER_HAS_PHONE)  # requests from chats wait here, unseen, until the number arrives
     if status:
         if status not in spec["statuses"]:
             fail({"status": "Төлөв буруу байна."})
-        sql += " WHERE status = ?"
+        where.append("status = ?")
         params.append(status)
+    if where:
+        sql += " WHERE " + " AND ".join(where)
     rows = get_db().all(sql + " ORDER BY created_at DESC, id DESC LIMIT 500", params)
     for row in rows:
         row.pop("ip_hash", None)
@@ -703,6 +707,9 @@ def admin_inbox(kind: str, status: str = Query("", max_length=20)):
             except ValueError:
                 row["details"] = {}
     return {"items": rows, "statuses": list(spec["statuses"])}
+
+
+PARTNER_HAS_PHONE = "phone IS NOT NULL AND TRIM(phone) != ''"
 
 
 class StatusIn(BaseModel):
@@ -724,7 +731,7 @@ def admin_inbox_status(kind: str, row_id: int, data: StatusIn):
             fail({"phone": "Утасны дугаарыг зөвхөн хамтын ажиллагааны хүсэлтэд нэмнэ."})
         phone = data.phone.strip()
         digits = re.sub(r"\D", "", phone)
-        if phone and not (6 <= len(digits) <= 15):
+        if not (6 <= len(digits) <= 15):
             fail({"phone": "Утасны дугаар буруу байна."})
         if len(digits) == 8 and not phone.startswith("+"):
             phone = f"{digits[:4]}-{digits[4:]}"

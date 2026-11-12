@@ -161,7 +161,8 @@ def dismiss(db, ref: str) -> None:
 def record_partner(db, psid: str, name: str | None, channel: str, texts: list, at: str | None = None,
                    phone: str | None = None) -> bool:
     """One partner request per conversation. A conversation already recorded only gets its message updated; a
-    phone number that is already in a site request links to that request instead of making a second one."""
+    phone number that is already in a site request links to that request instead of making a second one.
+    A request without a phone is kept out of sight in the admin; returns True when a request becomes visible."""
     ensure_partner_columns(db)
     texts = [t.strip() for t in texts if t and t.strip()]
     if not texts:
@@ -177,7 +178,7 @@ def record_partner(db, psid: str, name: str | None, channel: str, texts: list, a
         if body != (existing["message"] or "") or (phone and not existing["phone"]):
             db.run("UPDATE partner_requests SET message = ?, phone = COALESCE(phone, ?) WHERE id = ?",
                    (body, pretty_phone(phone) if phone else None, existing["id"]))
-        return False
+        return bool(phone and not existing["phone"])
     if phone:
         same = db.one("SELECT id FROM partner_requests WHERE REPLACE(REPLACE(phone, ' ', ''), '-', '') = ? LIMIT 1", (phone,))
         if same:
@@ -191,7 +192,7 @@ def record_partner(db, psid: str, name: str | None, channel: str, texts: list, a
         (_partner_kind(body), who, pretty_phone(phone) if phone else None, json.dumps(details, ensure_ascii=False), body, source,
          ref, at),
     )
-    return True
+    return bool(phone)
 
 
 def _ref(psid: str, channel: str) -> str:

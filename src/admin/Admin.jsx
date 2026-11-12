@@ -15,7 +15,7 @@ const TABS = [
   { id: 'messenger', label: 'Messenger, Instagram', short: 'Чат', icon: 'chat', group: 'inbox', count: 'messenger_unread',
     sub: 'Facebook Page болон Instagram-аас ирсэн мессеж. AI туслах хариулж, та хүссэн үедээ орж хариулна.' },
   { id: 'partners', label: 'Хамтын ажиллагаа', icon: 'handshake', group: 'inbox', inbox: true, count: 'partners_new',
-    sub: 'Эмийн сан, эмнэлэг, байгууллага, контент бүтээгчдийн хүсэлт.' },
+    sub: 'Эмийн сан, эмнэлэг, байгууллага, контент бүтээгчдийн хүсэлт. Утасны дугаартай хүсэлт л энд гарна.' },
   { id: 'questions', label: 'Эмчээс асуусан', icon: 'question', group: 'inbox', inbox: true, count: 'questions_new',
     sub: 'Сайтаас эмчид илгээсэн асуултууд.' },
   { id: 'reviews', label: 'Сэтгэгдэл', icon: 'star', group: 'inbox', inbox: true, count: 'reviews_pending',
@@ -433,7 +433,7 @@ function ChatInsights({ call }) {
             {data.partners_added > 0 && (
               <a className="a-alert a-alert--info a-chatq__new" href="#/partners">
                 <Icon name="handshake" />
-                <p><strong>Чатаас {data.partners_added} хамтын ажиллагааны хүсэлт нэмэгдлээ.</strong> Хамтын ажиллагаа хэсэгт харах</p>
+                <p><strong>Чатаас утасны дугаартай {data.partners_added} хамтын ажиллагааны хүсэлт нэмэгдлээ.</strong> Хамтын ажиллагаа хэсэгт харах</p>
               </a>
             )}
             <ol className="a-topics">
@@ -688,7 +688,7 @@ function Inbox({ kind, call, onChange }) {
     const shown = phone.replace(/\D/g, '').length === 8 && !phone.trim().startsWith('+')
       ? `${phone.replace(/\D/g, '').slice(0, 4)}-${phone.replace(/\D/g, '').slice(4)}` : phone.trim();
     setData((d) => ({ ...d, items: d.items.map((r) => (r.id === id ? { ...r, phone: shown || null } : r)) }));
-    toast(shown ? `Утасны дугаар хадгаллаа: ${shown}` : 'Утасны дугаарыг хаслаа.');
+    toast(`Утасны дугаар хадгаллаа: ${shown}`);
   };
   const remove = async (id) => {
     try {
@@ -739,7 +739,6 @@ function Inbox({ kind, call, onChange }) {
                     <span className="a-mail__snip">{inboxSnippet(kind, r) || '—'}</span>
                     <span className="a-mail__pills">
                       <span className={`a-pill a-pill--${r.status}`}>{STATUS_LABEL[r.status] || r.status}</span>
-                      {kind === 'partners' && !r.phone && !r.email && <span className="a-pill a-pill--rejected">Утасгүй</span>}
                     </span>
                   </span>
                 </button>
@@ -795,7 +794,7 @@ function Inbox({ kind, call, onChange }) {
   );
 }
 
-/** A partner request must have a number to call: shown as a prompt when it is missing, editable otherwise. */
+/** Partner requests are listed only with a phone; this lets the admin correct it. */
 function PartnerPhone({ r, onSave }) {
   const [edit, setEdit] = useState(!r.phone);
   const [value, setValue] = useState(r.phone || '');
@@ -806,7 +805,6 @@ function PartnerPhone({ r, onSave }) {
     setValue(r.phone || '');
     setError('');
   }, [r.id, r.phone]);
-  const asked = r.details && r.details.asked_phone;
   if (!edit) {
     return <button type="button" className="a-link a-phonefix__edit" onClick={() => setEdit(true)}>Утасны дугаар засах</button>;
   }
@@ -824,18 +822,6 @@ function PartnerPhone({ r, onSave }) {
   };
   return (
     <form className={`a-phonefix${r.phone ? '' : ' is-missing'}`} onSubmit={submit}>
-      {!r.phone && (
-        <p>
-          <Icon name="phone" size={16} />
-          <span>
-            <strong>Холбоо барих утасны дугаар алга.</strong>{' '}
-            {r.source && r.source !== 'site'
-              ? asked ? 'Чатаар дугаар асуусан: хариу ирэхэд энд автоматаар бөглөгдөнө.' : 'Чатаар дугаар асууж болно.'
-              : ''}
-            {' '}Утсаар холбогдсон бол дугаарыг энд бичээрэй.
-          </span>
-        </p>
-      )}
       <div className="a-copy">
         <label className="sr" htmlFor={`pp-${r.id}`}>Утасны дугаар</label>
         <input id={`pp-${r.id}`} type="tel" inputMode="tel" autoComplete="off" placeholder="9911-2233" value={value}

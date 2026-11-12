@@ -901,6 +901,8 @@ def test_chat_partner_request_asks_for_phone_once_and_saves_it(client, fb):
     assert after == [insights.THANK_PHONE.format(phone="9911-2233")]  # just the thanks, no AI answer to a bare number
     row = dbmod.get_db().one("SELECT phone FROM partner_requests WHERE source_ref = 'messenger:w'")
     assert row["phone"] == "9911-2233"
+    shown = client.get("/api/admin/inbox/partners", headers=AUTH).json()["items"]
+    assert [r["source_ref"] for r in shown] == ["messenger:w"]
 
 
 def test_chat_partner_with_phone_in_first_message_is_not_asked(client, fb):
@@ -915,9 +917,13 @@ def test_chat_partner_with_phone_in_first_message_is_not_asked(client, fb):
 def test_admin_sets_partner_phone(client, fb):
     connect(client)
     post_event(client, event(psid="u", text="Хамтран ажиллах уу", mid="u1"))
-    row = client.get("/api/admin/inbox/partners", headers=AUTH).json()["items"][0]
+    assert client.get("/api/admin/inbox/partners", headers=AUTH).json()["items"] == []  # no phone: not shown yet
+    assert client.get("/api/admin/summary?events=0", headers=AUTH).json()["counts"]["partners_new"] == 0
+    row = dbmod.get_db().one("SELECT id, phone FROM partner_requests WHERE source_ref = 'messenger:u'")
     assert row["phone"] is None
     assert client.patch(f"/api/admin/inbox/partners/{row['id']}", headers=AUTH, json={"phone": "abc"}).status_code == 422
+    assert client.patch(f"/api/admin/inbox/partners/{row['id']}", headers=AUTH, json={"phone": ""}).status_code == 422
     assert client.patch(f"/api/admin/inbox/partners/{row['id']}", headers=AUTH, json={"phone": "99001122"}).status_code == 200
     assert client.get("/api/admin/inbox/partners", headers=AUTH).json()["items"][0]["phone"] == "9900-1122"
+    assert client.get("/api/admin/summary?events=0", headers=AUTH).json()["counts"]["partners_new"] == 1
     assert client.patch(f"/api/admin/inbox/questions/{row['id']}", headers=AUTH, json={"phone": "99001122"}).status_code == 422
