@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, track } from '../lib/api.js';
 import { formatPrice } from '../lib/util.js';
 import { FALLBACK } from '../data/static.js';
-import { Adult, Arrow, Chat, Chevron, Close, Flask, Menu, NoAlcohol, Phone, Pin, Shield } from '../components/Icons.jsx';
+import { Adult, Arrow, Chat, Chevron, Close, Flask, Menu, NoAlcohol, Phone, Pin, Shield, Swipe } from '../components/Icons.jsx';
 import './demo.css';
 
 const IDS = ['hero', 'ingredients', 'quality', 'light', 'details', 'products', 'finale'];
@@ -104,7 +104,7 @@ export default function Demo() {
   });
   const [active, setActive] = useState(0);
   const [gl, setGl] = useState('wait');
-  const [snaps, setSnaps] = useState({});
+  const [turned, setTurned] = useState(false);
   const [card, setCard] = useState(null);
   const [panel, setPanel] = useState(false);
   const [menu, setMenu] = useState(null);
@@ -127,7 +127,8 @@ export default function Demo() {
   const stepRef = useRef(1);
   const pdRef = useRef(0);
   const activeRef = useRef(0);
-  const wantSnap = useRef(false);
+  const rootRef = useRef(null);
+  const viewEls = useRef({});
   const resized = useRef(false);
   const openedOnce = useRef(false);
 
@@ -156,6 +157,11 @@ export default function Demo() {
     .sort((a, b) => a.volume_ml - b.volume_ml)
     .map((p) => ({ ...p, size: p.slug === 'small' || p.volume_ml < 400 ? 'small' : 'big' })), [content.products]);
   const cur = card === null ? Math.max(0, products.length - 1) : Math.min(card, products.length - 1);
+  // one live 3D bottle per size: the first card of each size shows it
+  const live = useMemo(() => {
+    const seen = new Set();
+    return new Set(products.filter((p) => !seen.has(p.size) && seen.add(p.size)).map((p) => p.id));
+  }, [products]);
   const branchCount = useMemo(() => {
     const f = content.filters || {};
     const n = Object.values(f.chainCounts || {}).reduce((a, v) => a + Number(v || 0), 0) + Number(f.single || 0);
@@ -240,7 +246,6 @@ export default function Demo() {
         ctlRef.current = c;
         setGl('on');
         measure();
-        setTimeout(() => { wantSnap.current = true; }, 400);
       })
       .catch(() => {
         if (!cancelled) setGl('off');
@@ -295,7 +300,7 @@ export default function Demo() {
       });
     };
 
-    const apply = (pd, a) => {
+    const applyScenes = (pd) => {
       sceneEls.current.forEach((el, i) => {
         if (!el) return;
         const d = pd - i;
@@ -329,6 +334,29 @@ export default function Demo() {
         const c = [0, 1, 2].map((n) => mixRgb(BG_RGB[i][n], BG_RGB[j][n], u));
         bg.style.background = `radial-gradient(70% 60% at 50% 56%, ${c[2]} 0%, transparent 72%), linear-gradient(150deg, ${c[0]}, ${c[1]})`;
       }
+      // the bottles stand in the product cards, so there the canvas is drawn over the page
+      if (rootRef.current) rootRef.current.classList.toggle('is-cards', Math.abs(pd - 5) < 0.5);
+      const idx = clamp(Math.round(pd), 0, IDS.length - 1);
+      if (idx !== activeRef.current) {
+        activeRef.current = idx;
+        setActive(idx);
+      }
+    };
+
+    // where each product card shows its bottle (viewport pixels), near the products scene only
+    const readCards = (pd) => {
+      if (Math.abs(pd - 5) > 1.05) return null;
+      const out = {};
+      ['big', 'small'].forEach((size) => {
+        const el = viewEls.current[size];
+        if (!el) return;
+        const r = el.getBoundingClientRect();
+        if (r.width > 4 && r.height > 4) out[size] = { x: r.left, y: r.top, w: r.width, h: r.height };
+      });
+      return out;
+    };
+
+    const applyAnchors = (pd, a) => {
       if (a) {
         a.orbs.forEach((o, k) => {
           const el = orbEls.current[k];
@@ -352,11 +380,6 @@ export default function Demo() {
         });
       }
       placeLines(pd, a);
-      const idx = clamp(Math.round(pd), 0, IDS.length - 1);
-      if (idx !== activeRef.current) {
-        activeRef.current = idx;
-        setActive(idx);
-      }
     };
 
     let lastPd = -1;
@@ -370,21 +393,14 @@ export default function Demo() {
       if (Math.abs(target - pd) < 0.0004) pd = target;
       pdRef.current = pd;
       const ctl = ctlRef.current;
-      let dirty = ctl !== lastCtl;
+      const dirty = ctl !== lastCtl;
       lastCtl = ctl;
-      if (ctl && wantSnap.current) {
-        wantSnap.current = false;
-        dirty = true;
-        try {
-          setSnaps(ctl.snapshots());
-        } catch {
-          /* the cards keep the photo */
-        }
-      }
       // with reduced motion nothing drifts on its own, so frames are drawn only when something changed
-      if (!reduce || dirty || pd !== lastPd || resized.current) {
+      if (!reduce || dirty || pd !== lastPd || resized.current || (ctl && ctl.busy())) {
         resized.current = false;
-        apply(pd, ctl ? ctl.frame(pd, now) : null);
+        applyScenes(pd);
+        const anchors = ctl ? ctl.frame(pd, now, { cards: readCards(pd) }) : null;
+        applyAnchors(pd, anchors);
       }
       lastPd = pd;
       raf = requestAnimationFrame(loop);
@@ -392,6 +408,103 @@ export default function Demo() {
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
   }, []);
+
+  // ---- turning by hand: drag a bottle or an orb (on touch screens sideways; up and down still scrolls) ----
+  useEffect(() => {
+    const root = document.documentElement;
+    const fine = window.matchMedia('(pointer: fine)').matches;
+    // the page's own controls keep their behaviour
+    const ui = (el) => el && el.closest && el.closest('a, button, input, select, textarea, .dm-head, .dm-panel, .dm-perks, .dm-call, .dm-q__copy, .dm-dots, .dm-chat');
+    let drag = null;
+    let moved = false;
+    let hoverRaf = 0;
+    let hoverAt = null;
+    const onDown = (e) => {
+      if (e.button !== 0 || !e.isPrimary) return;
+      const ctl = ctlRef.current;
+      if (!ctl || ui(e.target)) return;
+      const h = ctl.pick(e.clientX, e.clientY);
+      if (!h) return;
+      drag = { id: e.pointerId, x: e.clientX, y: e.clientY, x0: e.clientX, t: performance.now(), h, mouse: e.pointerType === 'mouse' };
+      moved = false;
+      ctl.grab(h);
+      root.classList.add('dm-grabbing');
+      if (drag.mouse) e.preventDefault();
+    };
+    const onMove = (e) => {
+      const ctl = ctlRef.current;
+      if (drag && e.pointerId === drag.id) {
+        if (!ctl) return;
+        const now = performance.now();
+        if (Math.abs(e.clientX - drag.x0) > 5) {
+          if (!moved) setTurned(true);
+          moved = true;
+        }
+        ctl.turn(drag.h, e.clientX - drag.x, drag.mouse ? e.clientY - drag.y : 0, now - drag.t);
+        drag.x = e.clientX;
+        drag.y = e.clientY;
+        drag.t = now;
+        return;
+      }
+      if (!fine || e.pointerType !== 'mouse' || !ctl) return;
+      hoverAt = e;
+      if (!hoverRaf) {
+        hoverRaf = requestAnimationFrame(() => {
+          hoverRaf = 0;
+          const c = ctlRef.current;
+          root.classList.toggle('dm-grab', !!(c && hoverAt && !ui(hoverAt.target) && c.pick(hoverAt.clientX, hoverAt.clientY)));
+        });
+      }
+    };
+    const end = (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      if (ctlRef.current) ctlRef.current.release(drag.h);
+      drag = null;
+      root.classList.remove('dm-grabbing');
+    };
+    // a drag over a product card must not also select it
+    const onClick = (e) => {
+      if (!moved) return;
+      moved = false;
+      e.stopPropagation();
+      e.preventDefault();
+    };
+    window.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointermove', onMove, { passive: true });
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+    window.addEventListener('click', onClick, true);
+    return () => {
+      cancelAnimationFrame(hoverRaf);
+      window.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', end);
+      window.removeEventListener('pointercancel', end);
+      window.removeEventListener('click', onClick, true);
+      root.classList.remove('dm-grab', 'dm-grabbing');
+    };
+  }, []);
+
+  // left / right arrow keys turn the bottle on screen (the one in the active card on the products scene)
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || e.altKey || e.ctrlKey || e.metaKey) return;
+      const tag = e.target && e.target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      const ctl = ctlRef.current;
+      if (!ctl) return;
+      const size = activeRef.current === 5 && products[cur] ? products[cur].size : 'big';
+      ctl.nudge(e.key === 'ArrowLeft' ? -1 : 1, size);
+      setTurned(true);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [products, cur]);
+
+  // the cards moved: redraw so the bottles follow them (also with reduced motion)
+  useEffect(() => {
+    resized.current = true;
+  }, [cur, panel, narrow, products, gl]);
 
   // ---- the address follows the scene; the product panel opens itself the first time ----
   useEffect(() => {
@@ -489,7 +602,10 @@ export default function Demo() {
 
 
   return (
-    <div className={`dm${gl === 'off' ? ' dm--nogl' : ''}${gl === 'on' ? ' dm--gl' : ''}${active === 4 || active === 5 ? ' is-light' : ''}`}>
+    <div
+      ref={rootRef}
+      className={`dm${gl === 'off' ? ' dm--nogl' : ''}${gl === 'on' ? ' dm--gl' : ''}${active === 4 || active === 5 ? ' is-light' : ''}${menu || sheet ? ' menu-open' : ''}`}
+    >
       <div className="dm-bg" ref={bgRef} aria-hidden="true" />
 
       {/* text that sits behind the bottle */}
@@ -588,6 +704,9 @@ export default function Demo() {
         {/* 1 · hero: the headline is behind the bottle; only the cue sits in front */}
         <section className="dm-s dm-s--hero" ref={setScene(0)} aria-label="Нүүр">
           <button type="button" className="dm-cue" onClick={() => go(1)}><i aria-hidden="true" />Доош гүйлгэнэ үү</button>
+          {gl === 'on' && (
+            <p className={`dm-hint${turned ? ' is-done' : ''}`}><Swipe /> Савыг чирж эргүүлнэ үү</p>
+          )}
         </section>
 
         {/* 2 · ingredients round the glowing bottle */}
@@ -665,7 +784,16 @@ export default function Demo() {
                     onClick={() => { if (!on) setCard(i); }}
                   >
                     <span className="dm-card__tag">Гаа</span>
-                    <img src={snaps[p.size] || PHOTO} alt={`DOMCH ${p.name}, ${p.volume_ml} мл`} className={snaps[p.size] ? '' : 'is-photo'} />
+                    {gl === 'on' && live.has(p.id) ? (
+                      <div
+                        className="dm-card__view"
+                        role="img"
+                        aria-label={`DOMCH ${p.name}, ${p.volume_ml} мл. Чирж эргүүлнэ үү.`}
+                        ref={(el) => { viewEls.current[p.size] = el; }}
+                      />
+                    ) : (
+                      <img src={PHOTO} alt={`DOMCH ${p.name}, ${p.volume_ml} мл`} className="is-photo" />
+                    )}
                     <h3>{p.name}</h3>
                     <p className="dm-card__meta">{p.volume_ml} мл{price ? ` · ${price}` : ''}</p>
                     <button

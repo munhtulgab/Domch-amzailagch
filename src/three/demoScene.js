@@ -1,6 +1,7 @@
 // /demo: one DOMCH bottle carried through seven scroll scenes, after a cinematic product-site reel —
 // mist, a neon outline with glowing ingredient orbs, the cap lifted off over a ring of light, light ribbons,
-// details, product cards (rendered snapshots of the bottles) and the wordmark finale.
+// details, product cards (the same bottles, standing in them) and the wordmark finale. Every bottle and orb can be
+// dragged round to look at it.
 // The page owns scrolling and the frame loop; this module draws a frame for a given (damped) scene progress.
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
@@ -542,6 +543,77 @@ export async function createDemoScene({ canvas, media = '/media/' }) {
     return { L, holder, layers: [layer(0.034, 1.1, 0, 0.62), layer(0.012, 0.8, 0.25, 0.95), layer(0.0045, 0.3, 1, 1)] };
   });
 
+  // ---- Turning by hand: both bottles and every orb can be dragged round; left alone, they come back ----
+  const TAU = Math.PI * 2;
+  const HOLD_MS = 4500;
+  const makeTurn = () => ({ spin: 0, vel: 0, tilt: 0, held: false, home: false, touched: 0 });
+  const turnB = makeTurn();
+  const turnS = makeTurn();
+  orbs.forEach((o) => { o.turn = makeTurn(); });
+  const allTurns = [turnB, turnS, ...orbs.map((o) => o.turn)];
+  // an invisible cylinder round each bottle is what the pointer hits (the raycaster ignores visibility)
+  const proxyMat = new THREE.MeshBasicMaterial();
+  const proxy = (bt) => {
+    const h = bt.b.H * S;
+    const r = bt.b.maxW * S * 1.05;
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 20), proxyMat);
+    m.position.y = h / 2;
+    m.visible = false;
+    bt.inner.add(m);
+    return m;
+  };
+  const proxyB = proxy(B);
+  const proxyS = proxy(SM);
+  // a vertical drag tips the bottle towards or away from the viewer, whichever way it is turned
+  const qTilt = new THREE.Quaternion();
+  const AXIS_X = new THREE.Vector3(1, 0, 0);
+  const tipBy = (pivot, tilt) => {
+    if (tilt) pivot.quaternion.premultiply(qTilt.setFromAxisAngle(AXIS_X, tilt));
+  };
+  const ray = new THREE.Raycaster();
+  const ndc = new THREE.Vector2();
+  function pick(cx, cy) {
+    if (!W || !H) return null;
+    ndc.set((cx / W) * 2 - 1, 1 - (cy / H) * 2);
+    ray.setFromCamera(ndc, camera);
+    const options = [];
+    if (B.pivot.visible) options.push([proxyB, turnB]);
+    if (SM.pivot.visible) options.push([proxyS, turnS]);
+    orbs.forEach((o) => {
+      if (o.group.visible && o.bubble.material.uniforms.uAmt.value > 0.5) options.push([o.bubble, o.turn]);
+    });
+    let best = null;
+    options.forEach(([mesh, turn]) => {
+      const hit = ray.intersectObject(mesh, false)[0];
+      if (hit && (!best || hit.distance < best.d)) best = { d: hit.distance, turn };
+    });
+    return best ? best.turn : null;
+  }
+  const stepTurns = (dt, now, sceneChanged) => {
+    allTurns.forEach((tn) => {
+      if (tn.held) return;
+      if (!reduce && Math.abs(tn.vel) > 0.002) {
+        tn.spin += tn.vel * dt;
+        tn.vel *= Math.exp(-dt * 2.6);
+      } else tn.vel = 0;
+      if (!tn.home && (tn.spin || tn.tilt) && (sceneChanged || now - tn.touched > HOLD_MS)) tn.home = true;
+      if (tn.home) {
+        // back to the nearest full turn, so it never unwinds the long way
+        const target = Math.round(tn.spin / TAU) * TAU;
+        const e = 1 - Math.exp(-dt * (reduce ? 14 : 3.2));
+        tn.spin += (target - tn.spin) * e;
+        tn.tilt -= tn.tilt * e;
+        tn.vel = 0;
+        if (Math.abs(target - tn.spin) < 0.002 && Math.abs(tn.tilt) < 0.002) {
+          tn.spin = 0;
+          tn.tilt = 0;
+          tn.home = false;
+        }
+      }
+    });
+  };
+  let lastScene = 0;
+
   // ---- Layout ----
   function layout() {
     W = canvas.clientWidth || window.innerWidth;
@@ -558,19 +630,24 @@ export async function createDemoScene({ canvas, media = '/media/' }) {
   }
   layout();
 
-  const keyAt = (p) => {
+  // b5: in the products scene the big bottle stands in its card (a pose measured from the page)
+  const keyAt = (p, b5) => {
     const set = KEYS[narrow ? 'narrow' : 'wide'];
     const i = clamp(Math.floor(p), 0, set.length - 1);
     const j = Math.min(i + 1, set.length - 1);
     const u = smooth(clamp(p - i, 0, 1));
     const A = set[i];
     const Bk = set[j];
-    const heroX = (heroPx + PAIR.big * H) / W;
-    const ax = i === 0 && !narrow ? heroX : A.b[0];
-    const bx = j === 0 && !narrow ? heroX : Bk.b[0];
+    const pose = (n) => {
+      if (n === 5 && b5) return b5;
+      if (n === 0 && !narrow) return [(heroPx + PAIR.big * H) / W, ...set[0].b.slice(1)];
+      return set[n].b;
+    };
+    const PA = pose(i);
+    const PB = pose(j);
     const mix = (x, y) => x + (y - x) * u;
     return {
-      b: A.b.map((v, n) => (n === 0 ? mix(ax, bx) : mix(v, Bk.b[n]))),
+      b: PA.map((v, n) => mix(v, PB[n])),
       mist: mix(A.mist, Bk.mist),
       glow: mix(A.glow, Bk.glow),
       orbs: mix(A.orbs, Bk.orbs),
@@ -609,12 +686,31 @@ export async function createDemoScene({ canvas, media = '/media/' }) {
   const labelPoint = surfacePoint(b, 860, Math.PI / 2).p;
   const bodyPoint = surfacePoint(b, 1250, Math.PI / 2 + 0.6).p;
 
-  function frame(pd, now) {
+  /**
+   * Draw one frame for the (eased) scene position pd.
+   * opts.cards: where the product cards show their bottles ({ big, small }: viewport rects in CSS pixels).
+   */
+  function frame(pd, now, opts = {}) {
     const dt = clamp((now - lastT) / 1000, 0.001, 0.05);
     lastT = now;
     const t = reduce ? 0 : now / 1000;
     const idle = reduce ? 0 : 1;
-    const k = keyAt(pd);
+    const sceneNow = Math.round(pd);
+    stepTurns(dt, now, sceneNow !== lastScene);
+    lastScene = sceneNow;
+    // a bottle standing in a product card: centred in the card's picture area, as tall as it fits
+    const cards = opts.cards || null;
+    const cardPose = (rect, bt, yawBase) => {
+      if (!rect) return null;
+      const px = Math.min(rect.h * 0.94, (rect.w / 0.52) * 0.94);
+      return [
+        (rect.x + rect.w / 2 - W / 2) / W, -(rect.y + rect.h / 2 - H / 2) / H, 0,
+        yawBase + Math.sin(t * 0.4) * 0.28 * idle, 0.03, 0, (px * visH(0)) / (H * bt.b.H * S),
+      ];
+    };
+    const cardB = cards && cardPose(cards.big, B, TAU - 0.5);
+    const cardS = cards && cardPose(cards.small, SM, -0.5);
+    const k = keyAt(pd, cardB);
     const ip = reduce ? 1 : clamp((now - t0) / 2600, 0, 1);
     const eRise = 1 - (1 - ip) ** 3;
     const eSpin = 1 - (1 - ip) ** 4;
@@ -626,28 +722,53 @@ export async function createDemoScene({ canvas, media = '/media/' }) {
     const Ybase = by * visH(z) - (1 - eRise) * visH(0) * 0.55;
     const Y = Ybase + Math.sin(t * 1.1) * 0.012 * idle;
     B.pivot.position.set(X, Y, z);
-    B.pivot.rotation.set(tip, yaw + (1 - eSpin) * -Math.PI * 2 + Math.sin(t * 0.5) * 0.06 * idle, lean);
+    B.pivot.rotation.set(tip, yaw + (1 - eSpin) * -TAU + Math.sin(t * 0.5) * 0.06 * idle + turnB.spin, lean);
+    tipBy(B.pivot, turnB.tilt);
     B.pivot.scale.setScalar(sc * (0.92 + 0.08 * eRise));
     const halfH = ((b.H * S) / 2) * sc;
     B.pivot.visible = Y + halfH > -visH(z) / 2 - 0.05;
 
-    // 250 ml: beside the big bottle in the opening scene (bottoms level), carried off stage after it
+    // 250 ml: beside the big bottle in the opening scene (bottoms level), in its product card, otherwise off stage
     const hw = smooth(1 - clamp(pd, 0, 1));
+    const cw5 = cardS ? smooth(clamp(1 - Math.abs(pd - 5), 0, 1)) : 0;
     const zS = 0.14;
     const sSc = narrow ? 0.8 : 0.88;
     const hS = ((SM.b.H * S) / 2) * sSc;
     const ipS = reduce ? 1 : clamp((now - t0 - 260) / 2600, 0, 1);
     const riseS = 1 - (1 - ipS) ** 3;
-    const heroSX = (narrow ? 0.215 : (heroPx + PAIR.small * H) / W) * visW(zS);
-    const heroSY = Ybase - halfH + hS - (1 - riseS) * visH(0) * 0.2 + Math.sin(t * 1.1 + 1.7) * 0.012 * idle;
-    const awayX = X + visW(zS) * 0.75;
-    const awayY = -visH(zS) * 0.95;
-    const Xs = awayX + (heroSX - awayX) * hw;
-    const Ys = awayY + (heroSY - awayY) * hw;
-    SM.pivot.visible = hw > 0.002;
-    SM.pivot.position.set(Xs, Ys, zS + (1 - hw) * 0.2);
-    SM.pivot.rotation.set(0, -0.12 + (1 - hw) * 1.1 + (1 - eSpin) * Math.PI * 2 + Math.sin(t * 0.5 + 1.7) * 0.06 * idle, (1 - hw) * 0.3);
-    SM.pivot.scale.setScalar(sSc * (0.92 + 0.08 * riseS) * (0.85 + 0.15 * hw));
+    const awayX = visW(0.34) * 0.62;
+    const awayY = -visH(0.34) * 0.95;
+    let Xs = awayX;
+    let Ys = awayY;
+    let Zs = 0.34;
+    let yawS = 1;
+    let tipS = 0;
+    let leanS = 0.3;
+    let scS = sSc * 0.85;
+    if (hw > 0.002) {
+      const heroSX = (narrow ? 0.215 : (heroPx + PAIR.small * H) / W) * visW(zS);
+      const heroSY = Ybase - halfH + hS - (1 - riseS) * visH(0) * 0.2 + Math.sin(t * 1.1 + 1.7) * 0.012 * idle;
+      Xs = awayX + (heroSX - awayX) * hw;
+      Ys = awayY + (heroSY - awayY) * hw;
+      Zs = zS + (1 - hw) * 0.2;
+      yawS = -0.12 + (1 - hw) * 1.1 + (1 - eSpin) * TAU + Math.sin(t * 0.5 + 1.7) * 0.06 * idle;
+      leanS = (1 - hw) * 0.3;
+      scS = sSc * (0.92 + 0.08 * riseS) * (0.85 + 0.15 * hw);
+    } else if (cw5 > 0.002) {
+      const [cx, cy, , cyaw, ctip, , cs] = cardS;
+      Xs = awayX + (cx * visW(0) - awayX) * cw5;
+      Ys = awayY + (cy * visH(0) - awayY) * cw5;
+      Zs = 0.34 * (1 - cw5);
+      yawS = 1 + (cyaw - 1) * cw5;
+      tipS = ctip * cw5;
+      leanS = 0.3 * (1 - cw5);
+      scS += (cs - scS) * cw5;
+    }
+    SM.pivot.visible = hw > 0.002 || cw5 > 0.002;
+    SM.pivot.position.set(Xs, Ys, Zs);
+    SM.pivot.rotation.set(tipS, yawS + turnS.spin, leanS);
+    tipBy(SM.pivot, turnS.tilt);
+    SM.pivot.scale.setScalar(scS);
     // in the opening scene the mist gathers under both bottles
     const mistX = X + ((Xs - X) / 2) * hw;
 
@@ -713,7 +834,7 @@ export async function createDemoScene({ canvas, media = '/media/' }) {
       orb.group.scale.setScalar(Math.max(s, 0.0001));
       orb.aura.material.opacity = 0.62 * local;
       orb.bubble.material.uniforms.uAmt.value = local;
-      orb.content.rotation.set(Math.sin(t * 0.5 + orb.idx) * 0.25, t * 0.45 + orb.idx * 1.3, 0);
+      orb.content.rotation.set(Math.sin(t * 0.5 + orb.idx) * 0.25 + orb.turn.tilt, t * 0.45 + orb.idx * 1.3 + orb.turn.spin, 0);
       orb.seeds.forEach((sd, j) => {
         const life = reduce ? sd.ph : (t * sd.sp + sd.ph) % 1;
         const dist = (1.1 + life * 1.5) * (0.35 + 0.65 * local);
@@ -753,7 +874,8 @@ export async function createDemoScene({ canvas, media = '/media/' }) {
 
     pmx += (mx - pmx) * (1 - Math.exp(-dt * 4));
     pmy += (my - pmy) * (1 - Math.exp(-dt * 4));
-    camera.position.set(pmx * 0.08, 0.05 - pmy * 0.05, D);
+    const still = 1 - smooth(clamp(1 - Math.abs(pd - 5) * 1.5, 0, 1));
+    camera.position.set(pmx * 0.08 * still, 0.05 - pmy * 0.05 * still, D);
     camera.lookAt(0, 0, 0);
     renderer.render(scene, camera);
 
@@ -771,54 +893,40 @@ export async function createDemoScene({ canvas, media = '/media/' }) {
     return { orbs: orbsOut, cap, label, body, bottle: { x: (top.x + bottom.x) / 2, top: top.y, bottom: bottom.y } };
   }
 
-  // ---- Product card pictures: each size rendered alone on a clear background ----
-  function snapshots() {
-    const out = {};
-    const prevPR = renderer.getPixelRatio();
-    const prev = renderer.getSize(new THREE.Vector2());
-    const PW = 520;
-    const PH = 700;
-    const snap = new THREE.Scene();
-    snap.environment = env;
-    const k2 = new THREE.DirectionalLight(0xffffff, 1.5);
-    k2.position.set(-2.2, 3.2, 3.5);
-    const r2 = new THREE.DirectionalLight(0xffffff, 1.1);
-    r2.position.set(3, 2, -2.5);
-    snap.add(k2, r2, new THREE.HemisphereLight(0xffffff, 0xb9c6ff, 0.55));
-    const cam = new THREE.PerspectiveCamera(22, PW / PH, 0.1, 30);
-    const shared = new Set(Object.values(kit.mats));
-    try {
-      renderer.setPixelRatio(1);
-      renderer.setSize(PW, PH, false);
-      ['small', 'big'].forEach((size) => {
-        const built = kit.build(BOTTLES[size]);
-        built.pivot.rotation.set(0.04, -0.5, 0);
-        snap.add(built.pivot);
-        const h = built.b.H * S;
-        const dist = h / 0.84 / (2 * Math.tan(THREE.MathUtils.degToRad(11)));
-        cam.position.set(0, 0.02, dist);
-        cam.lookAt(0, 0, 0);
-        renderer.render(snap, cam);
-        out[size] = canvas.toDataURL('image/png');
-        snap.remove(built.pivot);
-        built.pivot.traverse((o) => {
-          if (o.geometry && !o.isInstancedMesh) o.geometry.dispose();
-          if (o.material && !shared.has(o.material)) {
-            if (o.material.map) o.material.map.dispose();
-            o.material.dispose();
-          }
-        });
-      });
-    } finally {
-      renderer.setPixelRatio(prevPR);
-      renderer.setSize(prev.x, prev.y, false);
-    }
-    return out;
-  }
-
   return {
     frame,
-    snapshots,
+    /** Which bottle or orb is under the pointer (a handle for grab/turn/release), or null. */
+    pick,
+    grab(tn) {
+      tn.held = true;
+      tn.home = false;
+      tn.vel = 0;
+      tn.touched = performance.now();
+    },
+    /** Turn by a pointer move of dx, dy pixels over ms milliseconds. */
+    turn(tn, dx, dy, ms) {
+      const k2 = 0.011;
+      tn.spin += dx * k2;
+      tn.tilt = clamp(tn.tilt + dy * 0.005, -0.45, 0.45);
+      tn.vel = tn.vel * 0.5 + ((dx * k2) / Math.max(ms / 1000, 0.008)) * 0.5;
+      tn.touched = performance.now();
+    },
+    release(tn) {
+      tn.held = false;
+      if (reduce) tn.vel = 0;
+      tn.touched = performance.now();
+    },
+    /** Keyboard: turn the big bottle (or the 250 ml one) by an eighth of a turn. */
+    nudge(dir, size = 'big') {
+      const tn = size === 'small' ? turnS : turnB;
+      tn.home = false;
+      tn.spin += dir * (TAU / 8);
+      tn.touched = performance.now();
+    },
+    /** True while something is being turned or is settling (the page keeps drawing frames). */
+    busy() {
+      return allTurns.some((tn) => tn.held || tn.home || Math.abs(tn.vel) > 0.002 || tn.spin !== 0 || tn.tilt !== 0);
+    },
     resize() {
       layout();
     },
