@@ -64,14 +64,7 @@ html.dm-grabbing, html.dm-grabbing * { cursor: grabbing !important; user-select:
   position: absolute; top: 0; left: 0; right: 0; z-index: 10; pointer-events: auto;
   padding: env(safe-area-inset-top, 0px) var(--pad) 0;
 }
-.dm-util {
-  display: flex; justify-content: flex-end; align-items: center; gap: 12px; height: 26px;
-  font-size: 11px; letter-spacing: 0.06em; color: var(--ink-3);
-}
-.dm-util i { width: 1px; height: 11px; background: rgba(255, 255, 255, 0.25); }
-.dm-util a { display: inline-flex; align-items: center; gap: 5px; text-decoration: none; color: var(--ink-2); }
-.dm-util a:hover { color: #fff; }
-.dm-bar { display: flex; align-items: center; height: 54px; gap: 24px; }
+.dm-bar { display: flex; align-items: center; height: 72px; gap: 24px; }
 .dm-logo {
   font: 600 22px/1 var(--wide); letter-spacing: 0.08em; color: #fff; text-decoration: none; white-space: nowrap;
 }
@@ -126,16 +119,33 @@ html.dm-grabbing, html.dm-grabbing * { cursor: grabbing !important; user-select:
 .dm-sheet [aria-current='true'] { color: var(--neon); }
 .dm-sheet a:last-child { justify-content: flex-start; color: var(--ink-2); letter-spacing: 0.04em; border-top: 1px solid rgba(255, 255, 255, 0.1); border-radius: 0; margin-top: 4px; }
 
-/* ---- 1 · hero: headline behind the bottle, bottle in its gap ---- */
-.dm-hero {
-  position: absolute; left: 0; right: 0; top: 50%; margin: 0;
-  display: flex; align-items: center; justify-content: center;
-  font: 700 clamp(40px, 4.8vw, 104px)/1 var(--cond); letter-spacing: 0.005em; text-transform: uppercase; color: #fff;
-  white-space: nowrap; text-shadow: 0 0 40px rgba(255, 255, 255, 0.08);
-  transform: translate3d(0, calc(-50% + 1.5vh + var(--d, 0) * -70px), 0);
+/* ---- 1 · hero: copy on the left, both bottles large on the right ---- */
+.dm-hero-copy {
+  position: absolute; left: var(--pad); top: 50%; width: min(600px, 44vw);
+  transform: translateY(calc(-50% + 2vh));
 }
-/* room for both sizes, 500 ml and 250 ml, standing side by side */
-.dm-hero__gap { width: 42vh; flex: none; }
+.dm-eyebrow {
+  display: flex; align-items: center; gap: 12px; margin: 0 0 22px;
+  font: 600 12px/1 var(--ui); letter-spacing: 0.24em; text-transform: uppercase; color: var(--neon);
+}
+.dm-eyebrow::before { content: ''; width: 34px; height: 1px; background: currentColor; box-shadow: 0 0 8px currentColor; }
+.dm-hero {
+  margin: 0; font: 700 clamp(44px, 5.6vw, 108px)/0.96 var(--cond); letter-spacing: 0.005em; text-transform: uppercase; color: #fff;
+  text-shadow: 0 0 50px rgba(76, 242, 223, 0.12);
+}
+.dm-hero em {
+  display: block; font-style: normal;
+  background: linear-gradient(90deg, #8ff8ec, #4cf2df 45%, #38c8ff); -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; filter: drop-shadow(0 0 22px rgba(76, 242, 223, 0.35));
+}
+.dm-hero__lead { margin: 26px 0 0; max-width: 34ch; font-size: clamp(15px, 1.15vw, 18px); line-height: 1.6; color: var(--ink-2); }
+.dm-hero__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 22px; margin-top: 34px; }
+.dm-ghost {
+  display: inline-flex; align-items: center; padding: 13px 22px; border-radius: 7px; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.35); background: rgba(255, 255, 255, 0.04); color: #fff;
+  font: 700 12px/1 var(--ui); letter-spacing: 0.16em; text-transform: uppercase; transition: background 0.2s, border-color 0.2s;
+}
+.dm-ghost:hover { background: rgba(255, 255, 255, 0.1); border-color: #fff; }
 .dm-cue {
   position: absolute; left: 50%; bottom: 58px; transform: translateX(-50%);
   display: inline-flex; flex-direction: column; align-items: center; gap: 10px; border: 0; background: none; cursor: pointer;
@@ -148,7 +158,7 @@ html.dm-grabbing, html.dm-grabbing * { cursor: grabbing !important; user-select:
 }
 @keyframes dm-cue { to { top: 100%; } }
 .dm-hint {
-  position: absolute; left: var(--pad); bottom: 30px; margin: 0; display: inline-flex; align-items: center; gap: 8px;
+  position: absolute; left: 73.5%; bottom: 30px; transform: translateX(-50%); white-space: nowrap; margin: 0; display: inline-flex; align-items: center; gap: 8px;
   color: var(--ink-3); font: 500 12px/1 var(--ui); letter-spacing: 0.06em; transition: opacity 0.6s ease;
 }
 .dm-hint.is-done { opacity: 0; }
@@ -234,18 +244,24 @@ html.dm-grabbing, html.dm-grabbing * { cursor: grabbing !important; user-select:
 }
 .dm-call h3 { margin: 0; font: 600 clamp(22px, 2.1vw, 34px)/1.04 var(--cond); letter-spacing: 0.02em; text-transform: uppercase; }
 .dm-call p { margin: 10px 0 0; font-size: 13.5px; line-height: 1.5; color: rgba(255, 255, 255, 0.9); }
-/* right column: cap, «Ээлтэй», ISO, sediment; left column (right edges aligned): alcohol, label, lab */
-.dm-call--cap { left: 64%; top: 14%; }
-.dm-call--friendly { left: 64%; top: 40%; }
-.dm-call--iso { left: 64%; top: 53.5%; }
-.dm-call--sediment { left: 64%; top: 68%; }
-.dm-call--alcohol { right: 66%; top: 31%; }
-.dm-call--label { right: 66%; top: 44.5%; }
-.dm-call--lab { right: 66%; top: 70%; }
-.dm-call--chip { display: flex; align-items: center; gap: 12px; width: auto; max-width: min(330px, 30vw); padding: 11px 18px 11px 11px; border-radius: 14px; }
-.dm-call--chip h3 { font-size: clamp(15px, 1.3vw, 20px); line-height: 1.15; }
+/* six short callouts, three either side of the bottle, all the same width */
+.dm-call--first, .dm-call--alcohol, .dm-call--lab { right: 64%; }
+.dm-call--friendly, .dm-call--iso, .dm-call--sediment { left: 64%; }
+.dm-call--first, .dm-call--friendly { top: 30%; }
+.dm-call--alcohol, .dm-call--iso { top: 46%; }
+.dm-call--lab, .dm-call--sediment { top: 62%; }
+.dm-call--chip {
+  display: flex; align-items: center; gap: 14px; width: min(310px, 25vw); padding: 13px 18px 13px 13px; border-radius: 16px;
+  background: linear-gradient(140deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.14));
+}
+.dm-call--chip h3 { font-size: clamp(15px, 1.25vw, 19px); line-height: 1.15; }
+.dm-call.is-featured {
+  background: linear-gradient(140deg, rgba(20, 30, 70, 0.62), rgba(30, 44, 100, 0.42));
+  border-color: rgba(143, 248, 236, 0.85); box-shadow: 0 0 0 1px rgba(143, 248, 236, 0.25) inset, 0 0 34px -6px rgba(76, 242, 223, 0.65);
+}
+.dm-call.is-featured .dm-call__ico { background: linear-gradient(135deg, #8ff8ec, #38c8ff); border-color: transparent; color: #08202a; }
 .dm-call__ico {
-  flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%;
+  flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%;
   background: rgba(255, 255, 255, 0.24); border: 1px solid rgba(255, 255, 255, 0.65); color: #fff;
 }
 
@@ -340,17 +356,60 @@ html.dm-grabbing, html.dm-grabbing * { cursor: grabbing !important; user-select:
 /* ---- light (lavender) scenes: keep the white type readable ---- */
 .dm-head, .dm-call, .dm-tagline { transition: text-shadow 0.4s; }
 .dm.is-light .dm-head { text-shadow: 0 1px 12px rgba(52, 36, 130, 0.35); }
-.dm.is-light .dm-util { color: rgba(255, 255, 255, 0.86); }
 .dm.is-light .dm-logo span { color: #d9fffb; text-shadow: 0 0 16px rgba(30, 200, 190, 0.9), 0 1px 10px rgba(52, 36, 130, 0.3); }
 .dm-call h3, .dm-call p { text-shadow: 0 1px 14px rgba(52, 36, 130, 0.35); }
 
-/* ---- the store finder after the scenes: the main site's section on its own page colours ---- */
+/* ---- the store finder after the scenes: the main site's section, dressed like the rest of this page ---- */
 .dm-where {
-  position: relative; z-index: 3; min-height: 100vh; scroll-snap-align: start;
-  background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 17px; line-height: 1.6;
-  box-shadow: 0 -30px 60px rgba(0, 0, 0, 0.35);
+  /* the main site's colour tokens, set to this page's dark look */
+  --bg: #05080b; --surface: rgba(255, 255, 255, 0.06); --fg: #f4f7fb; --muted: rgba(244, 247, 251, 0.62);
+  --line: rgba(255, 255, 255, 0.16); --label: #8ff8ec; --accent: #4cf2df; --on-accent: #03201c; --link: #8ff8ec;
+  --tint: rgba(255, 255, 255, 0.05); --tint-2: rgba(255, 255, 255, 0.04); --card: rgba(10, 14, 20, 0.9);
+  --danger: #ffb4a8; --danger-bg: rgba(120, 30, 20, 0.35);
+  position: relative; z-index: 3; min-height: 100vh; scroll-snap-align: start; color-scheme: dark;
+  background:
+    radial-gradient(60% 40% at 80% 0%, rgba(56, 200, 255, 0.14), transparent 70%),
+    radial-gradient(50% 40% at 0% 30%, rgba(76, 242, 223, 0.1), transparent 70%),
+    linear-gradient(180deg, #0b0f17, #05070a 60%);
+  color: var(--fg); font-family: 'Golos Text', system-ui, sans-serif; font-size: 17px; line-height: 1.6;
+  box-shadow: 0 -30px 60px rgba(0, 0, 0, 0.45);
 }
 .dm-where .sec { padding-top: clamp(112px, 11vw, 150px); }
+.dm-where .eyebrow { color: #4cf2df; letter-spacing: 0.24em; }
+.dm-where .eyebrow::before { box-shadow: 0 0 8px currentColor; }
+.dm-where .h2 {
+  font: 700 clamp(44px, 6vw, 104px)/0.96 'Oswald', 'Golos Text', sans-serif; text-transform: uppercase; letter-spacing: 0.005em;
+}
+.dm-where .h2 em {
+  font-style: normal; background: linear-gradient(90deg, #8ff8ec, #4cf2df 45%, #38c8ff); -webkit-background-clip: text;
+  background-clip: text; -webkit-text-fill-color: transparent;
+}
+.dm-where .where-panel {
+  border: 1px solid rgba(76, 242, 223, 0.35); background: linear-gradient(160deg, rgba(76, 242, 223, 0.08), rgba(255, 255, 255, 0.03));
+  box-shadow: 0 0 50px -12px rgba(76, 242, 223, 0.3); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+}
+.dm-where .field input, .dm-where .field select { background: rgba(255, 255, 255, 0.06); color: #f4f7fb; border-color: rgba(255, 255, 255, 0.18); }
+.dm-where .field select option { background: #0b0f17; color: #f4f7fb; }
+.dm-where .btn:not(.btn--ghost) {
+  background: linear-gradient(90deg, #43e6d5, #3ab8ff); color: #031316; text-transform: uppercase; letter-spacing: 0.12em; font-weight: 700;
+  box-shadow: 0 8px 26px -8px rgba(58, 200, 255, 0.7);
+}
+.dm-where .btn--ghost { color: #f4f7fb; border-color: rgba(255, 255, 255, 0.35); }
+.dm-where .btn--ghost:hover { background: rgba(255, 255, 255, 0.08); }
+.dm-where .chains button { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.16); color: #f4f7fb; }
+.dm-where .chains button[aria-pressed='true'] { border-color: #4cf2df; box-shadow: inset 0 0 0 1px #4cf2df, 0 0 18px -6px #4cf2df; }
+.dm-where .map { background: #0b1016; }
+/* dark map tiles */
+.dm-where .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9) saturate(0.6); }
+.dm-where .map-pin span { background: #4cf2df; box-shadow: 0 0 12px rgba(76, 242, 223, 0.8); }
+.dm-where .map-pin.is-on span { background: #ff7ad9; }
+.dm-where .branch {
+  border-color: rgba(255, 255, 255, 0.12); background: linear-gradient(160deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); transition: border-color 0.2s, box-shadow 0.2s;
+}
+.dm-where .branch:hover, .dm-where .branch.is-on { border-color: rgba(76, 242, 223, 0.6); box-shadow: 0 0 30px -10px rgba(76, 242, 223, 0.6); }
+.dm-where .branch .k { color: #4cf2df; text-transform: uppercase; letter-spacing: 0.1em; font-size: 11.5px; font-weight: 600; }
+.dm-where .branch h3 { font: 600 20px/1.15 'Oswald', 'Golos Text', sans-serif; text-transform: uppercase; letter-spacing: 0.02em; }
 .dm-where__foot { margin: 0; padding: 0 20px 96px; text-align: center; font-size: 13px; color: var(--muted); }
 .dm-where__foot a { color: var(--link); }
 .dm.is-where .dm-head {
@@ -381,22 +440,22 @@ html.dm-grabbing, html.dm-grabbing * { cursor: grabbing !important; user-select:
 
 /* ---- medium widths: the nav goes into the menu ---- */
 @media (max-width: 1023px) {
-  .dm-util span { display: none; }
-  .dm-util i { display: none; }
 }
 
 /* ---- narrow / portrait ---- */
 @media (max-aspect-ratio: 9/10) {
-  .dm-util { display: none; }
   .dm-bar { height: 60px; }
   .dm-logo { font-size: 19px; }
-  .dm-hero {
-    flex-direction: column; top: 0; font-size: min(10.6vw, 6.6vh); line-height: 1.04; text-align: center;
-    transform: translate3d(0, calc(17vh + var(--d, 0) * -60px), 0);
-  }
-  .dm-hero__gap { display: none; }
+  /* phones: the copy at the top, the two bottles under it */
+  .dm-hero-copy { left: 18px; right: 18px; top: 74px; width: auto; transform: none; }
+  .dm-eyebrow { margin-bottom: 12px; font-size: 10px; }
+  .dm-eyebrow::before { width: 22px; }
+  .dm-hero { font-size: min(10.4vw, 5.6vh); line-height: 0.98; }
+  .dm-hero em { display: inline; }
+  .dm-hero__lead { margin-top: 10px; font-size: 13px; line-height: 1.45; max-width: 32ch; }
+  .dm-hero__actions { display: none; }
   .dm-cue { bottom: 52px; }
-  .dm-hint { left: 0; right: 0; bottom: 118px; justify-content: center; font-size: 11px; }
+  .dm-hint { left: 0; right: 0; bottom: 118px; transform: none; justify-content: center; font-size: 11px; }
 
   .dm-orb__name { top: calc(var(--r) + 8px); width: max-content; max-width: 38vw; white-space: normal; font-size: 13px; }
   .dm-orb__name small { font-size: 10.5px; margin-top: 2px; }
@@ -425,12 +484,11 @@ html.dm-grabbing, html.dm-grabbing * { cursor: grabbing !important; user-select:
   .dm-call h3 br { display: none; }
   .dm-call p { display: none; }
   .dm-call__ico { width: 28px; height: 28px; }
-  .dm-call--cap { left: 16px; right: auto; top: max(68px, 9vh); }
-  .dm-call--friendly { left: auto; right: 16px; top: max(68px, 9vh); }
-  .dm-call--alcohol { left: 16px; right: auto; top: calc(max(68px, 9vh) + 60px); }
-  .dm-call--label { left: 16px; right: auto; top: auto; bottom: calc(14vh + 68px); }
+  .dm-call--first { left: 16px; right: auto; top: max(72px, 9vh); }
+  .dm-call--friendly { left: auto; right: 16px; top: max(72px, 9vh); }
+  .dm-call--alcohol { left: 16px; right: auto; top: calc(max(72px, 9vh) + 64px); }
+  .dm-call--iso { left: auto; right: 16px; top: auto; bottom: calc(14vh + 64px); }
   .dm-call--lab { left: 16px; right: auto; top: auto; bottom: 14vh; }
-  .dm-call--iso { left: auto; right: 16px; top: auto; bottom: calc(14vh + 68px); }
   .dm-call--sediment { left: auto; right: 16px; top: auto; bottom: 14vh; }
 
   .dm-s--products { justify-content: flex-start; gap: 14px; padding: 80px 0 64px; }
@@ -472,7 +530,6 @@ html.dm-grabbing, html.dm-grabbing * { cursor: grabbing !important; user-select:
 
 /* short landscape screens */
 @media (max-height: 560px) and (min-aspect-ratio: 9/10) {
-  .dm-util { display: none; }
   .dm-s--quality { padding-top: 70px; padding-bottom: 40px; }
   .dm-perks small { display: none; }
   .dm-q__copy p { display: none; }

@@ -16,7 +16,7 @@ export const SCENES = ['hero', 'ingredients', 'quality', 'light', 'details', 'pr
 const K = (b, o = {}) => ({ b, mist: 0, glow: 0, orbs: 0, cap: 0, ribbons: 0, lav: 0, ...o });
 const KEYS = {
   wide: [
-    K([0, -0.035, 0, -0.38, 0, 0, 0.9], { mist: 1 }),
+    K([0, -0.03, 0, -0.38, 0, 0, 1.06], { mist: 1 }),
     K([0, -0.02, 0, 0.32, 0, 0, 0.8], { glow: 1, orbs: 1 }),
     K([-0.015, -0.115, 0, 0.95, 0.05, 0, 0.8], { cap: 1 }),
     K([0, -0.03, 0, 2.55, 0.03, -0.16, 0.88], { ribbons: 1, lav: 0.15 }),
@@ -25,7 +25,7 @@ const KEYS = {
     K([0, -0.03, 0, 12.15, 0, 0, 0.76], { mist: 0.35 }),
   ],
   narrow: [
-    K([-0.2, -0.115, 0, -0.38, 0, 0, 0.8], { mist: 1 }),
+    K([-0.2, -0.13, 0, -0.38, 0, 0, 0.9], { mist: 1 }),
     K([0, -0.01, 0, 0.32, 0, 0, 0.64], { glow: 1, orbs: 1 }),
     K([0, -0.005, 0, 0.95, 0.05, 0, 0.5], { cap: 1 }),
     K([0, -0.02, 0, 2.55, 0.03, -0.16, 0.76], { ribbons: 1, lav: 0.15 }),
@@ -44,8 +44,10 @@ export const ORBS = [
   { key: 'glycerin', color: '#b892ff', wide: [-0.27, -0.235], narrow: [-0.3, -0.265] },
   { key: 'blue', color: '#3f6bff', wide: [0.27, -0.235], narrow: [0.3, -0.265] },
 ];
-// Opening scene: the two sizes side by side in the headline's gap (offsets from its centre, share of the height).
-const PAIR = { big: -0.092, small: 0.118 };
+// Opening scene: the two sizes side by side in the right half (centre of the pair: share of the width from the
+// screen centre; each bottle's offset from it: share of the height).
+const HERO_X = 0.235;
+const PAIR = { big: -0.108, small: 0.138 };
 
 const NEON = new THREE.Color('#4cf2df');
 
@@ -272,7 +274,6 @@ export async function createDemoScene({ canvas, media = '/media/' }) {
   let H = 1;
   let aspect = 1;
   let narrow = false;
-  let heroPx = 0;
   const visH = (z) => 2 * (D - z) * tanH;
   const visW = (z) => visH(z) * aspect;
 
@@ -640,7 +641,7 @@ export async function createDemoScene({ canvas, media = '/media/' }) {
     const Bk = set[j];
     const pose = (n) => {
       if (n === 5 && b5) return b5;
-      if (n === 0 && !narrow) return [(heroPx + PAIR.big * H) / W, ...set[0].b.slice(1)];
+      if (n === 0 && !narrow) return [HERO_X + (PAIR.big * H) / W, ...set[0].b.slice(1)];
       return set[n].b;
     };
     const PA = pose(i);
@@ -685,7 +686,7 @@ export async function createDemoScene({ canvas, media = '/media/' }) {
   // points on the big bottle the details callouts draw their lines to (front is +z; right side: angle below π/2)
   const capPoint = new THREE.Vector3(0, yWorld(b, (b.cap.y0 + b.cap.y1) / 2), b.cap.rBot * S);
   const POINTS = {
-    label: surfacePoint(b, 860, Math.PI / 2).p, // main label
+    first: surfacePoint(b, 860, Math.PI / 2 + 0.25).p, // main label: «Монголын анхны ам зайлагч»
     friendly: surfacePoint(b, 440, Math.PI / 2 - 0.42).p, // «ЭЭЛТЭЙ БҮТЭЭГДЭХҮҮН» band on the upper label
     alcohol: surfacePoint(b, 612, Math.PI / 2 + 0.55).p, // the solution, between the labels
     iso: surfacePoint(b, 1000, Math.PI / 2 - 0.45).p, // main label, right
@@ -739,7 +740,7 @@ export async function createDemoScene({ canvas, media = '/media/' }) {
     const hw = smooth(1 - clamp(pd, 0, 1));
     const cw5 = cardS ? smooth(clamp(1 - Math.abs(pd - 5), 0, 1)) : 0;
     const zS = 0.14;
-    const sSc = narrow ? 0.8 : 0.88;
+    const sSc = narrow ? 0.9 : 1.04;
     const hS = ((SM.b.H * S) / 2) * sSc;
     const ipS = reduce ? 1 : clamp((now - t0 - 260) / 2600, 0, 1);
     const riseS = 1 - (1 - ipS) ** 3;
@@ -753,7 +754,7 @@ export async function createDemoScene({ canvas, media = '/media/' }) {
     let leanS = 0.3;
     let scS = sSc * 0.85;
     if (hw > 0.002) {
-      const heroSX = (narrow ? 0.215 : (heroPx + PAIR.small * H) / W) * visW(zS);
+      const heroSX = (narrow ? 0.215 : HERO_X + (PAIR.small * H) / W) * visW(zS);
       const heroSY = Ybase - halfH + hS - (1 - riseS) * visH(0) * 0.2 + Math.sin(t * 1.1 + 1.7) * 0.012 * idle;
       Xs = awayX + (heroSX - awayX) * hw;
       Ys = awayY + (heroSY - awayY) * hw;
@@ -935,10 +936,6 @@ export async function createDemoScene({ canvas, media = '/media/' }) {
     },
     resize() {
       layout();
-    },
-    /** Desktop hero: put the bottles into the gap of the headline (its centre, pixels from the screen centre). */
-    setHeroShift(px) {
-      heroPx = px;
     },
     pulse(keyName) {
       const orb = orbs.find((o) => o.o.key === keyName);

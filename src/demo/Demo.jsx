@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, track } from '../lib/api.js';
 import { formatPrice } from '../lib/util.js';
 import { FALLBACK } from '../data/static.js';
-import { Adult, Arrow, CareDrop, Chat, Chevron, Close, Flask, Menu, NoAlcohol, Phone, Pin, Shield, Swipe } from '../components/Icons.jsx';
+import { Adult, Arrow, CareDrop, Chat, Chevron, Close, Flask, Menu, NoAlcohol, Phone, Pin, Shield, Star, Swipe } from '../components/Icons.jsx';
 import { Where } from '../components/Where.jsx';
 import { Dialogs } from '../components/Dialogs.jsx';
 import './demo.css';
@@ -49,12 +49,11 @@ const Sediment = ({ size = 16 }) => (
   </svg>
 );
 
-// Details scene: two large callouts with a line of text and five short ones, each drawn to its place on the bottle.
+// Details scene: six short callouts, each drawn to its place on the bottle; the first one is featured.
 const CALLOUTS = [
-  { id: 'cap', big: true, t: ['Нарийн зүйлсэд', 'анхаарсан'], d: 'Эргэдэг таг · тасалгааны хэмд 12 сар хадгална' },
+  { id: 'first', t: 'Монголын анхны ам зайлагч', Icon: Star, featured: true },
   { id: 'friendly', t: 'Ээлтэй бүтээгдэхүүн', Icon: CareDrop },
   { id: 'alcohol', t: 'Спирт агуулаагүй', Icon: NoAlcohol },
-  { id: 'label', big: true, t: ['Жамц давсны', 'уусмал'], d: 'Найрлага, хэрэглэх заавар шошгон дээр' },
   { id: 'iso', t: 'ISO 9001 стандарт', Icon: Shield },
   { id: 'lab', t: 'Лабораторийн хяналт', Icon: Flask },
   { id: 'sediment', t: 'Эрдсийн тунадас үүсэж болно', Icon: Sediment },
@@ -138,9 +137,6 @@ export default function Demo() {
 
   const canvasRef = useRef(null);
   const bgRef = useRef(null);
-  const heroRef = useRef(null);
-  const heroL = useRef(null);
-  const heroR = useRef(null);
   const markRef = useRef(null);
   const headRef = useRef(null);
   const sceneEls = useRef([]);
@@ -189,11 +185,6 @@ export default function Demo() {
     const seen = new Set();
     return new Set(products.filter((p) => !seen.has(p.size) && seen.add(p.size)).map((p) => p.id));
   }, [products]);
-  const branchCount = useMemo(() => {
-    const f = content.filters || {};
-    const n = Object.values(f.chainCounts || {}).reduce((a, v) => a + Number(v || 0), 0) + Number(f.single || 0);
-    return n > 0 ? n : null;
-  }, [content.filters]);
   const phone = content.settings.phone || '7799-7799';
   const phoneHref = `tel:${phone.replace(/[^\d+]/g, '')}`;
 
@@ -218,16 +209,13 @@ export default function Demo() {
   // where a scene starts on the page; the store finder sits right after the seven stops
   const topOf = useCallback((i) => (i === WHERE && whereRef.current ? whereRef.current.offsetTop : i * stepRef.current), []);
 
-  // ---- measuring: scroll step, hero gap ----
+  // ---- measuring: scroll step ----
   const measure = useCallback(() => {
     const stops = document.querySelectorAll('.dm-stop');
     stepRef.current = stops.length > 1 ? stops[1].offsetTop - stops[0].offsetTop : window.innerHeight;
     const ctl = ctlRef.current;
     resized.current = true;
-    if (ctl) {
-      ctl.resize();
-      if (heroL.current && heroR.current) ctl.setHeroShift((heroL.current.offsetWidth - heroR.current.offsetWidth) / 2);
-    }
+    if (ctl) ctl.resize();
   }, []);
 
   useEffect(() => {
@@ -345,12 +333,6 @@ export default function Demo() {
           el.style.visibility = on === '1' ? 'visible' : 'hidden';
         }
       });
-      const hero = heroRef.current;
-      if (hero) {
-        const v = smooth(clamp(1 - pd * 1.5, 0, 1));
-        hero.style.opacity = v.toFixed(3);
-        hero.style.setProperty('--d', pd.toFixed(3));
-      }
       const mark = markRef.current;
       if (mark) {
         const v = smooth(clamp(1 - Math.abs(pd - 6) * 1.6, 0, 1));
@@ -444,7 +426,7 @@ export default function Demo() {
     const fine = window.matchMedia('(pointer: fine)').matches;
     // the page's own controls keep their behaviour
     const ui = (el) => el && el.closest && el.closest(
-      'a, button, input, select, textarea, label, .dm-head, .dm-panel, .dm-perks, .dm-call, .dm-q__copy, .dm-dots, .dm-chat, .dm-where, .modal',
+      'a, button, input, select, textarea, label, .dm-head, .dm-hero-copy, .dm-panel, .dm-perks, .dm-call, .dm-q__copy, .dm-dots, .dm-chat, .dm-where, .modal',
     );
     let drag = null;
     let moved = false;
@@ -676,13 +658,8 @@ export default function Demo() {
       >
         <div className="dm-bg" ref={bgRef} aria-hidden="true" />
 
-        {/* text that sits behind the bottle */}
+        {/* the finale's wordmark sits behind the bottle */}
         <div className="dm-back">
-          <h1 className="dm-hero" ref={heroRef}>
-            <span className="dm-hero__l" ref={heroL}>Зүгээр л</span>
-            <span className="dm-hero__gap" aria-hidden="true" />
-            <span className="dm-hero__r" ref={heroR}>ам зайлагч биш.</span>
-          </h1>
           <p className="dm-mark" ref={markRef} aria-hidden="true">DOM<span>CH</span></p>
         </div>
 
@@ -691,11 +668,6 @@ export default function Demo() {
 
         <div className="dm-front">
           <header className="dm-head" ref={headRef}>
-            <div className="dm-util">
-              <span>{branchCount ? `${branchCount} салбарт худалдаалж байна` : 'Эмийн сангуудад худалдаалж байна'}</span>
-              <i aria-hidden="true" />
-              <a href={phoneHref} onClick={() => track('call_click', { from: 'demo' })}><Phone size={12} /> {phone}</a>
-            </div>
             <div className="dm-bar">
               <a className="dm-logo" href="/" aria-label="DOMCH, үндсэн сайт">DOM<span>CH</span></a>
               {!compactNav && (
@@ -780,7 +752,16 @@ export default function Demo() {
           </header>
 
           {/* 1 · hero: the headline is behind the bottle; only the cue sits in front */}
-          <section className="dm-s dm-s--hero" ref={setScene(0)} aria-label="Нүүр">
+          <section className="dm-s dm-s--hero" ref={setScene(0)} aria-labelledby="dm-hero-title">
+            <div className="dm-hero-copy">
+              <p className="dm-eyebrow">DOMCH · Жамц давсны уусмал</p>
+              <h1 id="dm-hero-title" className="dm-hero">Амны хөндийн <em>өдөр тутмын</em> арчилгаа</h1>
+              <p className="dm-hero__lead">Монгол жамц давс, башир цэцгийн ханд, гааны найрлагатай, спиртгүй ам зайлагч.</p>
+              <div className="dm-hero__actions">
+                <a className="dm-btn" href="#where" onClick={toWhere('demo-hero')}>Хаанаас авах</a>
+                <button type="button" className="dm-ghost" onClick={() => go(1)}>Найрлагатай танилцах</button>
+              </div>
+            </div>
             <button type="button" className="dm-cue" onClick={() => go(1)}><i aria-hidden="true" />Доош гүйлгэнэ үү</button>
             {gl === 'on' && (
               <p className={`dm-hint${turned ? ' is-done' : ''}`}><Swipe /> Савыг чирж эргүүлнэ үү</p>
@@ -834,7 +815,7 @@ export default function Demo() {
               </svg>
             ))}
             {CALLOUTS.map((c, i) => (
-              <div key={c.id} className={`dm-call dm-call--${c.id}${c.big ? '' : ' dm-call--chip'}`} ref={(el) => { callEls.current[i] = el; }}>
+              <div key={c.id} className={`dm-call dm-call--${c.id}${c.big ? '' : ' dm-call--chip'}${c.featured ? ' is-featured' : ''}`} ref={(el) => { callEls.current[i] = el; }}>
                 {c.big ? (
                   <>
                     <h3>{c.t[0]}{' '}<br />{c.t[1]}</h3>
