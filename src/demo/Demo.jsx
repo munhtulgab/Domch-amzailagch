@@ -13,12 +13,17 @@ const DOT_LABELS = ['Нүүр', 'Найрлага', 'Чанар', 'Гэрлий�
 const PHOTO = '/media/domch_bottles.webp';
 const FONT_HREF = 'https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&display=swap';
 
-// Same order and colours as the orbs in the 3D scene.
+// The full ingredient list from the label, in its order; same order and colours as the orbs in the 3D scene.
 const ING = [
-  { key: 'salt', name: 'Жамц давс', tag: 'Үрэвслийг намдаана', side: 'left', color: '#ff8fb6', pos: [-0.265, 0.19], img: '/media/ing-salt.webp' },
-  { key: 'mint', name: 'Гаа', tag: 'Сэрүүн амт өгнө', side: 'right', color: '#5cff9d', pos: [0.265, 0.19], img: '/media/ing-mint.webp' },
-  { key: 'clove', name: 'Башир цэцэг', tag: 'Эвгүй үнэрийг арилгана', side: 'left', color: '#ffad4d', pos: [-0.25, -0.21], img: '/media/ing-clove.webp' },
-  { key: 'water', name: 'Шүүсэн ус', tag: 'Спирт агуулаагүй', side: 'right', color: '#4fb8ff', pos: [0.25, -0.21], img: '/media/ing-water.svg' },
+  { key: 'water', name: 'Шүүсэн ус', tag: 'Спирт агуулаагүй', side: 'left', color: '#46dcff', pos: [-0.27, 0.235], img: '/media/ing-water.svg' },
+  { key: 'salt', name: 'Жамц давс', tag: 'Үрэвслийг намдаана', side: 'right', color: '#ff8fb6', pos: [0.27, 0.235], img: '/media/ing-salt.webp' },
+  {
+    key: 'clove', name: 'Хадаасан цэцгийн ханд', sub: '(башир цэцэг)', tag: 'Эвгүй үнэрийг арилгана', side: 'left', color: '#ffad4d',
+    pos: [-0.295, 0], img: '/media/ing-clove.webp',
+  },
+  { key: 'mint', name: 'Гаа', tag: 'Сэрүүн амт өгнө', side: 'right', color: '#5cff9d', pos: [0.295, 0], img: '/media/ing-mint.webp' },
+  { key: 'glycerin', name: 'Глицерин', tag: 'Чийгшүүлэгч', side: 'left', color: '#b892ff', pos: [-0.27, -0.235], img: '/media/ing-glycerin.svg' },
+  { key: 'blue', name: 'FD&C Blue No.1', tag: 'Өнгө оруулагч', side: 'right', color: '#3f6bff', pos: [0.27, -0.235], img: '/media/ing-blue.svg' },
 ];
 
 const PERKS = [
@@ -339,10 +344,10 @@ export default function Demo() {
         ING.forEach((ing, k) => {
           const el = orbEls.current[k];
           if (!el) return;
-          const x = (0.5 + ing.pos[0] * (thin ? 1.05 : 1)) * W;
-          const y = (0.5 - ing.pos[1] * (thin ? 1.15 : 1)) * H;
+          const x = (0.5 + ing.pos[0] * (thin ? 1.12 : 1)) * W;
+          const y = (0.5 - ing.pos[1] * (thin ? 1.13 : 1)) * H;
           el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
-          el.style.setProperty('--r', `${(thin ? 0.12 * W : 0.085 * H).toFixed(1)}px`);
+          el.style.setProperty('--r', `${(thin ? 0.095 * W : 0.066 * H).toFixed(1)}px`);
           el.style.opacity = '1';
         });
       }
@@ -533,7 +538,7 @@ export default function Demo() {
                           {n.id === 'ing'
                             ? ING.map((i) => (
                               <button key={i.key} type="button" onClick={() => showIngredient(i.key)}>
-                                <span className="dm-drop__dot" style={{ background: i.color, color: i.color }} />{i.name}
+                                <span className="dm-drop__dot" style={{ background: i.color, color: i.color }} />{i.name}{i.sub ? ` ${i.sub}` : ''}
                               </button>
                             ))
                             : products.map((p, i) => (
@@ -592,7 +597,7 @@ export default function Demo() {
             <div key={i.key} className="dm-orb" data-side={i.side} style={{ '--c': i.color }} ref={(el) => { orbEls.current[k] = el; }}>
               <img className="dm-orb__img" src={i.img} alt="" loading="lazy" />
               <span className="dm-orb__tag">{i.tag}</span>
-              <h3 className="dm-orb__name">{i.name}</h3>
+              <h3 className="dm-orb__name">{i.name}{i.sub && <small>{i.sub}</small>}</h3>
             </div>
           ))}
         </section>
@@ -649,7 +654,7 @@ export default function Demo() {
             <div className="dm-car__stage">
               {products.map((p, i) => {
                 const on = i === cur;
-                const x = (i - cur) * (cw + gap) - groupShift;
+                const x = (i - cur) * (cw + gap) + (panelBeside && i > cur ? pw + gap : 0) - groupShift;
                 const price = formatPrice(p.price);
                 return (
                   <article

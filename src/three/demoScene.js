@@ -15,7 +15,7 @@ export const SCENES = ['hero', 'ingredients', 'quality', 'light', 'details', 'pr
 const K = (b, o = {}) => ({ b, mist: 0, glow: 0, orbs: 0, cap: 0, ribbons: 0, lav: 0, ...o });
 const KEYS = {
   wide: [
-    K([0, -0.035, 0, -0.38, 0, 0, 1], { mist: 1 }),
+    K([0, -0.035, 0, -0.38, 0, 0, 0.9], { mist: 1 }),
     K([0, -0.02, 0, 0.32, 0, 0, 0.8], { glow: 1, orbs: 1 }),
     K([-0.015, -0.115, 0, 0.95, 0.05, 0, 0.8], { cap: 1 }),
     K([0, -0.03, 0, 2.55, 0.03, -0.16, 0.88], { ribbons: 1, lav: 0.15 }),
@@ -24,7 +24,7 @@ const KEYS = {
     K([0, -0.03, 0, 12.15, 0, 0, 0.76], { mist: 0.35 }),
   ],
   narrow: [
-    K([0, -0.115, 0, -0.38, 0, 0, 0.98], { mist: 1 }),
+    K([-0.2, -0.115, 0, -0.38, 0, 0, 0.8], { mist: 1 }),
     K([0, -0.01, 0, 0.32, 0, 0, 0.64], { glow: 1, orbs: 1 }),
     K([0, -0.005, 0, 0.95, 0.05, 0, 0.5], { cap: 1 }),
     K([0, -0.02, 0, 2.55, 0.03, -0.16, 0.76], { ribbons: 1, lav: 0.15 }),
@@ -34,13 +34,17 @@ const KEYS = {
   ],
 };
 
-// Ingredient orbs: where they float (share of the view, from the centre) and their glow.
+// Ingredient orbs, in label order read row by row: where they float (share of the view, from the centre) and their glow.
 export const ORBS = [
-  { key: 'salt', color: '#ff8fb6', wide: [-0.265, 0.19], narrow: [-0.27, 0.235] },
-  { key: 'mint', color: '#5cff9d', wide: [0.265, 0.19], narrow: [0.27, 0.235] },
-  { key: 'clove', color: '#ffad4d', wide: [-0.25, -0.21], narrow: [-0.27, -0.235] },
-  { key: 'water', color: '#4fb8ff', wide: [0.25, -0.21], narrow: [0.27, -0.235] },
+  { key: 'water', color: '#46dcff', wide: [-0.27, 0.235], narrow: [-0.3, 0.265] },
+  { key: 'salt', color: '#ff8fb6', wide: [0.27, 0.235], narrow: [0.3, 0.265] },
+  { key: 'clove', color: '#ffad4d', wide: [-0.295, 0], narrow: [-0.315, 0] },
+  { key: 'mint', color: '#5cff9d', wide: [0.295, 0], narrow: [0.315, 0] },
+  { key: 'glycerin', color: '#b892ff', wide: [-0.27, -0.235], narrow: [-0.3, -0.265] },
+  { key: 'blue', color: '#3f6bff', wide: [0.27, -0.235], narrow: [0.3, -0.265] },
 ];
+// Opening scene: the two sizes side by side in the headline's gap (offsets from its centre, share of the height).
+const PAIR = { big: -0.092, small: 0.118 };
 
 const NEON = new THREE.Color('#4cf2df');
 
@@ -267,7 +271,7 @@ export async function createDemoScene({ canvas, media = '/media/' }) {
   let H = 1;
   let aspect = 1;
   let narrow = false;
-  let heroShift = 0;
+  let heroPx = 0;
   const visH = (z) => 2 * (D - z) * tanH;
   const visW = (z) => visH(z) * aspect;
 
@@ -275,6 +279,9 @@ export async function createDemoScene({ canvas, media = '/media/' }) {
   const B = kit.build(BOTTLES.big);
   const b = B.b;
   scene.add(B.pivot);
+  // the 250 ml bottle joins it in the opening scene
+  const SM = kit.build(BOTTLES.small);
+  scene.add(SM.pivot);
   const halo = shellMat(HALO_FS, NEON, 0.04, 2.0, 2.2, THREE.BackSide);
   const skin = shellMat(RIM_FS, NEON, 0.0025, 4.5, 0, THREE.FrontSide);
   const outlined = [];
@@ -398,7 +405,7 @@ export async function createDemoScene({ canvas, media = '/media/' }) {
         c.scale.setScalar(0.95 + rand() * 0.2);
         content.add(c);
       }
-    } else {
+    } else if (o.key === 'water') {
       const mat = new THREE.MeshPhysicalMaterial({
         color: 0xbfe8ff, roughness: 0.02, metalness: 0, transparent: true, opacity: 0.78, clearcoat: 1, clearcoatRoughness: 0,
         envMapIntensity: 2.4, emissive: color, emissiveIntensity: 0.32, ior: 1.33,
@@ -413,11 +420,44 @@ export async function createDemoScene({ canvas, media = '/media/' }) {
         d.scale.setScalar(0.07 + rand() * 0.07);
         content.add(d);
       }
+    } else if (o.key === 'glycerin') {
+      // clear, syrupy blobs running together
+      const mat = new THREE.MeshPhysicalMaterial({
+        color: 0xf4eeff, roughness: 0.04, metalness: 0, transparent: true, opacity: 0.82, clearcoat: 1, clearcoatRoughness: 0,
+        envMapIntensity: 2.2, emissive: color, emissiveIntensity: 0.28,
+      });
+      [[0, -0.06, 0, 0.36], [0.26, 0.16, 0.05, 0.2], [-0.24, 0.12, -0.04, 0.17], [0.05, 0.36, 0.02, 0.11]].forEach(([x, y, zz, r]) => {
+        const m = new THREE.Mesh(bubbleGeo, mat);
+        m.position.set(x, y, zz);
+        m.scale.set(r * 1.08, r * 0.92, r);
+        content.add(m);
+      });
+      const drip = new THREE.Mesh(dropGeometry(), mat);
+      drip.rotation.z = Math.PI;
+      drip.position.set(0.02, -0.46, 0);
+      drip.scale.setScalar(0.13);
+      content.add(drip);
+    } else {
+      // FD&C Blue No.1: drops of deep blue colouring
+      const mat = new THREE.MeshPhysicalMaterial({
+        color: 0x2448ff, roughness: 0.06, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.04,
+        envMapIntensity: 1.8, emissive: color, emissiveIntensity: 0.35,
+      });
+      const drop = new THREE.Mesh(dropGeometry(), mat);
+      drop.scale.setScalar(0.4);
+      content.add(drop);
+      for (let i = 0; i < 6; i += 1) {
+        const d = new THREE.Mesh(bubbleGeo, mat);
+        const a = (i / 6) * Math.PI * 2 + 0.2;
+        d.position.set(Math.cos(a) * 0.6, (rand() - 0.5) * 0.75, Math.sin(a) * 0.38);
+        d.scale.setScalar(0.06 + rand() * 0.08);
+        content.add(d);
+      }
     }
     const bubble = new THREE.Mesh(bubbleGeo, shellMat(RIM_FS, color, 0, 2.6, 0.05, THREE.FrontSide));
     bubble.renderOrder = 8;
     group.add(bubble);
-    const nBits = 26;
+    const nBits = 20;
     const bits = new THREE.InstancedMesh(bitGeo, new THREE.MeshBasicMaterial({ color, toneMapped: false }), nBits);
     group.add(bits);
     const seeds = Array.from({ length: nBits }, () => {
@@ -525,8 +565,9 @@ export async function createDemoScene({ canvas, media = '/media/' }) {
     const u = smooth(clamp(p - i, 0, 1));
     const A = set[i];
     const Bk = set[j];
-    const ax = i === 0 && !narrow ? heroShift : A.b[0];
-    const bx = j === 0 && !narrow ? heroShift : Bk.b[0];
+    const heroX = (heroPx + PAIR.big * H) / W;
+    const ax = i === 0 && !narrow ? heroX : A.b[0];
+    const bx = j === 0 && !narrow ? heroX : Bk.b[0];
     const mix = (x, y) => x + (y - x) * u;
     return {
       b: A.b.map((v, n) => (n === 0 ? mix(ax, bx) : mix(v, Bk.b[n]))),
@@ -582,12 +623,33 @@ export async function createDemoScene({ canvas, media = '/media/' }) {
     const [bx, by, bz, yaw, tip, lean, sc] = k.b;
     const z = bz;
     const X = bx * visW(z);
-    const Y = by * visH(z) - (1 - eRise) * visH(0) * 0.55 + Math.sin(t * 1.1) * 0.012 * idle;
+    const Ybase = by * visH(z) - (1 - eRise) * visH(0) * 0.55;
+    const Y = Ybase + Math.sin(t * 1.1) * 0.012 * idle;
     B.pivot.position.set(X, Y, z);
     B.pivot.rotation.set(tip, yaw + (1 - eSpin) * -Math.PI * 2 + Math.sin(t * 0.5) * 0.06 * idle, lean);
     B.pivot.scale.setScalar(sc * (0.92 + 0.08 * eRise));
     const halfH = ((b.H * S) / 2) * sc;
     B.pivot.visible = Y + halfH > -visH(z) / 2 - 0.05;
+
+    // 250 ml: beside the big bottle in the opening scene (bottoms level), carried off stage after it
+    const hw = smooth(1 - clamp(pd, 0, 1));
+    const zS = 0.14;
+    const sSc = narrow ? 0.8 : 0.88;
+    const hS = ((SM.b.H * S) / 2) * sSc;
+    const ipS = reduce ? 1 : clamp((now - t0 - 260) / 2600, 0, 1);
+    const riseS = 1 - (1 - ipS) ** 3;
+    const heroSX = (narrow ? 0.215 : (heroPx + PAIR.small * H) / W) * visW(zS);
+    const heroSY = Ybase - halfH + hS - (1 - riseS) * visH(0) * 0.2 + Math.sin(t * 1.1 + 1.7) * 0.012 * idle;
+    const awayX = X + visW(zS) * 0.75;
+    const awayY = -visH(zS) * 0.95;
+    const Xs = awayX + (heroSX - awayX) * hw;
+    const Ys = awayY + (heroSY - awayY) * hw;
+    SM.pivot.visible = hw > 0.002;
+    SM.pivot.position.set(Xs, Ys, zS + (1 - hw) * 0.2);
+    SM.pivot.rotation.set(0, -0.12 + (1 - hw) * 1.1 + (1 - eSpin) * Math.PI * 2 + Math.sin(t * 0.5 + 1.7) * 0.06 * idle, (1 - hw) * 0.3);
+    SM.pivot.scale.setScalar(sSc * (0.92 + 0.08 * riseS) * (0.85 + 0.15 * hw));
+    // in the opening scene the mist gathers under both bottles
+    const mistX = X + ((Xs - X) / 2) * hw;
 
     // cap lifted off and turned
     const c = smooth(clamp(k.cap, 0, 1));
@@ -616,11 +678,11 @@ export async function createDemoScene({ canvas, media = '/media/' }) {
     if (mist.visible) {
       const baseY = Y - halfH;
       const spread = 1 + (1 - k.mist) * 0.8;
-      const w = narrow ? 0.62 : 1;
+      const w = narrow ? 0.62 : 1 + 0.25 * hw;
       puffs.forEach((p, i) => {
         const drift = reduce ? 0 : wrap(p.drift * t + 1.1, 2.2) - 1.1;
         const x = (p.x * (0.45 + 0.55 * eRise) + Math.sin(t * 0.07 + p.ph) * 0.12 + drift * 0.25) * spread * w;
-        p.s.position.set(X + x, baseY + p.y + Math.sin(t * 0.13 + p.ph) * 0.025 - (1 - k.mist) * 0.12, p.z);
+        p.s.position.set(mistX + x, baseY + p.y + Math.sin(t * 0.13 + p.ph) * 0.025 - (1 - k.mist) * 0.12, p.z);
         p.s.scale.setScalar(p.size * (0.55 + 0.45 * eRise) * (narrow ? 0.8 : 1) * (1 + (1 - k.mist) * 0.4));
         p.s.material.rotation = p.rot + p.vr * t;
         p.s.material.opacity = p.op * m * (i % 3 === 0 ? 0.9 : 1);
@@ -628,18 +690,18 @@ export async function createDemoScene({ canvas, media = '/media/' }) {
     }
     const fl = Math.max(m * 0.55, 0);
     floor.visible = fl > 0.002;
-    floor.position.set(X, Y - halfH + 0.004, z - 0.02);
-    floor.scale.set(1.5 * sc, 0.5 * sc, 1);
+    floor.position.set(mistX, Y - halfH + 0.004, z - 0.02);
+    floor.scale.set((1.5 + hw * 0.9) * sc, 0.5 * sc, 1);
     floor.material.opacity = fl;
 
     // orbs
     const ow = clamp(k.orbs, 0, 1);
     const orbAnchors = [];
     orbs.forEach((orb) => {
-      const local = clamp(ow * 1.35 - orb.idx * 0.1, 0, 1);
+      const local = clamp(ow * (1 + 0.06 * (orbs.length - 1)) - orb.idx * 0.06, 0, 1);
       const pos = orb.o[narrow ? 'narrow' : 'wide'];
       const oz = 0.18;
-      const R = narrow ? 0.12 * visW(oz) : 0.085 * visH(oz);
+      const R = narrow ? 0.095 * visW(oz) : 0.066 * visH(oz);
       const tx = pos[0] * visW(oz);
       const ty = pos[1] * visH(oz);
       const fly = smooth(local);
@@ -662,7 +724,8 @@ export async function createDemoScene({ canvas, media = '/media/' }) {
         orb.bits.setMatrixAt(j, mtx);
       });
       orb.bits.instanceMatrix.needsUpdate = true;
-      orbAnchors.push({ key: orb.o.key, wx: tx, wy: ty, R, local, oz });
+      // labels ride with the orb as it flies out to its place
+      orbAnchors.push({ key: orb.o.key, wx: orb.group.position.x, wy: orb.group.position.y, R: Math.max(s, R * 0.4), local, oz });
     });
 
     // ribbons
@@ -759,9 +822,9 @@ export async function createDemoScene({ canvas, media = '/media/' }) {
     resize() {
       layout();
     },
-    /** Desktop hero: move the bottle into the gap of the headline (pixels from the centre). */
+    /** Desktop hero: put the bottles into the gap of the headline (its centre, pixels from the screen centre). */
     setHeroShift(px) {
-      heroShift = W ? px / W : 0;
+      heroPx = px;
     },
     pulse(keyName) {
       const orb = orbs.find((o) => o.o.key === keyName);
