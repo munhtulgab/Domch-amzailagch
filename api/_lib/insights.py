@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Query
 
 from . import places
 from .ai import WORD, _fold
-from .common import ago, require_admin
+from .common import ago, primary_url, require_admin
 from .db import DBError, get_db
 
 TOPICS = [
@@ -24,7 +24,7 @@ TOPICS = [
     ("where", "Хаанаас авах, байршил", ()),
     ("order", "Захиалах, авмаар байна", ("захиал", "zahial", "zaxial", "авъя", "авья", "авий", "awie", "awii", "abii", "aviy",
                                          "авмаар", "awmaar", "avmaar", "ширхэг")),
-    ("delivery", "Хүргэлт", ("хүргэ", "хүргүүл", "hurge", "hvrge", "delivery")),
+    ("delivery", "Хүргэлт", ("хүргэ", "хүргүүл", "hurge", "hvrge", "khurge", "delivery", "доставк", "dostavk")),
     ("usage", "Хэрэглэх заавар", ("заавар", "хэрэглэ", "хэрэглээ", "нулим", "зайлах", "зайлж", "удаа", "өдөрт", "zaavar",
                                  "hereglee", "hereglex", "hereglh")),
     ("ingredients", "Орц, найрлага", ("найрлага", "орц", "спирт", "давс", "гаа", "башир", "глицерин", "nairlaga")),
@@ -56,8 +56,25 @@ QUICK_WHERE = {_fold(w) for w in ("орон нутаг", "өөр байршил"
 MEDIA = re.compile(r"^\[[^\]]*(хавсралт|стикер)\]$|^👍$")
 # Mongolian numbers: 8 digits starting 5–9 (mobile and Ulaanbaatar lines), optionally after +976
 PHONE = re.compile(r"(?<![\d.,])(?:\+?976[\s-]?)?([5-9]\d{3})[\s-]?(\d{4})(?![\d.,]|\s?(?:₮|төг|tug|мл|ml|гр|gr))")
-ASK_PHONE = ("🤝 Хамтран ажиллах хүсэлтийг тань хүлээн авлаа. Манай хариуцсан ажилтан тантай холбогдохын тулд "
-             "утасны дугаараа энд бичээд үлдээнэ үү.")
+ASK_PHONE = ("🤝 Хамтран ажиллах саналд тань баярлалаа! Доорх холбоосоор орж «Хамтран ажиллах хүсэлт»-ийг бөглөж "
+             "илгээнэ үү — манай хариуцсан ажилтан тантай холбогдоно:\n{link}\n\n"
+             "Эсвэл утасны дугаараа энд бичээд үлдээж болно.")
+PARTNER_KINDS = ("pharmacy", "clinic", "corporate", "creator")
+
+
+def partner_link(site: str, kind: str = "") -> str:
+    """The site address that opens the «Хамтран ажиллах хүсэлт» form straight away (see src/Landing.jsx)."""
+    kind = kind if kind in PARTNER_KINDS else "pharmacy"
+    return f"{(site or primary_url()).rstrip('/')}/?partner={kind}#partner"
+
+
+def ask_partner(site: str, kind: str = "") -> str:
+    return ASK_PHONE.format(link=partner_link(site, kind))
+
+
+def partner_kind(db, psid: str, channel: str) -> str:
+    row = db.one("SELECT kind FROM partner_requests WHERE source_ref = ?", (_ref(psid, channel),))
+    return (row or {}).get("kind") or ""
 THANK_PHONE = "Баярлалаа! Утасны дугаарыг тань ({phone}) хүлээн авлаа. Манай ажилтан удахгүй холбогдоно. 🙏"
 
 
@@ -234,6 +251,17 @@ def on_message(db, psid: str, text: str, channel: str) -> str:
     details["asked_phone"] = "1"
     db.run("UPDATE partner_requests SET details = ? WHERE id = ?", (json.dumps(details, ensure_ascii=False), row["id"]))
     return "ask"
+
+
+DELIVERY_LINKS = (("e-Монос", "https://www.emonos.mn/category?search=%D0%94%D0%BE%D0%BC%D1%87"),
+                  ("Health point", "https://hpoint.mn/categories/0?q=%D0%94%D0%BE%D0%BC%D1%87"))
+DELIVERY = ("🚚 ДОМЧ-ийг ойролцоох эмийн сан, дэлгүүрээс авах боломжтой: {where}\n\n"
+            "Эсвэл e-Монос болон Health point эмийн сангийн онлайн захиалгыг ашиглана уу:\n"
+            + "\n".join(f"• {name}: {url}" for name, url in DELIVERY_LINKS))
+
+
+def delivery_reply(site: str) -> str:
+    return DELIVERY.format(where=f"{(site or primary_url()).rstrip('/')}/#where")
 
 
 # ---------------------------------------------------------------- overview

@@ -886,15 +886,49 @@ def test_chat_partner_links_to_site_request_with_same_phone(client, fb):
     assert len(items) == 1 and items[0]["source_ref"] == "messenger:z"
 
 
+ASK_START = "🤝 Хамтран ажиллах саналд"
+
+
+def test_partner_form_link_opens_the_right_form():
+    from _lib import insights
+
+    assert insights.partner_link("https://domch.gem.mn/", "clinic") == "https://domch.gem.mn/?partner=clinic#partner"
+    assert insights.partner_link("https://domch.gem.mn", "nonsense").endswith("/?partner=pharmacy#partner")
+    assert insights.ask_partner("https://x.mn", "creator").startswith(ASK_START) and "https://x.mn/?partner=creator#partner" in \
+        insights.ask_partner("https://x.mn", "creator")
+
+
+def test_delivery_question_gets_online_pharmacy_links(client, fb):
+    from _lib import insights
+
+    connect(client)
+    for i, text in enumerate(["Хүргэлт байгаа юу?", "hurgelt bga yu", "Гэрт хүргүүлж болох уу"]):
+        before = len(sent_texts(fb))
+        post_event(client, event(psid=f"dl{i}", text=text, mid=f"dl{i}"))
+        sent = [m.get("text", "") for m in sent_texts(fb)][before:]
+        assert len(sent) == 1, text
+        reply = sent[0]
+        assert "Эсвэл e-Монос болон Health point эмийн сангийн онлайн захиалгыг ашиглана уу" in reply
+        assert "https://www.emonos.mn/category?search=%D0%94%D0%BE%D0%BC%D1%87" in reply
+        assert "https://hpoint.mn/categories/0?q=%D0%94%D0%BE%D0%BC%D1%87" in reply and "/#where" in reply
+    # asked again right away: not repeated
+    before = len(sent_texts(fb))
+    post_event(client, event(psid="dl0", text="Хүргэлт хийдэг үү", mid="dl9"))
+    assert insights.delivery_reply("") not in [m.get("text", "") for m in sent_texts(fb)][before:]
+    assert "delivery" in insights.classify("Доставка есть?")
+
+
 def test_chat_partner_request_asks_for_phone_once_and_saves_it(client, fb):
     from _lib import insights
 
     connect(client)
     post_event(client, event(psid="w", text="Бөөний үнээр авч зарах гэсэн юм", mid="w1"))
     texts = [m.get("text", "") for m in sent_texts(fb)]
-    assert texts.count(insights.ASK_PHONE) == 1
+    asks = [t for t in texts if t.startswith(ASK_START)]
+    assert len(asks) == 1 and texts == asks  # only the request form: no separate AI answer to a partnership offer
+    assert "/?partner=pharmacy#partner" in asks[0] and "утасны дугаараа" in asks[0]
     post_event(client, event(psid="w", text="Гэрээт борлуулагч болох уу", mid="w2"))
-    assert [m.get("text", "") for m in sent_texts(fb)].count(insights.ASK_PHONE) == 1  # asked once only
+    assert len([m for m in sent_texts(fb) if m.get("text", "").startswith(ASK_START)]) == 1  # asked once only
     before = len(sent_texts(fb))
     post_event(client, event(psid="w", text="9911 2233", mid="w3"))
     after = [m.get("text", "") for m in sent_texts(fb)][before:]
@@ -910,7 +944,7 @@ def test_chat_partner_with_phone_in_first_message_is_not_asked(client, fb):
 
     connect(client)
     post_event(client, event(psid="v", text="Эмийн сандаа нийлүүлмээр байна, утас 8811-2233", mid="v1"))
-    assert insights.ASK_PHONE not in [m.get("text", "") for m in sent_texts(fb)]
+    assert not [m for m in sent_texts(fb) if m.get("text", "").startswith(ASK_START)]
     assert dbmod.get_db().one("SELECT phone FROM partner_requests WHERE source_ref = 'messenger:v'")["phone"] == "8811-2233"
 
 

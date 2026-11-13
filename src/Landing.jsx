@@ -7,7 +7,7 @@ import { Where } from './components/Where.jsx';
 import { Reviews } from './components/Reviews.jsx';
 import { Footer } from './components/Footer.jsx';
 import { Dialogs } from './components/Dialogs.jsx';
-import { FALLBACK } from './data/static.js';
+import { FALLBACK, PARTNER_KINDS } from './data/static.js';
 import { api, track } from './lib/api.js';
 import { scrollToId } from './lib/util.js';
 import { Chat, Pin } from './components/Icons.jsx';
@@ -89,6 +89,16 @@ export default function Landing() {
   useEffect(() => {
     const id = window.location.hash.replace('#', '');
     if (id && document.getElementById(id)) setTimeout(() => scrollToId(id), 300);
+    // «?partner=clinic#partner» (the link the chat bot sends): open the «Хамтран ажиллах хүсэлт» form straight away
+    const params = new URLSearchParams(window.location.search);
+    const kind = params.get('partner');
+    if (kind !== null || id === 'partner-form') {
+      const known = PARTNER_KINDS.some((k) => k.id === kind);
+      setTimeout(() => setDialog({ type: 'partner', props: { kind: known ? kind : 'pharmacy' } }), 400);
+      params.delete('partner');
+      const rest = params.toString();
+      window.history.replaceState(null, '', `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash}`);
+    }
   }, []);
 
   const actions = useMemo(() => ({

@@ -877,6 +877,21 @@ def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at,
             decide(db, psid, {LIKE_REPLY: "Like-д хариулсан.", FILE_REPLY: "Хавсралтыг хүлээн авснаа мэдэгдсэн.",
                               STICKER_REPLY: "Стикерт хариулсан.", HELP_REPLY: "Юугаар туслахыг асуусан."}[reply])
         return
+    # «Хүргэлт байгаа юу?»: the branches page and the pharmacies that take online orders (a fixed, exact answer);
+    # a message that also asks something else goes to the AI, whose rules carry the same links
+    from . import insights
+
+    topics = set(insights.classify(clean))
+    if "delivery" in topics and not topics - {"delivery", "where", "greeting", "other"}:
+        reply = insights.delivery_reply(site)
+        if replied_lately(db, psid, reply):
+            decide(db, psid, "Саяхан хүргэлтийн мэдээлэл илгээсэн тул давтсангүй.")
+        else:
+            send_text(db, cfg, psid, reply, kind="auto", quick_replies=faq_buttons(faq) if first else None)
+            decide(db, psid, "Хүргэлтийн асуултад онлайн захиалгын холбоосууд илгээсэн.")
+        if not (stocked and "where" in topics):
+            return  # «хүргэлттэй юу, Баянзүрхэд хаана байна»: the branches there follow below
+        first = False
     # «Дарханд хаанаас авах вэ?», or «Баянзүрх» right after we asked which district: the branches there,
     # straight from the branch list (exact, and works even when the AI is unavailable)
     wants = stocked and places.where_intent(text)
@@ -1032,13 +1047,14 @@ def handle_event(db, cfg: dict, event: dict, site: str = "", channel: str = "mes
         partner = ""
     only_number = partner == "thanks" and not LETTERS.search(insights.PHONE.sub("", text))
     try:
-        if not only_number:  # a bare phone number needs no AI answer, only the thanks below
+        # a bare phone number needs no AI answer, only the thanks below; a partnership offer gets the request form
+        if not only_number and partner != "ask":
             auto_respond(db, cfg, psid, text, payload, contact.get("welcomed_at"), previous.get("at"), site=site,
                          attachment=attachment, sticker=sticker, received_at=when)
         if partner and not ai_paused_until(db, psid):  # staff talking in this chat: leave it to them
             if partner == "ask":
-                send_text(db, cfg, psid, insights.ASK_PHONE, kind="auto")
-                decide(db, psid, "Хамтын ажиллагааны хүсэлтэд утасны дугаар асуусан.")
+                send_text(db, cfg, psid, insights.ask_partner(site, insights.partner_kind(db, psid, channel)), kind="auto")
+                decide(db, psid, "Хамтран ажиллах санал илэрсэн: хүсэлтийн маягтын холбоос илгээж, утасны дугаар асуусан.")
             else:
                 phone = insights.find_phone([text])
                 send_text(db, cfg, psid, insights.THANK_PHONE.format(phone=insights.pretty_phone(phone)), kind="auto")
