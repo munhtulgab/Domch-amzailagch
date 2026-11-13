@@ -3,9 +3,9 @@ import Landing from './Landing.jsx';
 
 const RELOAD_KEY = 'domch_admin_reloaded';
 
-// After a new release the old admin file no longer exists, so a page opened before it fails to load it.
+// After a new release the old chunk files no longer exist, so a page opened before it fails to load them.
 // One automatic reload fetches the new version.
-const Admin = lazy(() => import('./admin/Admin.jsx')
+const reloading = (load) => () => load()
   .then((mod) => {
     try {
       sessionStorage.removeItem(RELOAD_KEY);
@@ -27,7 +27,36 @@ const Admin = lazy(() => import('./admin/Admin.jsx')
       return new Promise(() => {});
     }
     throw err;
-  }));
+  });
+
+const Admin = lazy(reloading(() => import('./admin/Admin.jsx')));
+const Demo = lazy(reloading(() => import('./demo/Demo.jsx')));
+
+/** /demo: if the page cannot start, point to the main site instead of an empty screen. */
+class DemoBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { failed: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error) {
+    console.error('[demo]', error);
+  }
+
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div className="demo-crash" role="alert">
+        <p>Хуудсыг ачаалж чадсангүй.</p>
+        <a href="/">DOMCH үндсэн сайт руу очих</a>
+      </div>
+    );
+  }
+}
 
 /** Shows what went wrong instead of an empty page, with a way to try again. */
 class AdminBoundary extends Component {
@@ -86,6 +115,15 @@ export default function App() {
           <Admin />
         </Suspense>
       </AdminBoundary>
+    );
+  }
+  if (path === '/demo') {
+    return (
+      <DemoBoundary>
+        <Suspense fallback={<div className="demo-loading" />}>
+          <Demo />
+        </Suspense>
+      </DemoBoundary>
     );
   }
   return <Landing />;

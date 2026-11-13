@@ -635,6 +635,10 @@ html.menu-open .msgr, html.modal-open .msgr { display: none; }
 .toast--error { background: var(--danger-bg); color: var(--danger); border: 1px solid var(--danger); }
 
 .admin-loading { padding: 40px; text-align: center; color: var(--muted); }
+.demo-loading { position: fixed; inset: 0; background: #030405; }
+.demo-crash { position: fixed; inset: 0; display: grid; place-content: center; gap: 12px; text-align: center; background: #030405; color: #f4f7fb; font-family: var(--body); }
+.demo-crash p { margin: 0; }
+.demo-crash a { color: #4cf2df; }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }

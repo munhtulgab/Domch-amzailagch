@@ -42,6 +42,10 @@
     {
       "source": "/admin/(.*)",
       "destination": "/admin.html"
+    },
+    {
+      "source": "/demo",
+      "destination": "/demo.html"
     }
   ],
   "headers": [
@@ -105,6 +109,24 @@
     },
     {
       "source": "/admin/:path*",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    },
+    {
+      "source": "/demo",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    },
+    {
+      "source": "/demo.html",
       "headers": [
         {
           "key": "Cache-Control",
