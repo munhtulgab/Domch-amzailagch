@@ -682,9 +682,16 @@ export async function createDemoScene({ canvas, media = '/media/' }) {
     v.project(camera);
     return { x: ((v.x + 1) / 2) * W, y: ((1 - v.y) / 2) * H };
   };
+  // points on the big bottle the details callouts draw their lines to (front is +z; right side: angle below π/2)
   const capPoint = new THREE.Vector3(0, yWorld(b, (b.cap.y0 + b.cap.y1) / 2), b.cap.rBot * S);
-  const labelPoint = surfacePoint(b, 860, Math.PI / 2).p;
-  const bodyPoint = surfacePoint(b, 1250, Math.PI / 2 + 0.6).p;
+  const POINTS = {
+    label: surfacePoint(b, 860, Math.PI / 2).p, // main label
+    friendly: surfacePoint(b, 440, Math.PI / 2 - 0.42).p, // «ЭЭЛТЭЙ БҮТЭЭГДЭХҮҮН» band on the upper label
+    alcohol: surfacePoint(b, 612, Math.PI / 2 + 0.55).p, // the solution, between the labels
+    iso: surfacePoint(b, 1000, Math.PI / 2 - 0.45).p, // main label, right
+    lab: surfacePoint(b, 1250, Math.PI / 2 + 0.6).p, // lower body, left
+    sediment: surfacePoint(b, 1395, Math.PI / 2 - 0.2).p, // the bottom, where minerals settle
+  };
 
   /**
    * Draw one frame for the (eased) scene position pd.
@@ -885,12 +892,11 @@ export async function createDemoScene({ canvas, media = '/media/' }) {
       return { key: a.key, x: p.x, y: p.y, r: (a.R / visH(a.oz)) * H, v: a.local };
     });
     B.pivot.updateMatrixWorld(true);
-    const cap = toScreen(B.cap.localToWorld(v3.copy(capPoint)));
-    const label = toScreen(B.inner.localToWorld(v3.copy(labelPoint)));
-    const body = toScreen(B.inner.localToWorld(v3.copy(bodyPoint)));
+    const points = { cap: toScreen(B.cap.localToWorld(v3.copy(capPoint))) };
+    Object.entries(POINTS).forEach(([id, pt]) => { points[id] = toScreen(B.inner.localToWorld(v3.copy(pt))); });
     const top = toScreen(v3.set(X, Y + halfH, z));
     const bottom = toScreen(v3.set(X, Y - halfH, z));
-    return { orbs: orbsOut, cap, label, body, bottle: { x: (top.x + bottom.x) / 2, top: top.y, bottom: bottom.y } };
+    return { orbs: orbsOut, points, bottle: { x: (top.x + bottom.x) / 2, top: top.y, bottom: bottom.y } };
   }
 
   return {

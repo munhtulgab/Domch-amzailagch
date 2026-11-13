@@ -1,12 +1,17 @@
 /* /demo: fixed stage (background → text behind the bottle → WebGL → UI) over seven snap stops.
    "Narrow" layouts (portrait screens) follow the same switch as the 3D scene: aspect ratio below 9/10. */
 html.dm-on {
+  /* jumps (an address with #where, the dots) are animated by the page itself; the browser's own smooth
+     scrolling would fly a deep link through every scene first */
+  scroll-behavior: auto;
   scroll-snap-type: y mandatory;
   overscroll-behavior-y: none;
   background: #030405;
   color-scheme: dark;
 }
 html.dm-on body { background: #030405; color: #f4f7fb; }
+/* inside the store finder the page scrolls freely (it is taller than the screen) */
+html.dm-on.dm-free { scroll-snap-type: y proximity; }
 
 .dm {
   --ink: #f4f7fb;
@@ -34,12 +39,12 @@ html.dm-on body { background: #030405; color: #f4f7fb; }
   z-index: 2; margin: auto; height: 58vh; width: auto; max-width: 70vw; object-fit: contain; pointer-events: none;
   top: 4vh; transition: opacity 0.5s ease;
 }
-.dm-front { z-index: 3; pointer-events: none; }
+.dm-front { z-index: 4; pointer-events: none; }
 .dm-track { position: relative; }
 .dm-stop { height: 100vh; height: 100svh; scroll-snap-align: start; scroll-snap-stop: always; touch-action: pan-y pinch-zoom; }
 /* the bottles stand in the product cards: there the canvas is drawn over the page (it never takes the pointer);
    an open menu goes back on top */
-.dm.is-cards .dm-gl { z-index: 4; }
+.dm.is-cards .dm-gl { z-index: 5; }
 .dm.is-cards.menu-open .dm-gl { z-index: 2; }
 /* turning by hand */
 html.dm-grab { cursor: grab; }
@@ -229,8 +234,20 @@ html.dm-grabbing, html.dm-grabbing * { cursor: grabbing !important; user-select:
 }
 .dm-call h3 { margin: 0; font: 600 clamp(22px, 2.1vw, 34px)/1.04 var(--cond); letter-spacing: 0.02em; text-transform: uppercase; }
 .dm-call p { margin: 10px 0 0; font-size: 13.5px; line-height: 1.5; color: rgba(255, 255, 255, 0.9); }
-.dm-call--cap { left: 64%; top: 25%; }
-.dm-call--label { left: 9%; top: 58%; }
+/* right column: cap, «Ээлтэй», ISO, sediment; left column (right edges aligned): alcohol, label, lab */
+.dm-call--cap { left: 64%; top: 14%; }
+.dm-call--friendly { left: 64%; top: 40%; }
+.dm-call--iso { left: 64%; top: 53.5%; }
+.dm-call--sediment { left: 64%; top: 68%; }
+.dm-call--alcohol { right: 66%; top: 31%; }
+.dm-call--label { right: 66%; top: 44.5%; }
+.dm-call--lab { right: 66%; top: 70%; }
+.dm-call--chip { display: flex; align-items: center; gap: 12px; width: auto; max-width: min(330px, 30vw); padding: 11px 18px 11px 11px; border-radius: 14px; }
+.dm-call--chip h3 { font-size: clamp(15px, 1.3vw, 20px); line-height: 1.15; }
+.dm-call__ico {
+  flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.24); border: 1px solid rgba(255, 255, 255, 0.65); color: #fff;
+}
 
 /* ---- 6 · products: cards, a detail panel, arrows ---- */
 .dm-s--products { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 34px; padding: 92px 0 74px; }
@@ -327,11 +344,33 @@ html.dm-grabbing, html.dm-grabbing * { cursor: grabbing !important; user-select:
 .dm.is-light .dm-logo span { color: #d9fffb; text-shadow: 0 0 16px rgba(30, 200, 190, 0.9), 0 1px 10px rgba(52, 36, 130, 0.3); }
 .dm-call h3, .dm-call p { text-shadow: 0 1px 14px rgba(52, 36, 130, 0.35); }
 
+/* ---- the store finder after the scenes: the main site's section on its own page colours ---- */
+.dm-where {
+  position: relative; z-index: 3; min-height: 100vh; scroll-snap-align: start;
+  background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 17px; line-height: 1.6;
+  box-shadow: 0 -30px 60px rgba(0, 0, 0, 0.35);
+}
+.dm-where .sec { padding-top: clamp(112px, 11vw, 150px); }
+.dm-where__foot { margin: 0; padding: 0 20px 96px; text-align: center; font-size: 13px; color: var(--muted); }
+.dm-where__foot a { color: var(--link); }
+.dm.is-where .dm-head {
+  background: rgba(8, 12, 14, 0.86); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08); text-shadow: none;
+}
+/* over the finder the scene dots would sit on its buttons; the header carries the navigation there */
+.dm-dots { transition: opacity 0.3s; }
+.dm.is-where .dm-dots { opacity: 0; pointer-events: none; }
+
 /* ---- always on screen ---- */
-.dm-dots { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); display: flex; gap: 6px; pointer-events: auto; }
-.dm-dots button { position: relative; width: 18px; height: 3px; padding: 0; border: 0; border-radius: 2px; background: rgba(255, 255, 255, 0.3); cursor: pointer; transition: width 0.35s, background 0.35s; }
-.dm-dots button::before { content: ''; position: absolute; inset: -10px -3px; }
-.dm-dots button[aria-current='true'] { width: 32px; background: #fff; box-shadow: 0 0 8px rgba(255, 255, 255, 0.6); }
+.dm-dots { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); display: flex; gap: 2px; pointer-events: auto; }
+/* the bars grow by transform, not width: a layout change mid-scroll would make the browser re-snap */
+.dm-dots button { position: relative; width: 26px; height: 3px; padding: 0; border: 0; background: none; cursor: pointer; }
+.dm-dots button::before { content: ''; position: absolute; inset: -10px -1px; }
+.dm-dots button::after {
+  content: ''; position: absolute; inset: 0; border-radius: 2px; background: rgba(255, 255, 255, 0.3);
+  transform: scaleX(0.62); transition: transform 0.35s, background 0.35s, box-shadow 0.35s;
+}
+.dm-dots button[aria-current='true']::after { transform: scaleX(1); background: #fff; box-shadow: 0 0 8px rgba(255, 255, 255, 0.6); }
 .dm-chat {
   position: absolute; right: var(--pad); bottom: 22px; display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #8ffaff, #1fc6e6 70%); color: #fff; pointer-events: auto;
@@ -377,11 +416,22 @@ html.dm-grabbing, html.dm-grabbing * { cursor: grabbing !important; user-select:
   .dm-perks strong { font-size: 10px; letter-spacing: 0.06em; }
   .dm-perks small { font-size: 11px; }
 
-  .dm-call { width: min(240px, 64vw); padding: 14px 16px; }
-  .dm-call h3 { font-size: 21px; }
-  .dm-call p { font-size: 12px; }
-  .dm-call--cap { left: auto; right: 16px; top: 13vh; }
-  .dm-call--label { left: 16px; top: auto; bottom: 12vh; }
+  /* phones: short labels only, three above the bottle and four below, each on the side of its point */
+  .dm-call, .dm-call--chip {
+    width: calc(50% - 22px); max-width: none; padding: 9px 11px; gap: 9px; border-radius: 12px;
+    display: flex; align-items: center;
+  }
+  .dm-call h3 { font-size: 14px; line-height: 1.12; }
+  .dm-call h3 br { display: none; }
+  .dm-call p { display: none; }
+  .dm-call__ico { width: 28px; height: 28px; }
+  .dm-call--cap { left: 16px; right: auto; top: max(68px, 9vh); }
+  .dm-call--friendly { left: auto; right: 16px; top: max(68px, 9vh); }
+  .dm-call--alcohol { left: 16px; right: auto; top: calc(max(68px, 9vh) + 60px); }
+  .dm-call--label { left: 16px; right: auto; top: auto; bottom: calc(14vh + 68px); }
+  .dm-call--lab { left: 16px; right: auto; top: auto; bottom: 14vh; }
+  .dm-call--iso { left: auto; right: 16px; top: auto; bottom: calc(14vh + 68px); }
+  .dm-call--sediment { left: auto; right: 16px; top: auto; bottom: 14vh; }
 
   .dm-s--products { justify-content: flex-start; gap: 14px; padding: 80px 0 64px; }
   .dm-car { height: auto; --ch: min(300px, 38vh); padding-top: calc(var(--ch) + 6px); }

@@ -5,11 +5,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, track } from '../lib/api.js';
 import { formatPrice } from '../lib/util.js';
 import { FALLBACK } from '../data/static.js';
-import { Adult, Arrow, Chat, Chevron, Close, Flask, Menu, NoAlcohol, Phone, Pin, Shield, Swipe } from '../components/Icons.jsx';
+import { Adult, Arrow, CareDrop, Chat, Chevron, Close, Flask, Menu, NoAlcohol, Phone, Pin, Shield, Swipe } from '../components/Icons.jsx';
+import { Where } from '../components/Where.jsx';
+import { Dialogs } from '../components/Dialogs.jsx';
 import './demo.css';
 
 const IDS = ['hero', 'ingredients', 'quality', 'light', 'details', 'products', 'finale'];
-const DOT_LABELS = ['Нүүр', 'Найрлага', 'Чанар', 'Гэрлийн тууз', 'Нарийн зүйлс', 'Бүтээгдэхүүн', 'Төгсгөл'];
+// after the seven scenes the page scrolls on into «Хаанаас авах вэ?», the same store finder as the main site
+const WHERE = IDS.length;
+const ALL_IDS = [...IDS, 'where'];
+const DOT_LABELS = ['Нүүр', 'Найрлага', 'Чанар', 'Гэрлийн тууз', 'Нарийн зүйлс', 'Бүтээгдэхүүн', 'Төгсгөл', 'Хаанаас авах вэ?'];
 const PHOTO = '/media/domch_bottles.webp';
 const FONT_HREF = 'https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&display=swap';
 
@@ -33,9 +38,26 @@ const PERKS = [
   { Icon: Adult, t: 'Гэр бүлийн хэрэглээ', d: 'Насанд хүрэгч 25 мл · хүүхэд 15 мл' },
 ];
 
+// Minerals settling at the bottom of a flask.
+const Sediment = ({ size = 16 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M7 3h10M9 3v5L5.6 18.6A2 2 0 0 0 7.5 21h9a2 2 0 0 0 1.9-2.4L15 8V3" />
+    <circle cx="9.6" cy="17.6" r="1" fill="currentColor" stroke="none" />
+    <circle cx="12.6" cy="18.2" r="1" fill="currentColor" stroke="none" />
+    <circle cx="14.8" cy="16.9" r="1" fill="currentColor" stroke="none" />
+    <circle cx="11.3" cy="15.8" r="1" fill="currentColor" stroke="none" />
+  </svg>
+);
+
+// Details scene: two large callouts with a line of text and five short ones, each drawn to its place on the bottle.
 const CALLOUTS = [
-  { id: 'cap', t: ['Нарийн зүйлсэд', 'анхаарсан'], d: 'Эргэдэг таг · тасалгааны хэмд 12 сар хадгална' },
-  { id: 'label', t: ['Жамц давсны', 'уусмал'], d: 'Найрлага, хэрэглэх заавар шошгон дээр' },
+  { id: 'cap', big: true, t: ['Нарийн зүйлсэд', 'анхаарсан'], d: 'Эргэдэг таг · тасалгааны хэмд 12 сар хадгална' },
+  { id: 'friendly', t: 'Ээлтэй бүтээгдэхүүн', Icon: CareDrop },
+  { id: 'alcohol', t: 'Спирт агуулаагүй', Icon: NoAlcohol },
+  { id: 'label', big: true, t: ['Жамц давсны', 'уусмал'], d: 'Найрлага, хэрэглэх заавар шошгон дээр' },
+  { id: 'iso', t: 'ISO 9001 стандарт', Icon: Shield },
+  { id: 'lab', t: 'Лабораторийн хяналт', Icon: Flask },
+  { id: 'sediment', t: 'Эрдсийн тунадас үүсэж болно', Icon: Sediment },
 ];
 
 const NAV = [
@@ -43,7 +65,7 @@ const NAV = [
   { id: 'ing', label: 'Найрлага', scene: 1, on: [1], menu: true },
   { id: 'quality', label: 'Онцлог', scene: 2, on: [2, 3, 4] },
   { id: 'products', label: 'Бүтээгдэхүүн', scene: 5, on: [5], menu: true },
-  { id: 'where', label: 'Хаанаас авах', href: '/#where' },
+  { id: 'where', label: 'Хаанаас авах', scene: WHERE, on: [WHERE] },
 ];
 
 // Background per scene: [top-left, bottom-right, glow].
@@ -105,6 +127,8 @@ export default function Demo() {
   const [active, setActive] = useState(0);
   const [gl, setGl] = useState('wait');
   const [turned, setTurned] = useState(false);
+  const [dialog, setDialog] = useState(null);
+  const [toasts, setToasts] = useState([]);
   const [card, setCard] = useState(null);
   const [panel, setPanel] = useState(false);
   const [menu, setMenu] = useState(null);
@@ -128,9 +152,12 @@ export default function Demo() {
   const pdRef = useRef(0);
   const activeRef = useRef(0);
   const rootRef = useRef(null);
+  const whereRef = useRef(null);
   const viewEls = useRef({});
   const resized = useRef(false);
   const openedOnce = useRef(false);
+  // the address is only rewritten once the page has been put where its own address asked
+  const hashReady = useRef(false);
 
   // ---- data ----
   useEffect(() => {
@@ -188,6 +215,9 @@ export default function Demo() {
     };
   }, []);
 
+  // where a scene starts on the page; the store finder sits right after the seven stops
+  const topOf = useCallback((i) => (i === WHERE && whereRef.current ? whereRef.current.offsetTop : i * stepRef.current), []);
+
   // ---- measuring: scroll step, hero gap ----
   const measure = useCallback(() => {
     const stops = document.querySelectorAll('.dm-stop');
@@ -214,18 +244,19 @@ export default function Demo() {
     }
     // open at the scene named in the address (#products …)
     const id = window.location.hash.replace('#', '');
-    const at = IDS.indexOf(id);
+    const at = ALL_IDS.indexOf(id);
     if (at > 0) {
       requestAnimationFrame(() => {
-        window.scrollTo({ top: at * stepRef.current, behavior: 'auto' });
+        window.scrollTo({ top: topOf(at), behavior: 'auto' });
         pdRef.current = at;
+        hashReady.current = true;
       });
-    }
+    } else hashReady.current = true;
     return () => {
       clearTimeout(timer);
       window.removeEventListener('resize', later);
     };
-  }, [measure]);
+  }, [measure, topOf]);
 
   // ---- the 3D stage ----
   useEffect(() => {
@@ -271,7 +302,7 @@ export default function Demo() {
         const box = callEls.current[i];
         const line = lineEls.current[i];
         if (!box || !line) return;
-        const target = a && a[c.id];
+        const target = a && a.points && a.points[c.id];
         if (!target || e <= 0.02) {
           line.style.opacity = '0';
           return;
@@ -281,7 +312,7 @@ export default function Demo() {
         const leftBox = box.offsetLeft + box.offsetWidth / 2 < window.innerWidth / 2;
         const below = box.offsetTop + box.offsetHeight / 2 > window.innerHeight / 2;
         let sx = leftBox ? box.offsetLeft + box.offsetWidth : box.offsetLeft;
-        let sy = box.offsetTop + box.offsetHeight * (leftBox ? 0.32 : 0.7);
+        let sy = box.offsetTop + box.offsetHeight * (c.big ? (leftBox ? 0.32 : 0.7) : 0.5);
         if (thin) {
           sx = box.offsetLeft + box.offsetWidth * (leftBox ? 0.72 : 0.28);
           sy = below ? box.offsetTop : box.offsetTop + box.offsetHeight;
@@ -334,9 +365,7 @@ export default function Demo() {
         const c = [0, 1, 2].map((n) => mixRgb(BG_RGB[i][n], BG_RGB[j][n], u));
         bg.style.background = `radial-gradient(70% 60% at 50% 56%, ${c[2]} 0%, transparent 72%), linear-gradient(150deg, ${c[0]}, ${c[1]})`;
       }
-      // the bottles stand in the product cards, so there the canvas is drawn over the page
-      if (rootRef.current) rootRef.current.classList.toggle('is-cards', Math.abs(pd - 5) < 0.5);
-      const idx = clamp(Math.round(pd), 0, IDS.length - 1);
+      const idx = clamp(Math.round(pd), 0, WHERE);
       if (idx !== activeRef.current) {
         activeRef.current = idx;
         setActive(idx);
@@ -399,7 +428,7 @@ export default function Demo() {
       if (!reduce || dirty || pd !== lastPd || resized.current || (ctl && ctl.busy())) {
         resized.current = false;
         applyScenes(pd);
-        const anchors = ctl ? ctl.frame(pd, now, { cards: readCards(pd) }) : null;
+        const anchors = ctl && pd < WHERE ? ctl.frame(pd, now, { cards: readCards(pd) }) : null;
         applyAnchors(pd, anchors);
       }
       lastPd = pd;
@@ -414,7 +443,9 @@ export default function Demo() {
     const root = document.documentElement;
     const fine = window.matchMedia('(pointer: fine)').matches;
     // the page's own controls keep their behaviour
-    const ui = (el) => el && el.closest && el.closest('a, button, input, select, textarea, .dm-head, .dm-panel, .dm-perks, .dm-call, .dm-q__copy, .dm-dots, .dm-chat');
+    const ui = (el) => el && el.closest && el.closest(
+      'a, button, input, select, textarea, label, .dm-head, .dm-panel, .dm-perks, .dm-call, .dm-q__copy, .dm-dots, .dm-chat, .dm-where, .modal',
+    );
     let drag = null;
     let moved = false;
     let hoverRaf = 0;
@@ -492,7 +523,7 @@ export default function Demo() {
       const tag = e.target && e.target.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       const ctl = ctlRef.current;
-      if (!ctl) return;
+      if (!ctl || activeRef.current === WHERE) return;
       const size = activeRef.current === 5 && products[cur] ? products[cur].size : 'big';
       ctl.nudge(e.key === 'ArrowLeft' ? -1 : 1, size);
       setTurned(true);
@@ -506,13 +537,22 @@ export default function Demo() {
     resized.current = true;
   }, [cur, panel, narrow, products, gl]);
 
+  // the store finder scrolls freely; the scenes snap
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.toggle('dm-free', active === WHERE);
+    return () => root.classList.remove('dm-free');
+  }, [active]);
+
   // ---- the address follows the scene; the product panel opens itself the first time ----
   useEffect(() => {
-    try {
-      const { pathname, search } = window.location;
-      window.history.replaceState(null, '', `${pathname}${search}${active ? `#${IDS[active]}` : ''}`);
-    } catch {
-      /* ignore */
+    if (hashReady.current) {
+      try {
+        const { pathname, search } = window.location;
+        window.history.replaceState(null, '', `${pathname}${search}${active ? `#${ALL_IDS[active]}` : ''}`);
+      } catch {
+        /* ignore */
+      }
     }
     if (active === 5 && !openedOnce.current) {
       openedOnce.current = true;
@@ -548,8 +588,11 @@ export default function Demo() {
   const go = useCallback((i) => {
     setMenu(null);
     setSheet(false);
-    window.scrollTo({ top: i * stepRef.current, behavior: reduceMotion() ? 'auto' : 'smooth' });
-  }, []);
+    // into or out of the store finder the page jumps (the stage still eases): a smooth scroll across that
+    // boundary can be pulled back by the browser's snapping
+    const jump = reduceMotion() || i === WHERE || activeRef.current === WHERE;
+    window.scrollTo({ top: topOf(i), behavior: jump ? 'auto' : 'smooth' });
+  }, [topOf]);
   const showIngredient = (key) => {
     go(1);
     setTimeout(() => ctlRef.current && ctlRef.current.pulse(key), 650);
@@ -561,6 +604,28 @@ export default function Demo() {
     go(5);
   };
   const where = (from) => track('where_click', { from });
+  // «Хаанаас авах» buttons scroll down to the store finder on this page
+  const toWhere = (from) => (e) => {
+    e.preventDefault();
+    where(from);
+    go(WHERE);
+  };
+
+  // what the store finder needs from the page: messages and the «not near me» form
+  const toast = useCallback((text, kind = 'info') => {
+    const id = Math.random().toString(36).slice(2);
+    setToasts((t) => [...t, { id, text, kind }]);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 5200);
+  }, []);
+  const actions = useMemo(() => ({
+    toast,
+    open: (type, props = {}) => setDialog({ type, props }),
+    goTo: (id) => {
+      const at = ALL_IDS.indexOf(id);
+      if (at >= 0) go(at);
+      else window.location.href = `/#${id}`;
+    },
+  }), [toast, go]);
 
   // ---- product carousel layout ----
   const cw = narrow ? 188 : 232;
@@ -595,261 +660,295 @@ export default function Demo() {
         <a className="dm-panel__btn" href={prod.online_url} target="_blank" rel="noopener noreferrer" tabIndex={panel ? 0 : -1}
           onClick={() => track('online_click', { from: 'demo', size: prod.volume_ml })}>Онлайнаар авах</a>
       ) : (
-        <a className="dm-panel__btn" href="/#where" tabIndex={panel ? 0 : -1} onClick={() => where('demo-panel')}>Хаанаас авах</a>
+        <a className="dm-panel__btn" href="#where" tabIndex={panel ? 0 : -1} onClick={toWhere('demo-panel')}>Хаанаас авах</a>
       )}
     </aside>
   );
 
 
   return (
-    <div
-      ref={rootRef}
-      className={`dm${gl === 'off' ? ' dm--nogl' : ''}${gl === 'on' ? ' dm--gl' : ''}${active === 4 || active === 5 ? ' is-light' : ''}${menu || sheet ? ' menu-open' : ''}`}
-    >
-      <div className="dm-bg" ref={bgRef} aria-hidden="true" />
+    <>
+      <div
+        ref={rootRef}
+        // is-cards: the bottles stand in the product cards, so the canvas is drawn over the page there;
+        // is-where: the store finder covers the stage, the header gets a solid back
+        className={`dm${gl === 'off' ? ' dm--nogl' : ''}${gl === 'on' ? ' dm--gl' : ''}${active === 4 || active === 5 ? ' is-light' : ''}${active === 5 ? ' is-cards' : ''}${active === WHERE ? ' is-where' : ''}${menu || sheet ? ' menu-open' : ''}`}
+      >
+        <div className="dm-bg" ref={bgRef} aria-hidden="true" />
 
-      {/* text that sits behind the bottle */}
-      <div className="dm-back">
-        <h1 className="dm-hero" ref={heroRef}>
-          <span className="dm-hero__l" ref={heroL}>Зүгээр л</span>
-          <span className="dm-hero__gap" aria-hidden="true" />
-          <span className="dm-hero__r" ref={heroR}>ам зайлагч биш.</span>
-        </h1>
-        <p className="dm-mark" ref={markRef} aria-hidden="true">DOM<span>CH</span></p>
-      </div>
+        {/* text that sits behind the bottle */}
+        <div className="dm-back">
+          <h1 className="dm-hero" ref={heroRef}>
+            <span className="dm-hero__l" ref={heroL}>Зүгээр л</span>
+            <span className="dm-hero__gap" aria-hidden="true" />
+            <span className="dm-hero__r" ref={heroR}>ам зайлагч биш.</span>
+          </h1>
+          <p className="dm-mark" ref={markRef} aria-hidden="true">DOM<span>CH</span></p>
+        </div>
 
-      <canvas className="dm-gl" ref={canvasRef} aria-hidden="true" />
-      {gl === 'off' && <img className="dm-photo" src={PHOTO} alt="" width="1040" height="1492" style={{ opacity: active === 5 ? 0 : 1 }} />}
+        <canvas className="dm-gl" ref={canvasRef} aria-hidden="true" />
+        {gl === 'off' && <img className="dm-photo" src={PHOTO} alt="" width="1040" height="1492" style={{ opacity: active === 5 ? 0 : 1 }} />}
 
-      <div className="dm-front">
-        <header className="dm-head" ref={headRef}>
-          <div className="dm-util">
-            <span>{branchCount ? `${branchCount} салбарт худалдаалж байна` : 'Эмийн сангуудад худалдаалж байна'}</span>
-            <i aria-hidden="true" />
-            <a href={phoneHref} onClick={() => track('call_click', { from: 'demo' })}><Phone size={12} /> {phone}</a>
-          </div>
-          <div className="dm-bar">
-            <a className="dm-logo" href="/" aria-label="DOMCH, үндсэн сайт">DOM<span>CH</span></a>
-            {!compactNav && (
-              <nav className="dm-nav" aria-label="Demo цэс">
-                {NAV.map((n) => {
-                  const current = n.on && n.on.includes(active);
-                  if (n.href) {
-                    return <a key={n.id} className="dm-nav__btn" href={n.href} onClick={() => where('demo-nav')}>{n.label}</a>;
-                  }
+        <div className="dm-front">
+          <header className="dm-head" ref={headRef}>
+            <div className="dm-util">
+              <span>{branchCount ? `${branchCount} салбарт худалдаалж байна` : 'Эмийн сангуудад худалдаалж байна'}</span>
+              <i aria-hidden="true" />
+              <a href={phoneHref} onClick={() => track('call_click', { from: 'demo' })}><Phone size={12} /> {phone}</a>
+            </div>
+            <div className="dm-bar">
+              <a className="dm-logo" href="/" aria-label="DOMCH, үндсэн сайт">DOM<span>CH</span></a>
+              {!compactNav && (
+                <nav className="dm-nav" aria-label="Demo цэс">
+                  {NAV.map((n) => {
+                    const current = n.on && n.on.includes(active);
+                    return (
+                      <div key={n.id} className="dm-nav__item" onMouseEnter={() => n.menu && setMenu(n.id)} onMouseLeave={() => n.menu && setMenu(null)}>
+                        <button
+                          type="button"
+                          className="dm-nav__btn"
+                          aria-current={current ? 'true' : undefined}
+                          aria-expanded={n.menu ? menu === n.id : undefined}
+                          onClick={() => {
+                            if (n.menu && menu !== n.id) {
+                              setMenu(n.id);
+                              return;
+                            }
+                            if (n.id === 'where') where('demo-nav');
+                            go(n.scene);
+                          }}
+                        >
+                          {n.label}
+                          {n.menu && <Chevron size={12} open={menu === n.id} />}
+                        </button>
+                        {n.menu && menu === n.id && (
+                          <div className="dm-drop">
+                            {n.id === 'ing'
+                              ? ING.map((i) => (
+                                <button key={i.key} type="button" onClick={() => showIngredient(i.key)}>
+                                  <span className="dm-drop__dot" style={{ background: i.color, color: i.color }} />{i.name}{i.sub ? ` ${i.sub}` : ''}
+                                </button>
+                              ))
+                              : products.map((p, i) => (
+                                <button key={p.id} type="button" onClick={() => showProduct(i)}>
+                                  <span className="dm-drop__vol">{p.volume_ml}</span>мл · {p.name}
+                                </button>
+                              ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </nav>
+              )}
+              <div className="dm-icons">
+                {content.settings.instagram && (
+                  <a className="dm-ico" href={content.settings.instagram} target="_blank" rel="noopener noreferrer" aria-label="Instagram"><Instagram /></a>
+                )}
+                {content.settings.facebook && (
+                  <a className="dm-ico" href={content.settings.facebook} target="_blank" rel="noopener noreferrer" aria-label="Facebook"><Facebook /></a>
+                )}
+                <button type="button" className="dm-ico dm-bag" aria-label={`Бүтээгдэхүүн, ${products.length} хэмжээ`} onClick={() => go(5)}>
+                  <Bag /><i>{products.length}</i>
+                </button>
+                {compactNav && (
+                  <button type="button" className="dm-ico" aria-expanded={sheet} aria-controls="dm-sheet" aria-label={sheet ? 'Цэс хаах' : 'Цэс нээх'}
+                    onClick={() => setSheet(!sheet)}>
+                    {sheet ? <Close /> : <Menu />}
+                  </button>
+                )}
+              </div>
+            </div>
+            {compactNav && sheet && (
+              <div className="dm-sheet" id="dm-sheet">
+                {NAV.map((n) => (
+                  <button
+                    key={n.id}
+                    type="button"
+                    aria-current={n.on.includes(active) ? 'true' : undefined}
+                    onClick={() => {
+                      if (n.id === 'where') where('demo-menu');
+                      go(n.scene);
+                    }}
+                  >
+                    {n.label}<Arrow />
+                  </button>
+                ))}
+                <a href={phoneHref} onClick={() => track('call_click', { from: 'demo-menu' })}><Phone size={16} /> {phone}</a>
+              </div>
+            )}
+          </header>
+
+          {/* 1 · hero: the headline is behind the bottle; only the cue sits in front */}
+          <section className="dm-s dm-s--hero" ref={setScene(0)} aria-label="Нүүр">
+            <button type="button" className="dm-cue" onClick={() => go(1)}><i aria-hidden="true" />Доош гүйлгэнэ үү</button>
+            {gl === 'on' && (
+              <p className={`dm-hint${turned ? ' is-done' : ''}`}><Swipe /> Савыг чирж эргүүлнэ үү</p>
+            )}
+          </section>
+
+          {/* 2 · ingredients round the glowing bottle */}
+          <section className="dm-s dm-s--ing" ref={setScene(1)} aria-labelledby="dm-ing-title">
+            <h2 className="dm-sr" id="dm-ing-title">Найрлага</h2>
+            {ING.map((i, k) => (
+              <div key={i.key} className="dm-orb" data-side={i.side} style={{ '--c': i.color }} ref={(el) => { orbEls.current[k] = el; }}>
+                <img className="dm-orb__img" src={i.img} alt="" loading="lazy" />
+                <span className="dm-orb__tag">{i.tag}</span>
+                <h3 className="dm-orb__name">{i.name}{i.sub && <small>{i.sub}</small>}</h3>
+              </div>
+            ))}
+          </section>
+
+          {/* 3 · tested and controlled: copy, the lifted cap, a card of facts */}
+          <section className="dm-s dm-s--quality" ref={setScene(2)} aria-labelledby="dm-q-title">
+            <div className="dm-q__copy">
+              <h2 id="dm-q-title">Туршилтаар<br />баталгаажсан.</h2>
+              <p>Эмнэл зүйн туршилт судалгаагаар баталгаажсан жор. Чанар, аюулгүй байдлыг нь өдөр бүр лабораторид хянадаг.</p>
+              <a className="dm-btn" href="#where" onClick={toWhere('demo-quality')}>Хаанаас авах</a>
+            </div>
+            <aside className="dm-perks" aria-label="Онцлог үзүүлэлт">
+              <h3>Онцлог үзүүлэлт</h3>
+              <ul>
+                {PERKS.map(({ Icon, t, d }) => (
+                  <li key={t}>
+                    <span className="dm-perks__ico"><Icon size={17} /></span>
+                    <span><strong>{t}</strong><small>{d}</small></span>
+                  </li>
+                ))}
+              </ul>
+            </aside>
+          </section>
+
+          {/* 4 · light ribbons (picture only) */}
+          <section className="dm-s dm-s--light" ref={setScene(3)} aria-label="Сэргэг мэдрэмж">
+            <p className="dm-light">Өдөр бүрийн <em>сэргэг</em> мэдрэмж</p>
+          </section>
+
+          {/* 5 · details, with lines to the bottle */}
+          <section className="dm-s dm-s--details" ref={setScene(4)} aria-label="Нарийн зүйлс">
+            {CALLOUTS.map((c, i) => (
+              <svg key={`l-${c.id}`} className="dm-line" aria-hidden="true" ref={(el) => { lineEls.current[i] = el; }}>
+                <path pathLength="1" />
+                <circle r="9" className="dm-line__ring" />
+                <circle r="3.5" />
+              </svg>
+            ))}
+            {CALLOUTS.map((c, i) => (
+              <div key={c.id} className={`dm-call dm-call--${c.id}${c.big ? '' : ' dm-call--chip'}`} ref={(el) => { callEls.current[i] = el; }}>
+                {c.big ? (
+                  <>
+                    <h3>{c.t[0]}{' '}<br />{c.t[1]}</h3>
+                    <p>{c.d}</p>
+                  </>
+                ) : (
+                  <>
+                    <span className="dm-call__ico"><c.Icon size={17} /></span>
+                    <h3>{c.t}</h3>
+                  </>
+                )}
+              </div>
+            ))}
+          </section>
+
+          {/* 6 · product cards with a detail panel */}
+          <section className="dm-s dm-s--products" ref={setScene(5)} aria-labelledby="dm-p-title">
+            <h2 className="dm-sr" id="dm-p-title">Бүтээгдэхүүн</h2>
+            <div className={`dm-car${panel ? ' is-open' : ''}`} style={{ '--cw': `${cw}px`, '--pw': `${pw}px` }}>
+              {products.length > 1 && (
+                <button type="button" className="dm-car__arrow is-prev" aria-label="Өмнөх бүтээгдэхүүн" onClick={() => step(-1)}><Prev /></button>
+              )}
+              <div className="dm-car__stage">
+                {products.map((p, i) => {
+                  const on = i === cur;
+                  const x = (i - cur) * (cw + gap) + (panelBeside && i > cur ? pw + gap : 0) - groupShift;
+                  const price = formatPrice(p.price);
                   return (
-                    <div key={n.id} className="dm-nav__item" onMouseEnter={() => n.menu && setMenu(n.id)} onMouseLeave={() => n.menu && setMenu(null)}>
+                    <article
+                      key={p.id}
+                      className={`dm-card${on ? ' is-active' : ''}`}
+                      style={{ transform: `translateX(${x}px) scale(${on ? 1 : 0.9})`, zIndex: on ? 2 : 1 }}
+                      aria-current={on ? 'true' : undefined}
+                      onClick={() => { if (!on) setCard(i); }}
+                    >
+                      <span className="dm-card__tag">Гаа</span>
+                      {gl === 'on' && live.has(p.id) ? (
+                        <div
+                          className="dm-card__view"
+                          role="img"
+                          aria-label={`DOMCH ${p.name}, ${p.volume_ml} мл. Чирж эргүүлнэ үү.`}
+                          ref={(el) => { viewEls.current[p.size] = el; }}
+                        />
+                      ) : (
+                        <img src={PHOTO} alt={`DOMCH ${p.name}, ${p.volume_ml} мл`} className="is-photo" />
+                      )}
+                      <h3>{p.name}</h3>
+                      <p className="dm-card__meta">{p.volume_ml} мл{price ? ` · ${price}` : ''}</p>
                       <button
                         type="button"
-                        className="dm-nav__btn"
-                        aria-current={current ? 'true' : undefined}
-                        aria-expanded={n.menu ? menu === n.id : undefined}
-                        onClick={() => (n.menu && menu !== n.id ? setMenu(n.id) : go(n.scene))}
+                        className="dm-card__btn"
+                        aria-expanded={on ? panel : undefined}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (on) setPanel(!panel);
+                          else {
+                            setCard(i);
+                            setPanel(true);
+                          }
+                          track('size_select', { size: p.volume_ml, from: 'demo' });
+                        }}
                       >
-                        {n.label}
-                        {n.menu && <Chevron size={12} open={menu === n.id} />}
+                        {on && panel ? 'Хураах' : 'Дэлгэрэнгүй'}
                       </button>
-                      {n.menu && menu === n.id && (
-                        <div className="dm-drop">
-                          {n.id === 'ing'
-                            ? ING.map((i) => (
-                              <button key={i.key} type="button" onClick={() => showIngredient(i.key)}>
-                                <span className="dm-drop__dot" style={{ background: i.color, color: i.color }} />{i.name}{i.sub ? ` ${i.sub}` : ''}
-                              </button>
-                            ))
-                            : products.map((p, i) => (
-                              <button key={p.id} type="button" onClick={() => showProduct(i)}>
-                                <span className="dm-drop__vol">{p.volume_ml}</span>мл · {p.name}
-                              </button>
-                            ))}
-                        </div>
-                      )}
-                    </div>
+                    </article>
                   );
                 })}
-              </nav>
-            )}
-            <div className="dm-icons">
-              {content.settings.instagram && (
-                <a className="dm-ico" href={content.settings.instagram} target="_blank" rel="noopener noreferrer" aria-label="Instagram"><Instagram /></a>
+                {!narrow && panelEl}
+              </div>
+              {products.length > 1 && (
+                <button type="button" className="dm-car__arrow is-next" aria-label="Дараагийн бүтээгдэхүүн" onClick={() => step(1)}><Next /></button>
               )}
-              {content.settings.facebook && (
-                <a className="dm-ico" href={content.settings.facebook} target="_blank" rel="noopener noreferrer" aria-label="Facebook"><Facebook /></a>
-              )}
-              <button type="button" className="dm-ico dm-bag" aria-label={`Бүтээгдэхүүн, ${products.length} хэмжээ`} onClick={() => go(5)}>
-                <Bag /><i>{products.length}</i>
-              </button>
-              {compactNav && (
-                <button type="button" className="dm-ico" aria-expanded={sheet} aria-controls="dm-sheet" aria-label={sheet ? 'Цэс хаах' : 'Цэс нээх'}
-                  onClick={() => setSheet(!sheet)}>
-                  {sheet ? <Close /> : <Menu />}
-                </button>
-              )}
+              {narrow && panelEl}
             </div>
-          </div>
-          {compactNav && sheet && (
-            <div className="dm-sheet" id="dm-sheet">
-              {NAV.map((n) => (n.href ? (
-                <a key={n.id} href={n.href} onClick={() => where('demo-menu')}>{n.label}<Arrow /></a>
-              ) : (
-                <button key={n.id} type="button" aria-current={n.on.includes(active) ? 'true' : undefined} onClick={() => go(n.scene)}>
-                  {n.label}<Arrow />
-                </button>
-              )))}
-              <a href={phoneHref} onClick={() => track('call_click', { from: 'demo-menu' })}><Phone size={16} /> {phone}</a>
-            </div>
+            <a className="dm-pill dm-pill--products" href="#where" onClick={toWhere('demo-products')}>
+              <Pin size={16} /> Бүх салбарыг харах
+            </a>
+          </section>
+
+          {/* 7 · finale: the wordmark is behind the bottle */}
+          <section className="dm-s dm-s--finale" ref={setScene(6)} aria-labelledby="dm-f-title">
+            <h2 id="dm-f-title" className="dm-tagline">Энгийнээс илүү.</h2>
+            <a className="dm-pill" href="/">Домчтой танилцах</a>
+          </section>
+
+          <nav className="dm-dots" aria-label="Хэсгүүд">
+            {ALL_IDS.map((id, i) => (
+              <button key={id} type="button" aria-label={DOT_LABELS[i]} aria-current={active === i ? 'true' : undefined} onClick={() => go(i)} />
+            ))}
+          </nav>
+
+          {content.messenger && content.messenger.enabled && content.messenger.link && (
+            <a className="dm-chat" href={content.messenger.link} target="_blank" rel="noopener noreferrer" aria-label="Messenger-ээр бичих"
+              onClick={() => track('messenger_click', { from: 'demo' })}>
+              <Chat size={22} />
+            </a>
           )}
-        </header>
+        </div>
 
-        {/* 1 · hero: the headline is behind the bottle; only the cue sits in front */}
-        <section className="dm-s dm-s--hero" ref={setScene(0)} aria-label="Нүүр">
-          <button type="button" className="dm-cue" onClick={() => go(1)}><i aria-hidden="true" />Доош гүйлгэнэ үү</button>
-          {gl === 'on' && (
-            <p className={`dm-hint${turned ? ' is-done' : ''}`}><Swipe /> Савыг чирж эргүүлнэ үү</p>
-          )}
-        </section>
-
-        {/* 2 · ingredients round the glowing bottle */}
-        <section className="dm-s dm-s--ing" ref={setScene(1)} aria-labelledby="dm-ing-title">
-          <h2 className="dm-sr" id="dm-ing-title">Найрлага</h2>
-          {ING.map((i, k) => (
-            <div key={i.key} className="dm-orb" data-side={i.side} style={{ '--c': i.color }} ref={(el) => { orbEls.current[k] = el; }}>
-              <img className="dm-orb__img" src={i.img} alt="" loading="lazy" />
-              <span className="dm-orb__tag">{i.tag}</span>
-              <h3 className="dm-orb__name">{i.name}{i.sub && <small>{i.sub}</small>}</h3>
-            </div>
-          ))}
-        </section>
-
-        {/* 3 · tested and controlled: copy, the lifted cap, a card of facts */}
-        <section className="dm-s dm-s--quality" ref={setScene(2)} aria-labelledby="dm-q-title">
-          <div className="dm-q__copy">
-            <h2 id="dm-q-title">Туршилтаар<br />баталгаажсан.</h2>
-            <p>Эмнэл зүйн туршилт судалгаагаар баталгаажсан жор. Чанар, аюулгүй байдлыг нь өдөр бүр лабораторид хянадаг.</p>
-            <a className="dm-btn" href="/#where" onClick={() => where('demo-quality')}>Хаанаас авах</a>
-          </div>
-          <aside className="dm-perks" aria-label="Онцлог үзүүлэлт">
-            <h3>Онцлог үзүүлэлт</h3>
-            <ul>
-              {PERKS.map(({ Icon, t, d }) => (
-                <li key={t}>
-                  <span className="dm-perks__ico"><Icon size={17} /></span>
-                  <span><strong>{t}</strong><small>{d}</small></span>
-                </li>
-              ))}
-            </ul>
-          </aside>
-        </section>
-
-        {/* 4 · light ribbons (picture only) */}
-        <section className="dm-s dm-s--light" ref={setScene(3)} aria-label="Сэргэг мэдрэмж">
-          <p className="dm-light">Өдөр бүрийн <em>сэргэг</em> мэдрэмж</p>
-        </section>
-
-        {/* 5 · details, with lines to the bottle */}
-        <section className="dm-s dm-s--details" ref={setScene(4)} aria-label="Нарийн зүйлс">
-          {CALLOUTS.map((c, i) => (
-            <svg key={`l-${c.id}`} className="dm-line" aria-hidden="true" ref={(el) => { lineEls.current[i] = el; }}>
-              <path pathLength="1" />
-              <circle r="9" className="dm-line__ring" />
-              <circle r="3.5" />
-            </svg>
-          ))}
-          {CALLOUTS.map((c, i) => (
-            <div key={c.id} className={`dm-call dm-call--${c.id}`} ref={(el) => { callEls.current[i] = el; }}>
-              <h3>{c.t[0]}<br />{c.t[1]}</h3>
-              <p>{c.d}</p>
-            </div>
-          ))}
-        </section>
-
-        {/* 6 · product cards with a detail panel */}
-        <section className="dm-s dm-s--products" ref={setScene(5)} aria-labelledby="dm-p-title">
-          <h2 className="dm-sr" id="dm-p-title">Бүтээгдэхүүн</h2>
-          <div className={`dm-car${panel ? ' is-open' : ''}`} style={{ '--cw': `${cw}px`, '--pw': `${pw}px` }}>
-            {products.length > 1 && (
-              <button type="button" className="dm-car__arrow is-prev" aria-label="Өмнөх бүтээгдэхүүн" onClick={() => step(-1)}><Prev /></button>
-            )}
-            <div className="dm-car__stage">
-              {products.map((p, i) => {
-                const on = i === cur;
-                const x = (i - cur) * (cw + gap) + (panelBeside && i > cur ? pw + gap : 0) - groupShift;
-                const price = formatPrice(p.price);
-                return (
-                  <article
-                    key={p.id}
-                    className={`dm-card${on ? ' is-active' : ''}`}
-                    style={{ transform: `translateX(${x}px) scale(${on ? 1 : 0.9})`, zIndex: on ? 2 : 1 }}
-                    aria-current={on ? 'true' : undefined}
-                    onClick={() => { if (!on) setCard(i); }}
-                  >
-                    <span className="dm-card__tag">Гаа</span>
-                    {gl === 'on' && live.has(p.id) ? (
-                      <div
-                        className="dm-card__view"
-                        role="img"
-                        aria-label={`DOMCH ${p.name}, ${p.volume_ml} мл. Чирж эргүүлнэ үү.`}
-                        ref={(el) => { viewEls.current[p.size] = el; }}
-                      />
-                    ) : (
-                      <img src={PHOTO} alt={`DOMCH ${p.name}, ${p.volume_ml} мл`} className="is-photo" />
-                    )}
-                    <h3>{p.name}</h3>
-                    <p className="dm-card__meta">{p.volume_ml} мл{price ? ` · ${price}` : ''}</p>
-                    <button
-                      type="button"
-                      className="dm-card__btn"
-                      aria-expanded={on ? panel : undefined}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (on) setPanel(!panel);
-                        else {
-                          setCard(i);
-                          setPanel(true);
-                        }
-                        track('size_select', { size: p.volume_ml, from: 'demo' });
-                      }}
-                    >
-                      {on && panel ? 'Хураах' : 'Дэлгэрэнгүй'}
-                    </button>
-                  </article>
-                );
-              })}
-              {!narrow && panelEl}
-            </div>
-            {products.length > 1 && (
-              <button type="button" className="dm-car__arrow is-next" aria-label="Дараагийн бүтээгдэхүүн" onClick={() => step(1)}><Next /></button>
-            )}
-            {narrow && panelEl}
-          </div>
-          <a className="dm-pill dm-pill--products" href="/#where" onClick={() => where('demo-products')}>
-            <Pin size={16} /> Бүх салбарыг харах
-          </a>
-        </section>
-
-        {/* 7 · finale: the wordmark is behind the bottle */}
-        <section className="dm-s dm-s--finale" ref={setScene(6)} aria-labelledby="dm-f-title">
-          <h2 id="dm-f-title" className="dm-tagline">Энгийнээс илүү.</h2>
-          <a className="dm-pill" href="/">Домчтой танилцах</a>
-        </section>
-
-        <nav className="dm-dots" aria-label="Хэсгүүд">
-          {IDS.map((id, i) => (
-            <button key={id} type="button" aria-label={DOT_LABELS[i]} aria-current={active === i ? 'true' : undefined} onClick={() => go(i)} />
-          ))}
-        </nav>
-
-        {content.messenger && content.messenger.enabled && content.messenger.link && (
-          <a className="dm-chat" href={content.messenger.link} target="_blank" rel="noopener noreferrer" aria-label="Messenger-ээр бичих"
-            onClick={() => track('messenger_click', { from: 'demo' })}>
-            <Chat size={22} />
-          </a>
-        )}
+        <div className="dm-track" aria-hidden="true">
+          {IDS.map((id) => <div key={id} id={id} className="dm-stop" />)}
+        </div>
       </div>
 
-      <div className="dm-track" aria-hidden="true">
-        {IDS.map((id) => <div key={id} id={id} className="dm-stop" />)}
+      {/* Худалдаалах цэг · Хаанаас авах вэ? — the main site's store finder (its own styles), sliding up over the stage */}
+      <div className="dm-where" ref={whereRef}>
+        <Where filters={content.filters || FALLBACK.filters} settings={content.settings} actions={actions} />
+        <p className="dm-where__foot"><a href="/">domch.gem.mn</a> · Жем Интернэшнл ХХК</p>
       </div>
-    </div>
+
+      <Dialogs dialog={dialog} onClose={() => setDialog(null)} actions={actions} content={{ ...FALLBACK, ...content }} />
+      <div className="toasts" role="status" aria-live="polite">
+        {toasts.map((t) => <p key={t.id} className={`toast toast--${t.kind}`}>{t.text}</p>)}
+      </div>
+    </>
   );
 }
