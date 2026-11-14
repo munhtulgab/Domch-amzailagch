@@ -18,7 +18,7 @@ TOPICS = [
     # key, label, word stems (matched at the start of each word, after folding)
     ("partner", "Хамтран ажиллах, бөөний худалдаа", ("бөөн", "нийлүүл", "борлуулмаар", "борлуулъя", "борлуулагч", "дистрибь",
                                                      "хамтр", "хамтын", "реклам", "сурталч", "контент", "спонсор",
-                                                     "төлөөлөгч", "франчайз", "дилер", "booniin", "boonii", "бүүний",
+                                                     "төлөөлөгч", "франчайз", "дилер", "борлуулах", "borluulah", "borluulax", "booniin", "boonii", "бүүний",
                                                      "buunii", "гэрээтийн", "байршуул", "bairshuul", "tuluulugch", "reel")),
     ("price", "Үнэ", ("үнэ", "үний", "yne", "une", "vne", "uniin", "price")),
     ("where", "Хаанаас авах, байршил", ()),
@@ -44,7 +44,10 @@ LABEL = {k: label for k, label, _ in TOPICS}
 COMBOS = {
     "partner": (("гэрээт", "борлуулагч"), ("гэрээт", "салбар", "бол"), ("гэрээт", "цэг"), ("авч", "зара"), ("аваад", "зара"),
                 ("манайх", "эмийн"), ("манайх", "борлуул"), ("манайх", "дэлгүүр"), ("emiin", "san", "zahialga"),
-                ("эмийн", "сан", "захиалга"), ("emiin", "san", "bgaa", "yum"), ("эмийн", "сан", "байгаа", "юм")),
+                ("эмийн", "сан", "захиалга"), ("emiin", "san", "bgaa", "yum"), ("эмийн", "сан", "байгаа", "юм"),
+                # «Эмийн санд(аа) авах гэсэн юм» — buying for a pharmacy, not from one («эмийн сангаас»)
+                ("эмийн", "санд", "ав"), ("emiin", "sand", "aw"), ("emiin", "sand", "av"),
+                ("худалдан", "борлуул"), ("hudaldan", "borluul"), ("авч", "борлуул"), ("awch", "borluul"), ("avch", "borluul")),
 }
 COMBOS = {k: tuple(tuple(_fold(s.casefold()) for s in combo) for combo in v) for k, v in COMBOS.items()}
 THANKS = tuple(_fold(w) for w in ("баярла", "bayrla", "bayarla", "баярлалаа"))
