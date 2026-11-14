@@ -58,6 +58,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_DB_PATH", str(tmp_path / "ai.db"))
     monkeypatch.setenv("ADMIN_TOKEN", "test-admin-token")
     monkeypatch.setattr(messenger, "INBOX_GRACE", 0)
+    monkeypatch.setattr(messenger, "AI_GATHER", 0)
     dbmod.reset_db()
     yield
     dbmod.reset_db()
@@ -419,6 +420,28 @@ def test_reported_case_first_question_gets_one_answer_not_welcome_plus_answer(cl
     # someone who greets first still gets the welcome only
     post(client, page_event(psid="dup-2", text="Сайн байна уу", mid="h3"))
     assert sent(fb)[-1]["text"] == "Сайн байна уу! ДОМЧ-д тавтай морил."
+
+
+def test_reported_case_two_quick_messages_get_one_answer(client, gem, fb, monkeypatch):
+    """«Sn bnu» + «Am zailagch hed we» a second apart → two AI answers; now the second one answers both."""
+    connect(client)
+    enable(client)
+    post(client, page_event(text="Сайн уу", mid="g0"))  # conversation already started
+    before = len(sent(fb))
+    gem.reply = "250 мл нь 4 500 төгрөг."
+    second = page_event(text="Am zailagch hed we", mid="g2")
+    original = messenger.wait_to_gather
+    pending = [second]
+
+    def gather(received_at):  # the next message arrives while the first one waits
+        if pending:
+            post(client, pending.pop())
+        original(received_at)
+
+    monkeypatch.setattr(messenger, "wait_to_gather", gather)
+    post(client, page_event(text="Sn bnu, medeelel awii", mid="g1"))
+    replies = [m["text"] for m in sent(fb)[before:]]
+    assert len(replies) == 1 and replies[0].startswith("250 мл")
 
 
 def test_reported_case_meta_instant_reply_is_not_duplicated(client, gem, fb, monkeypatch):

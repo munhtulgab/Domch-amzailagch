@@ -235,7 +235,14 @@ def on_message(db, psid: str, text: str, channel: str) -> str:
         row = db.one("SELECT id, phone FROM partner_requests WHERE source_ref = ?", (ref,))
         if not row or row["phone"]:
             return ""
-        db.run("UPDATE partner_requests SET phone = ? WHERE id = ?", (pretty_phone(phone), row["id"]))
+        same = db.one("SELECT id, source_ref FROM partner_requests WHERE id != ? AND"
+                      " REPLACE(REPLACE(phone, ' ', ''), '-', '') = ? LIMIT 1", (row["id"], phone))
+        if same and not same["source_ref"]:
+            # «99216252 хүсэлт илгээсэн»: the form on the site already made this request — one request, not two
+            db.run("DELETE FROM partner_requests WHERE id = ?", (row["id"],))
+            db.run("UPDATE partner_requests SET source_ref = ? WHERE id = ?", (ref, same["id"]))
+        else:
+            db.run("UPDATE partner_requests SET phone = ? WHERE id = ?", (pretty_phone(phone), row["id"]))
         return "thanks"
     rows = db.all("SELECT text FROM messenger_messages WHERE psid = ? AND direction = 'in' ORDER BY created_at DESC LIMIT 30", (psid,))
     texts = [r["text"] for r in reversed(rows)]

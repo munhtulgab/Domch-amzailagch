@@ -43,6 +43,8 @@ FILE_REPLY = "Хавсралтыг хүлээн авлаа. Манай ажил�
 HELP_REPLY = "Танд юугаар туслах вэ? Асуултаа бичих эсвэл доорх товчноос сонгоорой."
 # Meta Business Suite's own instant reply arrives within seconds; a person in the Page inbox is slower
 INBOX_AUTO_SECONDS = 20
+NO_QUESTION = {"other", "greeting", "partner", "media"}  # topics that ask nothing the thanks does not already answer
+AI_GATHER = float(os.getenv("MESSENGER_AI_GATHER", "4"))  # «Sn bnu» + «Am zailagch hed we»: wait for the rest, answer once
 INBOX_GRACE = float(os.getenv("MESSENGER_INBOX_GRACE", "5"))  # wait this long before a greeting, to see if it came
 LETTERS = re.compile(r"[0-9A-Za-zА-Яа-яЁёӨөҮү]")
 GREETING = re.compile(r"^(сайн|сн|сайн уу|сайн байна уу|сайхан|мэнд|hi|hello|hey|юу байна|байна уу)[\s!.,?]*$", re.I)
@@ -776,11 +778,36 @@ def drop_greeting(db, psid: str, question: str, answer: str) -> str:
     return answer
 
 
-def ai_reply(db, cfg: dict, psid: str, text: str, site: str, buttons: list | None = None) -> None:
+def newer_message(db, psid: str, in_id) -> bool:
+    """Another message from this person arrived after this one: its reply answers both, so this one stays quiet."""
+    if not in_id:
+        return False
+    return bool(db.one("SELECT id FROM messenger_messages WHERE psid = ? AND direction = 'in' AND id > ? LIMIT 1",
+                       (psid, in_id)))
+
+
+def wait_to_gather(received_at: str) -> None:
+    if AI_GATHER <= 0 or not received_at:
+        return
+    try:
+        received = datetime.strptime(received_at[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return
+    left = AI_GATHER - (datetime.now(timezone.utc) - received).total_seconds()
+    if left > 0:
+        time.sleep(min(left, AI_GATHER))
+
+
+def ai_reply(db, cfg: dict, psid: str, text: str, site: str, buttons: list | None = None, in_id=None,
+             received_at: str = "") -> None:
     acfg = ai.load(db)
     if not ai.ready(acfg):
         decide(db, psid, "AI унтраалттай эсвэл тохируулаагүй тул хариулсангүй." if not acfg.get("gemini_key")
                or acfg.get("enabled") != "1" else "AI загвар сонгогдоогүй.")
+        return
+    wait_to_gather(received_at)
+    if newer_message(db, psid, in_id):
+        decide(db, psid, "Дараагийн мессеж нь ирсэн тул хамтад нь нэг удаа хариулна.")
         return
     history = list(reversed(db.all(
         "SELECT direction, text FROM messenger_messages WHERE psid = ? ORDER BY id DESC LIMIT 10",
@@ -806,12 +833,15 @@ def ai_reply(db, cfg: dict, psid: str, text: str, site: str, buttons: list | Non
                       kind="auto", quick_replies=faq_buttons(parse_faq(cfg)))
             decide(db, psid, f"AI алдаа: {exc}")
         return
+    if newer_message(db, psid, in_id):  # arrived while the AI was thinking: the newer message's reply covers it
+        decide(db, psid, "Хариу бэлдэх зуур дараагийн мессеж ирсэн тул хамтад нь нэг удаа хариулна.")
+        return
     send_text(db, cfg, psid, drop_greeting(db, psid, text, result["answer"]), kind="ai", quick_replies=buttons)
     decide(db, psid, f"AI хариулсан ({result['model']}, {result['ms']} мс).")
 
 
 def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at, previous_in,
-                 site: str = "", attachment: bool = False, sticker: str = "", received_at: str = "") -> None:
+                 site: str = "", attachment: bool = False, sticker: str = "", received_at: str = "", in_id=None) -> None:
     """Quick-question buttons first, then the welcome for a new conversation, then the AI assistant."""
     faq = parse_faq(cfg)
     stocked = places.has_branches(db)  # without real branches the FAQ answers and the AI handle «where to buy»
@@ -902,7 +932,7 @@ def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at,
         return send_where(db, cfg, psid, place, site, faq)
     if wants:
         return ask_where(db, cfg, psid, faq)
-    ai_reply(db, cfg, psid, text, site, buttons=faq_buttons(faq) if first else None)
+    ai_reply(db, cfg, psid, text, site, buttons=faq_buttons(faq) if first else None, in_id=in_id, received_at=received_at)
 
 
 def last_out_text(db, psid: str) -> str:
@@ -1045,12 +1075,16 @@ def handle_event(db, cfg: dict, event: dict, site: str = "", channel: str = "mes
         partner = insights.on_message(db, psid, text, channel)  # partnership talk becomes a partner request
     except Exception:  # noqa: BLE001 — never let this stop the reply
         partner = ""
-    only_number = partner == "thanks" and not LETTERS.search(insights.PHONE.sub("", text))
+    in_id = res.get("last_row_id") or (db.one("SELECT id FROM messenger_messages WHERE mid = ?", (mid,)) or {}).get("id")
+    # a phone number for the partner request — bare, or «99216252 хүсэлт илгээсэн» — needs only the thanks below,
+    # not a second, AI-written thanks; a real question next to it still gets its answer
+    rest = insights.PHONE.sub("", text)
+    only_number = partner == "thanks" and (not LETTERS.search(rest) or not set(insights.classify(rest)) - NO_QUESTION)
     try:
-        # a bare phone number needs no AI answer, only the thanks below; a partnership offer gets the request form
+        # a partnership offer gets the request form instead of an AI answer
         if not only_number and partner != "ask":
             auto_respond(db, cfg, psid, text, payload, contact.get("welcomed_at"), previous.get("at"), site=site,
-                         attachment=attachment, sticker=sticker, received_at=when)
+                         attachment=attachment, sticker=sticker, received_at=when, in_id=in_id)
         if partner and not ai_paused_until(db, psid):  # staff talking in this chat: leave it to them
             if partner == "ask":
                 send_text(db, cfg, psid, insights.ask_partner(site, insights.partner_kind(db, psid, channel)), kind="auto")

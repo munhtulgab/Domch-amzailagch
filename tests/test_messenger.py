@@ -165,6 +165,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCAL_DB_PATH", str(tmp_path / "m.db"))
     monkeypatch.setenv("ADMIN_TOKEN", TOKEN)
     monkeypatch.setattr(messenger, "INBOX_GRACE", 0)
+    monkeypatch.setattr(messenger, "AI_GATHER", 0)
     dbmod.reset_db()
     yield
     dbmod.reset_db()
@@ -951,6 +952,22 @@ def test_chat_partner_request_asks_for_phone_once_and_saves_it(client, fb):
     assert row["phone"] == "9911-2233"
     shown = client.get("/api/admin/inbox/partners", headers=AUTH).json()["items"]
     assert [r["source_ref"] for r in shown] == ["messenger:w"]
+
+
+def test_reported_case_phone_with_words_gets_one_thanks_and_joins_the_site_request(client, fb):
+    """«99216252 huselt ilgeesen» after the form link → AI thanks + automatic thanks, and two requests; now one of each."""
+    from _lib import insights
+
+    connect(client)
+    post_event(client, event(psid="t", text="Эмийн санд авах гэсэн юм", mid="t1"))
+    client.post("/api/partners", json={"kind": "pharmacy", "org": "Номин эмийн сан", "contact_name": "Сараа",
+                                       "phone": "9921 6252", "consent": True})
+    before = len(sent_texts(fb))
+    post_event(client, event(psid="t", text="99216252 huselt ilgeesen", mid="t2"))
+    after = [m.get("text", "") for m in sent_texts(fb)][before:]
+    assert after == [insights.THANK_PHONE.format(phone="9921-6252")]
+    rows = dbmod.get_db().all("SELECT org, source_ref FROM partner_requests")
+    assert rows == [{"org": "Номин эмийн сан", "source_ref": "messenger:t"}]
 
 
 def test_chat_partner_with_phone_in_first_message_is_not_asked(client, fb):
