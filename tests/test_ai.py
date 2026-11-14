@@ -422,6 +422,45 @@ def test_reported_case_first_question_gets_one_answer_not_welcome_plus_answer(cl
     assert sent(fb)[-1]["text"] == "Сайн байна уу! ДОМЧ-д тавтай морил."
 
 
+def test_reported_case_hi_and_une_get_one_welcome_and_an_answer(client, gem, fb, monkeypatch):
+    """«Hi» + «une» a second apart in a new conversation → the welcome twice and no price; now the price, once."""
+    connect(client)
+    enable(client)
+    client.put("/api/admin/messenger/welcome", json={"auto_reply": "Сайн байна уу! ДОМЧ-д тавтай морил.", "faq": []},
+               headers=AUTH)
+    gem.reply = "Үйлдвэрийн үнэ: 250 мл — 4 500₮."
+    pending = [page_event(text="une", mid="u2")]
+    original = messenger.wait_for_inbox
+
+    def inbox(received_at):  # «une» arrives while «Hi» waits for Meta's instant reply
+        if pending:
+            post(client, pending.pop())
+        original(received_at)
+
+    monkeypatch.setattr(messenger, "wait_for_inbox", inbox)
+    post(client, page_event(text="Hi", mid="u1"))
+    replies = [m["text"] for m in sent(fb)]
+    assert len(replies) == 1 and replies[0].startswith("Үйлдвэрийн үнэ")
+
+
+def test_reported_case_two_greetings_get_one_welcome(client, gem, fb, monkeypatch):
+    connect(client)
+    enable(client)
+    welcome = "Сайн байна уу! ДОМЧ-д тавтай морил."
+    client.put("/api/admin/messenger/welcome", json={"auto_reply": welcome, "faq": []}, headers=AUTH)
+    pending = [page_event(text="Hello", mid="s2")]
+    original = messenger.wait_for_inbox
+
+    def inbox(received_at):
+        if pending:
+            post(client, pending.pop())
+        original(received_at)
+
+    monkeypatch.setattr(messenger, "wait_for_inbox", inbox)
+    post(client, page_event(text="Hi", mid="s1"))
+    assert [m["text"] for m in sent(fb)] == [welcome]
+
+
 def test_reported_case_two_quick_messages_get_one_answer(client, gem, fb, monkeypatch):
     """«Sn bnu» + «Am zailagch hed we» a second apart → two AI answers; now the second one answers both."""
     connect(client)

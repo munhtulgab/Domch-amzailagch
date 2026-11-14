@@ -873,14 +873,28 @@ def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at,
     new_conversation = not welcomed_at or (welcomed_at < window and (not previous_in or previous_in < window))
     clean = text.strip()
     # a greeting, «?», a like or a sticker: there is nothing to answer beyond a greeting and the buttons
-    light = bool(sticker) or attachment or not LETTERS.search(clean) or bool(GREETING.match(clean)) or len(clean) < 6
+    from . import insights
+
+    # «une», «hed we» are short but real questions: they get an answer, not just a greeting
+    asks = bool(LETTERS.search(clean)) and bool(set(insights.classify(clean)) - {"greeting", "other"})
+    light = bool(sticker) or attachment or not LETTERS.search(clean) or bool(GREETING.match(clean)) or (
+        len(clean) < 6 and not asks)
     if welcome and (payload == "GET_STARTED" or (new_conversation and light)):
-        db.run("UPDATE messenger_contacts SET welcomed_at = ? WHERE psid = ?", (now_utc(), psid))
         if payload != "GET_STARTED":
             wait_for_inbox(received_at)
             if inbox_answered(db, psid, received_at):
+                db.run("UPDATE messenger_contacts SET welcomed_at = ? WHERE psid = ?", (now_utc(), psid))
                 decide(db, psid, "Page Inbox-ийн автомат хариу очсон тул мэндчилгээг давхардуулсангүй.")
                 return
+            # «Hi» + «une» a second apart: both looked like a new conversation and both greeted. Only the last
+            # message of the burst replies now, and a welcome that just went out is not sent again.
+            if newer_message(db, psid, in_id):
+                decide(db, psid, "Дараагийн мессеж нь ирсэн тул мэндчилгээг тэр мессежийн хариутай нэгтгэнэ.")
+                return
+            if replied_lately(db, psid, welcome, minutes=2):
+                decide(db, psid, "Мэндчилгээ саяхан очсон тул давтсангүй.")
+                return
+        db.run("UPDATE messenger_contacts SET welcomed_at = ? WHERE psid = ?", (now_utc(), psid))
         send_text(db, cfg, psid, welcome, kind="auto", quick_replies=faq_buttons(faq))
         decide(db, psid, "Мэндчилгээ илгээсэн.")
         return
@@ -909,8 +923,6 @@ def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at,
         return
     # «Хүргэлт байгаа юу?»: the branches page and the pharmacies that take online orders (a fixed, exact answer);
     # a message that also asks something else goes to the AI, whose rules carry the same links
-    from . import insights
-
     topics = set(insights.classify(clean))
     if "delivery" in topics and not topics - {"delivery", "where", "greeting", "other"}:
         reply = insights.delivery_reply(site)
