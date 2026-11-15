@@ -279,6 +279,12 @@ html.menu-open .mcta { display: none; }
 .step__n span { font-size: 46px; color: var(--mint); }
 .step__t { margin: 22px 0 0; font-family: var(--display); font-weight: 400; font-size: clamp(42px, 5.4vw, 86px); line-height: 1; letter-spacing: -0.015em; }
 .step__sub { margin: 12px 0 0; font-size: 13px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--mint); }
+/* the one-line benefit, then how the ingredient does it */
+.deep .step__lead { color: var(--deep-fg); font-size: clamp(17px, 1.35vw, 20px); font-weight: 500; line-height: 1.5; }
+.step__more {
+  margin: 14px 0 0; max-width: 36em; padding-left: 16px; border-left: 2px solid rgba(127, 224, 190, 0.45);
+  font-size: 15.5px; line-height: 1.65; color: var(--deep-muted);
+}
 .ing-list { list-style: none; margin: 26px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 10px; }
 .ing-list li { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 999px; border: 1px solid var(--deep-line); font-size: 15px; }
 .ing-list img { width: 40px; height: 26px; margin: -6px 0 -6px -8px; object-fit: contain; }
@@ -339,6 +345,9 @@ html.menu-open .mcta { display: none; }
   .z3d > .hero__foot { display: none; }
   .deep::before { border-radius: 30px; left: max(6px, env(safe-area-inset-left, 0px)); right: max(6px, env(safe-area-inset-right, 0px)); }
   .opts { max-width: none; }
+  .step__t { margin-top: 16px; }
+  .deep .step__lead { margin-top: 12px; }
+  .step__more { margin-top: 10px; padding-left: 12px; font-size: 14.5px; line-height: 1.6; }
   /* «250 мл» stays clear of the radio dot on narrow cards */
   .opt { padding: 16px; }
   .opt::after { top: 14px; right: 14px; }
