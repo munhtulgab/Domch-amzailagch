@@ -923,7 +923,7 @@ def test_delivery_question_gets_online_pharmacy_links(client, fb):
         sent = [m.get("text", "") for m in sent_texts(fb)][before:]
         assert len(sent) == 1, text
         reply = sent[0]
-        assert "Эсвэл e-Монос болон Health point эмийн сангийн онлайн захиалгыг ашиглана уу" in reply
+        assert "Эсвэл Emonos болон Health point эмийн сангийн онлайн захиалгыг ашиглана уу" in reply
         assert "https://www.emonos.mn/category?search=%D0%94%D0%BE%D0%BC%D1%87" in reply
         assert "https://hpoint.mn/categories/0?q=%D0%94%D0%BE%D0%BC%D1%87" in reply and "/#where" in reply
     # asked again right away: not repeated
@@ -1067,7 +1067,7 @@ def test_price_and_ingredient_questions_get_cards(client, fb):
     online = [c[3]["message"] for c in fb.calls if c[1] == "me/messages"][-1]["attachment"]["payload"]
     assert online["template_type"] == "button"
     assert [(b["title"], b["url"]) for b in online["buttons"]] == [
-        ("e-Монос", "https://www.emonos.mn/category?search=%D0%94%D0%BE%D0%BC%D1%87"),
+        ("Emonos", "https://www.emonos.mn/category?search=%D0%94%D0%BE%D0%BC%D1%87"),
         ("Health point", "https://hpoint.mn/categories/0?q=%D0%94%D0%BE%D0%BC%D1%87")]
 
     before = len(fb.calls)

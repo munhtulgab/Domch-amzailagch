@@ -7,7 +7,7 @@ from .db import DBError
 
 PRICE_PAYLOAD = "PRICE"
 ONLINE_PAYLOAD = "ONLINE"  # «Онлайн захиалах»: both online pharmacies, not just one
-ONLINE_TEXT = "🛒 e-Монос болон Health point эмийн сангийн онлайн захиалгыг ашиглана уу."
+ONLINE_TEXT = "🛒 Emonos болон Health point эмийн сангийн онлайн захиалгыг ашиглана уу."
 INGREDIENTS_PAYLOAD = "INGREDIENTS"
 # «500 яагаад илүү үнэтэй вэ» asks why, not what: that one goes to the AI
 WHY = re.compile(r"(?<!\w)(яагаад|яах|yagaad|yagad|ygd|ygaad|yaagaad|yaah)", re.I)

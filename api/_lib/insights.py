@@ -329,10 +329,10 @@ def on_message(db, psid: str, text: str, channel: str) -> str:
     return "ask"
 
 
-DELIVERY_LINKS = (("e-Монос", "https://www.emonos.mn/category?search=%D0%94%D0%BE%D0%BC%D1%87"),
+DELIVERY_LINKS = (("Emonos", "https://www.emonos.mn/category?search=%D0%94%D0%BE%D0%BC%D1%87"),
                   ("Health point", "https://hpoint.mn/categories/0?q=%D0%94%D0%BE%D0%BC%D1%87"))
 DELIVERY = ("🚚 ДОМЧ-ийг ойролцоох эмийн сан, дэлгүүрээс авах боломжтой: {where}\n\n"
-            "Эсвэл e-Монос болон Health point эмийн сангийн онлайн захиалгыг ашиглана уу:\n"
+            "Эсвэл Emonos болон Health point эмийн сангийн онлайн захиалгыг ашиглана уу:\n"
             + "\n".join(f"• {name}: {url}" for name, url in DELIVERY_LINKS))
 
 

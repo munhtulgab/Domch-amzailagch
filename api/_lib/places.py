@@ -96,7 +96,7 @@ DIRECT = ("салбар", "худалдаалах цэг", "борлуулах �
           "hypermarket", "supermarket", "minii hyper", "minii delguur", "minii discounter",
           "эфэс", "efes", "effes", "бсб", "bsb", "монос", "monos", "emonos", "е-монос")
 NOT_WHERE = ("үйлдвэрл", "uildwerl", "uildverl")  # «хаана үйлдвэрлэдэг вэ» asks where it is made
-# «500 яагаад e-Монос-т илүү үнэтэй байгаа вэ»: names a shop but asks why / about the price, not where to buy
+# «500 яагаад Emonos-т илүү үнэтэй байгаа вэ»: names a shop but asks why / about the price, not where to buy
 WHY_OR_PRICE = ("яагаад", "яах", "yagaad", "yagad", "ygd", "ygaad", "yaagaad", "үнэ", "une", "vne", "хямд", "hyamd",
                 "xyamd", "илүү", "iluu", "ilvv", "өндөр", "undur", "vndur", "хэд", "hed", "xed")
 

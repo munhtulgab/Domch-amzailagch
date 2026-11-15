@@ -384,7 +384,7 @@ def test_latin_script_questions_find_the_knowledge_when_ai_is_down(client, gem, 
     post(client, event(text="esvel hnaas awah we", mid="lt1"))
     assert texts(fb)[-1].startswith("Худалдаалах цэгүүдийг")
     post(client, event(text="hurgelt bga yu, hnaas awah we", mid="lt2"))  # delivery: the fixed answer, AI or not
-    assert "Эсвэл e-Монос болон Health point" in texts(fb)[-1] and "/#where" in texts(fb)[-1]
+    assert "Эсвэл Emonos болон Health point" in texts(fb)[-1] and "/#where" in texts(fb)[-1]
 
 
 # ------------------------------------------------------------------ no double greetings, stickers
@@ -423,7 +423,7 @@ def test_reported_case_first_question_gets_one_answer_not_welcome_plus_answer(cl
     assert len(msgs) == 1 and msgs[0]["text"] == "ДОМЧ 250 мл нь 4,500 төгрөг.\n" + ai.PRICE_NOTE  # no second «Сайн байна уу»
     assert [q["title"] for q in msgs[0]["quick_replies"]] == ["Үнэ хэд вэ?"]
     post(client, page_event(text="Hurgelter avj bolhu", mid="h2"))  # delivery: the online pharmacies, no buttons again
-    assert "Эсвэл e-Монос болон Health point" in sent(fb)[-1]["text"] and "quick_replies" not in sent(fb)[-1]
+    assert "Эсвэл Emonos болон Health point" in sent(fb)[-1]["text"] and "quick_replies" not in sent(fb)[-1]
     post(client, page_event(text="Tsewerleh hugatsaa hed ve", mid="h2b"))
     assert sent(fb)[-1]["text"].startswith("ДОМЧ") and "quick_replies" not in sent(fb)[-1]
     # someone who greets first still gets the welcome only
