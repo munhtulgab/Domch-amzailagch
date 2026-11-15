@@ -970,6 +970,39 @@ def test_reported_case_phone_with_words_gets_one_thanks_and_joins_the_site_reque
     assert rows == [{"org": "Номин эмийн сан", "source_ref": "messenger:t"}]
 
 
+def test_one_partner_request_per_phone_however_it_is_written(client, fb):
+    """Same number = one request: «99216252», «9921-6252», «+976 9921 6252», «97699216252»."""
+    from _lib import insights
+
+    assert {insights.phone_key(p) for p in ("99216252", "9921-6252", "+976 9921 6252", "97699216252", "976-99216252")} \
+        == {"99216252"}
+    form = {"kind": "pharmacy", "org": "Номин эмийн сан", "contact_name": "Сараа", "consent": True}
+    assert client.post("/api/partners", json={**form, "phone": "99216252", "message": "Бөөний үнэ"}).status_code == 201
+    assert client.post("/api/partners", json={**form, "kind": "corporate", "phone": "97699216252",
+                                              "details": {"quantity": "200"}, "message": "Байгууллагадаа"}).status_code == 201
+    client.post("/api/partners", json={**form, "phone": "+976 9921 6252", "message": "Бөөний үнэ"})
+    rows = dbmod.get_db().all("SELECT kind, phone, message FROM partner_requests")
+    assert rows == [{"kind": "pharmacy", "phone": "9921-6252", "message": "Бөөний үнэ\n\nБайгууллагадаа"}]  # latest choice
+    # a different number is a different request
+    client.post("/api/partners", json={**form, "phone": "88112233"})
+    assert dbmod.get_db().one("SELECT COUNT(*) AS n FROM partner_requests")["n"] == 2
+
+
+def test_chat_and_form_with_the_same_phone_are_one_request(client, fb):
+    connect(client)
+    post_event(client, event(psid="c1", text="Эмийн сандаа авч борлуулмаар байна 976 9911 2233", mid="c1"))
+    post_event(client, ig_event(igsid="c2", text="Хамтран ажиллах санал байна, утас 99112233", mid="c2"))
+    client.post("/api/partners", json={"kind": "clinic", "org": "Инээмсэглэл шүдний эмнэлэг", "contact_name": "Болд",
+                                       "phone": "9911 2233", "details": {"direction": "Үйлчлүүлэгчдэдээ санал болгох"},
+                                       "consent": True})
+    rows = dbmod.get_db().all("SELECT kind, org, contact_name, phone, source_ref, details FROM partner_requests")
+    assert len(rows) == 1
+    row = rows[0]
+    assert (row["kind"], row["org"], row["contact_name"], row["phone"], row["source_ref"]) == \
+        ("clinic", "Инээмсэглэл шүдний эмнэлэг", "Болд", "9911-2233", "messenger:c1")
+    assert json.loads(row["details"])["direction"] == "Үйлчлүүлэгчдэдээ санал болгох"
+
+
 def test_chat_partner_with_phone_in_first_message_is_not_asked(client, fb):
     from _lib import insights
 

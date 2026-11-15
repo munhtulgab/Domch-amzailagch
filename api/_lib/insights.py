@@ -92,6 +92,65 @@ def find_phone(texts) -> str | None:
 
 def pretty_phone(phone: str) -> str:
     return f"{phone[:4]}-{phone[4:]}" if phone and len(phone) == 8 else phone
+
+
+# One number however it is written: «9921-6252», «99216252», «+976 9921 6252» and «97699216252» are the same
+# phone — its last 8 digits (a Mongolian number without the 976 country code).
+PHONE_KEY_SQL = ("substr(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(phone, ''), ' ', ''), '-', ''), '+', ''),"
+                 " '(', ''), ')', ''), -8)")
+
+
+def phone_key(phone) -> str:
+    digits = re.sub(r"\D", "", str(phone or ""))
+    return digits[-8:] if len(digits) >= 8 else ""
+
+
+def same_phone(db, phone, exclude_id=None):
+    """The (oldest) partner request with this phone number, if there is one."""
+    key = phone_key(phone)
+    if not key:
+        return None
+    return db.one(f"SELECT * FROM partner_requests WHERE {PHONE_KEY_SQL} = ? AND id != ? ORDER BY id LIMIT 1",
+                  (key, exclude_id or 0))
+
+
+def _join_messages(*parts) -> str | None:
+    seen = []
+    for part in parts:
+        part = (part or "").strip()
+        if part and part not in seen and not any(part in s for s in seen):
+            seen = [s for s in seen if s not in part] + [part]
+    return "\n\n".join(seen)[-3000:] or None
+
+
+def merge_partner(db, keep: dict, new: dict) -> None:
+    """Fold another request with the same phone into `keep`: one request per phone number. Empty fields are filled,
+    the messages are kept together, a form's own choices (kind, real name) win over what a chat guessed, and a
+    closed request that comes back is opened again."""
+    def parse(raw):
+        try:
+            return {k: v for k, v in json.loads(raw or "{}").items() if v}
+        except (ValueError, AttributeError):
+            return {}
+
+    from_form = not new.get("source_ref")
+    # what a form says wins over what a chat guessed; a chat only fills gaps
+    details = {**parse(keep.get("details")), **parse(new.get("details"))} if from_form else \
+        {**parse(new.get("details")), **parse(keep.get("details"))}
+    guessed_name = (keep.get("contact_name") or "").endswith(tuple("0123456789")) and "…" in (keep.get("contact_name") or "")
+    db.run(
+        "UPDATE partner_requests SET kind = ?, org = ?, contact_name = ?, phone = ?, email = ?, location = ?, details = ?,"
+        " message = ?, source_ref = COALESCE(source_ref, ?), status = CASE WHEN status = 'closed' THEN 'new' ELSE status END"
+        " WHERE id = ?",
+        (new.get("kind") if from_form and new.get("kind") else keep["kind"],
+         keep.get("org") or new.get("org"),
+         new.get("contact_name") if new.get("contact_name") and (from_form and guessed_name or not keep.get("contact_name"))
+         else keep.get("contact_name"),
+         pretty_phone(phone_key(keep.get("phone") or new.get("phone"))) or keep.get("phone") or new.get("phone"),
+         keep.get("email") or new.get("email"), keep.get("location") or new.get("location"),
+         json.dumps(details, ensure_ascii=False), _join_messages(keep.get("message"), new.get("message")),
+         new.get("source_ref"), keep["id"]),
+    )
 CACHE_SECONDS = 600
 
 _cache: dict = {}
@@ -194,15 +253,21 @@ def record_partner(db, psid: str, name: str | None, channel: str, texts: list, a
         return False  # the admin deleted this one; do not bring it back
     phone = phone or find_phone(texts)
     existing = db.one("SELECT id, message, phone FROM partner_requests WHERE source_ref = ?", (ref,))
+    if existing and phone and not existing["phone"]:
+        same = same_phone(db, phone, existing["id"])
+        if same:  # this number already has a request: one request, not two
+            db.run("DELETE FROM partner_requests WHERE id = ?", (existing["id"],))
+            merge_partner(db, same, {"message": body, "source_ref": ref})
+            return False
     if existing:
         if body != (existing["message"] or "") or (phone and not existing["phone"]):
             db.run("UPDATE partner_requests SET message = ?, phone = COALESCE(phone, ?) WHERE id = ?",
                    (body, pretty_phone(phone) if phone else None, existing["id"]))
         return bool(phone and not existing["phone"])
     if phone:
-        same = db.one("SELECT id FROM partner_requests WHERE REPLACE(REPLACE(phone, ' ', ''), '-', '') = ? LIMIT 1", (phone,))
-        if same:
-            db.run("UPDATE partner_requests SET source_ref = COALESCE(source_ref, ?) WHERE id = ?", (ref, same["id"]))
+        same = same_phone(db, phone)
+        if same:  # the number is already in a request (from the site or another chat): add to that one
+            merge_partner(db, same, {"message": body, "source_ref": ref})
             return False
     who = name or f"{'Instagram' if source == 'instagram' else 'Messenger'} хэрэглэгч …{psid[-4:]}"
     details = {"direction": f"{'Instagram' if source == 'instagram' else 'Messenger'}-ээр ирсэн мессеж"}
@@ -235,12 +300,13 @@ def on_message(db, psid: str, text: str, channel: str) -> str:
         row = db.one("SELECT id, phone FROM partner_requests WHERE source_ref = ?", (ref,))
         if not row or row["phone"]:
             return ""
-        same = db.one("SELECT id, source_ref FROM partner_requests WHERE id != ? AND"
-                      " REPLACE(REPLACE(phone, ' ', ''), '-', '') = ? LIMIT 1", (row["id"], phone))
-        if same and not same["source_ref"]:
-            # «99216252 хүсэлт илгээсэн»: the form on the site already made this request — one request, not two
+        same = same_phone(db, phone, row["id"])
+        if same:
+            # «99216252 хүсэлт илгээсэн»: the form on the site (or another chat) already made this request
+            chat = db.one("SELECT * FROM partner_requests WHERE id = ?", (row["id"],))
             db.run("DELETE FROM partner_requests WHERE id = ?", (row["id"],))
-            db.run("UPDATE partner_requests SET source_ref = ? WHERE id = ?", (ref, same["id"]))
+            merge_partner(db, same, {**chat, "id": None, "phone": None, "source_ref": ref, "kind": None,
+                                     "contact_name": None})
         else:
             db.run("UPDATE partner_requests SET phone = ? WHERE id = ?", (pretty_phone(phone), row["id"]))
         return "thanks"

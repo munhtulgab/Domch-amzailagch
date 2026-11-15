@@ -400,13 +400,22 @@ def create_partner(data: PartnerIn, request: Request):
     db = get_db()
     visitor = ip_hash(request)
     check_rate(db, "partner_requests", visitor)
-    db.run(
-        "INSERT INTO partner_requests (kind, org, contact_name, phone, email, location, details, message, ip_hash)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (data.kind, data.org or None, data.contact_name, data.phone or None, data.email or None,
-         data.location or None, json.dumps(details, ensure_ascii=False), data.message or None, visitor),
-    )
-    push.notify("requests", f"Хамтын ажиллагааны хүсэлт · {PARTNER_LABEL.get(data.kind, data.kind)}",
+    insights.ensure_partner_columns(db)
+    phone = insights.pretty_phone(insights.phone_key(data.phone)) if insights.phone_key(data.phone) else data.phone
+    fields = {"kind": data.kind, "org": data.org or None, "contact_name": data.contact_name, "phone": phone or None,
+              "email": data.email or None, "location": data.location or None,
+              "details": json.dumps(details, ensure_ascii=False), "message": data.message or None}
+    same = insights.same_phone(db, phone)
+    if same:
+        # the same phone already has a request (from the site or a chat): one request per number
+        insights.merge_partner(db, same, fields)
+    else:
+        db.run(
+            "INSERT INTO partner_requests (kind, org, contact_name, phone, email, location, details, message, ip_hash)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (*fields.values(), visitor),
+        )
+    push.notify("requests", f"Хамтын ажиллагааны хүсэлт{' (давтан)' if same else ''} · {PARTNER_LABEL.get(data.kind, data.kind)}",
                 " · ".join(x for x in (data.org, data.contact_name, data.phone or data.email) if x),
                 "/admin#/partners", "partners", db)
     return {"ok": True, "message": message}
