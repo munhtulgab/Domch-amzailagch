@@ -5,8 +5,9 @@ import re
 from .ai import PRICE_NOTE
 from .db import DBError
 
-E_MONOS = "https://www.emonos.mn/category?search=%D0%94%D0%BE%D0%BC%D1%87"
 PRICE_PAYLOAD = "PRICE"
+ONLINE_PAYLOAD = "ONLINE"  # «Онлайн захиалах»: both online pharmacies, not just one
+ONLINE_TEXT = "🛒 e-Монос болон Health point эмийн сангийн онлайн захиалгыг ашиглана уу."
 INGREDIENTS_PAYLOAD = "INGREDIENTS"
 # «500 яагаад илүү үнэтэй вэ» asks why, not what: that one goes to the AI
 WHY = re.compile(r"(?<!\w)(яагаад|яах|yagaad|yagad|ygd|ygaad|yaagaad|yaah)", re.I)
@@ -49,7 +50,8 @@ def price_elements(db, site: str) -> list:
             "default_action": {"type": "web_url", "url": f"{base}/#sizes"},
             "buttons": [
                 {"type": "postback", "title": "Хаанаас авах", "payload": "WHERE_ASK"},
-                {"type": "web_url", "title": "Онлайн захиалах", "url": p.get("online_url") or E_MONOS},
+                {"type": "web_url", "title": "Онлайн захиалах", "url": p["online_url"]} if p.get("online_url")
+                else {"type": "postback", "title": "Онлайн захиалах", "payload": ONLINE_PAYLOAD},
                 {"type": "web_url", "title": "Вэбээс үзэх", "url": f"{base}/#sizes"},
             ],
         })
@@ -75,6 +77,16 @@ def ingredient_elements(site: str) -> list:
             {"type": "postback", "title": "Хаанаас авах", "payload": "WHERE_ASK"},
         ],
     } for key, title, line in INGREDIENTS]
+
+
+def online_message() -> tuple[dict, str]:
+    """A message with a button for each online pharmacy, and how it reads as text (with the links)."""
+    from .insights import DELIVERY_LINKS
+
+    buttons = [{"type": "web_url", "title": name, "url": url} for name, url in DELIVERY_LINKS]
+    text = ONLINE_TEXT + "\n" + "\n".join(f"• {name}: {url}" for name, url in DELIVERY_LINKS)
+    return {"attachment": {"type": "template", "payload": {"template_type": "button", "text": ONLINE_TEXT,
+                                                           "buttons": buttons}}}, text
 
 
 INGREDIENT_SUMMARY = ("🗂 Найрлага: шүүсэн ус, жамц давс, башир цэцгийн ханд, гаа, глицерин, FD&C Blue No.1. "

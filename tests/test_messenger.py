@@ -1059,6 +1059,17 @@ def test_price_and_ingredient_questions_get_cards(client, fb):
     post_event(client, pb)
     assert [c[3]["message"] for c in fb.calls if c[1] == "me/messages"][-1]["text"] == ai.PRICE_NOTE
 
+    # «Онлайн захиалах» offers both online pharmacies
+    price_els = [c[3]["message"] for c in fb.calls if c[1] == "me/messages"][-2]["attachment"]["payload"]["elements"]
+    assert price_els[0]["buttons"][1] == {"type": "postback", "title": "Онлайн захиалах", "payload": cards.ONLINE_PAYLOAD}
+    pb["entry"][0]["messaging"][0]["postback"] = {"title": "Онлайн захиалах", "payload": cards.ONLINE_PAYLOAD, "mid": "pb2"}
+    post_event(client, pb)
+    online = [c[3]["message"] for c in fb.calls if c[1] == "me/messages"][-1]["attachment"]["payload"]
+    assert online["template_type"] == "button"
+    assert [(b["title"], b["url"]) for b in online["buttons"]] == [
+        ("e-Монос", "https://www.emonos.mn/category?search=%D0%94%D0%BE%D0%BC%D1%87"),
+        ("Health point", "https://hpoint.mn/categories/0?q=%D0%94%D0%BE%D0%BC%D1%87")]
+
     before = len(fb.calls)
     post_event(client, event(psid="k3", text="500 ygd iluu vnetei bga we", mid="k3"))
     assert not any("attachment" in (c[3] or {}).get("message", {}) for c in fb.calls[before:])

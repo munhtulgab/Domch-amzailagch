@@ -900,6 +900,14 @@ def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at,
     place = places.from_payload(payload)
     if place:
         return send_where(db, cfg, psid, place, site, faq)
+    if payload == cards.ONLINE_PAYLOAD:
+        message, text = cards.online_message()
+        try:
+            deliver(db, cfg, psid, message, "auto", text)
+        except GraphError:  # no button template here (Instagram): the same in text, links included
+            send_text(db, cfg, psid, text, kind="auto")
+        decide(db, psid, "Онлайн захиалгын хоёр эмийн сангийн холбоос илгээсэн.")
+        return
     if payload in (cards.PRICE_PAYLOAD, cards.INGREDIENTS_PAYLOAD):
         db.run("UPDATE messenger_contacts SET welcomed_at = ? WHERE psid = ?", (now_utc(), psid))
         if answer_with_cards(db, cfg, psid, "price" if payload == cards.PRICE_PAYLOAD else "ingredients", site):
