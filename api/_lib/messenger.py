@@ -5,6 +5,7 @@ Graph API: the token is checked, the app's webhook is registered with this site'
 is subscribed to the app. Incoming messages land in D1 and can be answered from /admin.
 """
 import hashlib
+import logging
 import hmac
 import json
 import re
@@ -17,9 +18,11 @@ import httpx
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 
-from . import ai, places
+from . import ai, cards, places
 from .common import ago, fail, now_utc, public_links, require_admin, site_url
 from .db import DBError, get_db
+
+log = logging.getLogger(__name__)
 
 GRAPH_VERSION = "v26.0"
 GRAPH_URL = f"https://graph.facebook.com/{GRAPH_VERSION}"
@@ -700,6 +703,11 @@ def send_text(db, cfg: dict, psid: str, text: str, kind: str = "reply", quick_re
     message = {"text": text}
     if quick_replies:
         message["quick_replies"] = quick_replies
+    return deliver(db, cfg, psid, message, kind, text)
+
+
+def deliver(db, cfg: dict, psid: str, message: dict, kind: str, log_text: str) -> dict:
+    """Send one message (text or cards) and keep it in the chat history as `log_text`."""
     body = {"recipient": {"id": psid}, "messaging_type": "RESPONSE", "message": message}
     path = send_path(db, cfg, psid)
     try:
@@ -710,9 +718,44 @@ def send_text(db, cfg: dict, psid: str, text: str, kind: str = "reply", quick_re
         res = graph("POST", f"{cfg['ig_id']}/messages", ig_token(cfg), body=body, app_secret=cfg["app_secret"])
     db.run(
         "INSERT OR IGNORE INTO messenger_messages (psid, direction, kind, text, mid, is_read) VALUES (?, 'out', ?, ?, ?, 1)",
-        (psid, kind, text, res.get("message_id")),
+        (psid, kind, log_text, res.get("message_id")),
     )
     return res
+
+
+def send_cards(db, cfg: dict, psid: str, elements: list, summary: str, quick_replies: list | None = None) -> bool:
+    """A carousel of cards (picture, title, line, buttons). Instagram shows them in its own default shape. False when
+    the cards could not be sent (the caller then answers in text)."""
+    payload = {"template_type": "generic", "elements": elements[:10]}
+    if channel_of(db, psid) != "instagram":
+        payload["image_aspect_ratio"] = "square"
+    message = {"attachment": {"type": "template", "payload": payload}}
+    if quick_replies:
+        message["quick_replies"] = quick_replies
+    try:
+        deliver(db, cfg, psid, message, "auto", summary)
+        return True
+    except GraphError as exc:
+        log.warning("cards not sent to %s: %s", psid, exc)
+        return False
+
+
+def answer_with_cards(db, cfg: dict, psid: str, what: str, site: str, quick_replies: list | None = None) -> bool:
+    """«Үнэ хэд вэ?» → the two sizes as cards, then the factory-price note; «Найрлага?» → the ingredients as cards."""
+    if what == "price":
+        elements, summary = cards.price_elements(db, site), cards.price_summary(db)
+    else:
+        elements, summary = cards.ingredient_elements(site), cards.INGREDIENT_SUMMARY
+    if not elements or not summary:
+        return False
+    if what == "price":
+        if not send_cards(db, cfg, psid, elements, summary):
+            return False
+        send_text(db, cfg, psid, cards.PRICE_NOTE, kind="auto", quick_replies=quick_replies)
+    elif not send_cards(db, cfg, psid, elements, summary, quick_replies=quick_replies):
+        return False
+    decide(db, psid, "Үнийг картаар харуулсан." if what == "price" else "Найрлагыг картаар харуулсан.")
+    return True
 
 
 def faq_buttons(faq: list, skip: int | None = None) -> list:
@@ -843,6 +886,8 @@ def ai_reply(db, cfg: dict, psid: str, text: str, site: str, buttons: list | Non
 def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at, previous_in,
                  site: str = "", attachment: bool = False, sticker: str = "", received_at: str = "", in_id=None) -> None:
     """Quick-question buttons first, then the welcome for a new conversation, then the AI assistant."""
+    from . import insights
+
     faq = parse_faq(cfg)
     stocked = places.has_branches(db)  # without real branches the FAQ answers and the AI handle «where to buy»
     # where to buy: a district / aimag button
@@ -855,6 +900,10 @@ def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at,
     place = places.from_payload(payload)
     if place:
         return send_where(db, cfg, psid, place, site, faq)
+    if payload in (cards.PRICE_PAYLOAD, cards.INGREDIENTS_PAYLOAD):
+        db.run("UPDATE messenger_contacts SET welcomed_at = ? WHERE psid = ?", (now_utc(), psid))
+        if answer_with_cards(db, cfg, psid, "price" if payload == cards.PRICE_PAYLOAD else "ingredients", site):
+            return
     index = None
     if payload.startswith("FAQ_") and payload[4:].isdigit():
         index = int(payload[4:])
@@ -864,6 +913,11 @@ def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at,
         db.run("UPDATE messenger_contacts SET welcomed_at = ? WHERE psid = ?", (now_utc(), psid))
         return ask_where(db, cfg, psid, faq)  # «📍 Хаанаас худалдаж авах вэ?» → which district, then the branches
     if index is not None and index < len(faq):
+        db.run("UPDATE messenger_contacts SET welcomed_at = ? WHERE psid = ?", (now_utc(), psid))
+        # «💰 Үнэ хэд вэ?» / «Орц найрлага» buttons: the cards instead of the written answer
+        what = cards.which(set(insights.classify(faq[index]["q"])), faq[index]["q"])
+        if what and answer_with_cards(db, cfg, psid, what, site, quick_replies=faq_buttons(faq, skip=index)):
+            return
         send_text(db, cfg, psid, faq[index]["a"], kind="auto", quick_replies=faq_buttons(faq, skip=index))
         db.run("UPDATE messenger_contacts SET welcomed_at = ? WHERE psid = ?", (now_utc(), psid))
         decide(db, psid, f"Асуултын товчны хариулт илгээсэн: {faq[index]['q']}")
@@ -873,8 +927,6 @@ def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at,
     new_conversation = not welcomed_at or (welcomed_at < window and (not previous_in or previous_in < window))
     clean = text.strip()
     # a greeting, «?», a like or a sticker: there is nothing to answer beyond a greeting and the buttons
-    from . import insights
-
     # «une», «hed we» are short but real questions: they get an answer, not just a greeting
     asks = bool(LETTERS.search(clean)) and bool(set(insights.classify(clean)) - {"greeting", "other"})
     light = bool(sticker) or attachment or not LETTERS.search(clean) or bool(GREETING.match(clean)) or (
@@ -934,6 +986,13 @@ def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at,
         if not (stocked and "where" in topics):
             return  # «хүргэлттэй юу, Баянзүрхэд хаана байна»: the branches there follow below
         first = False
+    # «Үнэ хэд вэ?», «Найрлага юу вэ?» on their own: cards (a repeat within 10 minutes goes to the AI instead)
+    what = cards.which(topics, clean)
+    if what:
+        summary = cards.price_summary(db) if what == "price" else cards.INGREDIENT_SUMMARY
+        if summary and not replied_lately(db, psid, summary, minutes=10) and answer_with_cards(
+                db, cfg, psid, what, site, quick_replies=faq_buttons(faq) if first else None):
+            return
     # «Дарханд хаанаас авах вэ?», or «Баянзүрх» right after we asked which district: the branches there,
     # straight from the branch list (exact, and works even when the AI is unavailable)
     wants = stocked and places.where_intent(text)

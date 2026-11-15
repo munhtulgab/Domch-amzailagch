@@ -1025,3 +1025,40 @@ def test_admin_sets_partner_phone(client, fb):
     assert client.get("/api/admin/inbox/partners", headers=AUTH).json()["items"][0]["phone"] == "9900-1122"
     assert client.get("/api/admin/summary?events=0", headers=AUTH).json()["counts"]["partners_new"] == 1
     assert client.patch(f"/api/admin/inbox/questions/{row['id']}", headers=AUTH, json={"phone": "99001122"}).status_code == 422
+
+
+def test_price_and_ingredient_questions_get_cards(client, fb):
+    """«Үнэ хэд вэ?» → the two sizes as cards (picture, price, buttons) and the factory-price note; «Найрлага?» → the
+    ingredients as cards; card buttons answer too; a «why» about the price is not answered with cards."""
+    from _lib import ai, cards
+
+    connect(client)
+    dbmod.get_db().run("UPDATE products SET price = CASE WHEN volume_ml = 250 THEN 4500 ELSE 7500 END")
+    post_event(client, event(psid="k", text="Une hed we", mid="k1"))
+    msgs = [c[3]["message"] for c in fb.calls if c[1] == "me/messages"]
+    payload = msgs[-2]["attachment"]["payload"]
+    assert payload["template_type"] == "generic" and payload["image_aspect_ratio"] == "square"
+    els = payload["elements"]
+    assert [e["title"] for e in els] == ["ДОМЧ ам зайлагч 250 мл", "ДОМЧ ам зайлагч 500 мл"]
+    assert "4 500₮" in els[0]["subtitle"] and "7 500₮" in els[1]["subtitle"]
+    assert els[0]["image_url"].endswith("/media/bot/domch-250.jpg")
+    assert [b["title"] for b in els[0]["buttons"]] == ["Хаанаас авах", "Онлайн захиалах", "Вэбээс үзэх"]
+    assert msgs[-1]["text"] == ai.PRICE_NOTE
+    # the admin chat keeps a readable line for the cards
+    log = dbmod.get_db().all("SELECT text FROM messenger_messages WHERE psid = 'k' AND direction = 'out' ORDER BY id")
+    assert log[0]["text"] == "🗂 Үнэ: 250 мл — 4 500₮ · 500 мл — 7 500₮"
+
+    post_event(client, event(psid="k2", text="Орц найрлага юу вэ?", mid="k2"))
+    els = [c[3]["message"] for c in fb.calls if c[1] == "me/messages"][-1]["attachment"]["payload"]["elements"]
+    assert [e["title"] for e in els] == ["Найрлага · Спирт агуулаагүй", "Монгол жамц давс", "Башир цэцгийн ханд", "Гаа"]
+    assert all(len(e["title"]) <= 80 and len(e["subtitle"]) <= 80 and len(e["buttons"]) <= 3 for e in els)
+
+    # the «Үнэ» button on an ingredient card
+    pb = {"object": "page", "entry": [{"id": "777", "time": 0, "messaging": [{"sender": {"id": "k2"}, "recipient": {"id": "777"},
+          "timestamp": int(time.time() * 1000), "postback": {"title": "Үнэ", "payload": cards.PRICE_PAYLOAD, "mid": "pb1"}}]}]}
+    post_event(client, pb)
+    assert [c[3]["message"] for c in fb.calls if c[1] == "me/messages"][-1]["text"] == ai.PRICE_NOTE
+
+    before = len(fb.calls)
+    post_event(client, event(psid="k3", text="500 ygd iluu vnetei bga we", mid="k3"))
+    assert not any("attachment" in (c[3] or {}).get("message", {}) for c in fb.calls[before:])

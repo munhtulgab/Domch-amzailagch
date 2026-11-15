@@ -90,7 +90,11 @@ def enable(client, **extra):
 
 
 def texts(fb):
-    return [c[3]["message"]["text"] for c in fb.calls if c[1] == "me/messages" and "message" in (c[3] or {})]
+    return [c[3]["message"].get("text", "[cards]") for c in fb.calls if c[1] == "me/messages" and "message" in (c[3] or {})]
+
+
+def card_titles(message):
+    return [e["title"] for e in message["attachment"]["payload"]["elements"]]
 
 
 def test_save_key_lists_models_and_hides_key(client, gem):
@@ -158,7 +162,7 @@ def test_greeting_gets_welcome_only_and_question_gets_both(client, gem, fb):
     raw, headers = signed(event(text="Сайн байна уу", mid="g1"))
     client.post("/api/messenger/webhook", content=raw, headers=headers)
     assert texts(fb) == ["Сайн байна уу! ДОМЧ-д тавтай морил."]
-    raw, headers = signed(event(psid="psid-7", text="Сайн байна уу, орц нь юу вэ?", mid="g2"))
+    raw, headers = signed(event(psid="psid-7", text="Сайн байна уу, хэрхэн хэрэглэх вэ?", mid="g2"))
     client.post("/api/messenger/webhook", content=raw, headers=headers)
     assert texts(fb)[-2:] == ["Сайн байна уу! ДОМЧ-д тавтай морил.", gem.reply]
 
@@ -190,7 +194,7 @@ def test_ai_failure_falls_back_and_is_reported(client, gem, fb):
 def test_disabled_ai_does_nothing(client, gem, fb):
     connect(client)
     enable(client, enabled=False)
-    raw, headers = signed(event(text="Орц юу вэ?", mid="d1"))
+    raw, headers = signed(event(text="Хэрхэн хэрэглэх вэ?", mid="d1"))
     client.post("/api/messenger/webhook", content=raw, headers=headers)
     assert texts(fb) == [] and not any(c[1].endswith(":generateContent") for c in gem.calls)
 
@@ -252,7 +256,7 @@ def test_pause_after_admin_reply_is_configurable_and_reversible(client, gem, fb)
     post(client, event(text="Үнэ хэд вэ?", mid="p1"))
     res = client.post("/api/admin/messenger/threads/psid-1/reply", json={"text": "Би туслая."}, headers=AUTH).json()
     assert res["ai_paused_until"] == ""
-    post(client, event(text="500 мл хэд вэ?", mid="p2"))
+    post(client, event(text="Хүүхэд хэрэглэж болох уу?", mid="p2"))
     assert texts(fb)[-1] == gem.reply  # no pause configured
     client.put("/api/admin/ai", json={"pause_minutes": 30}, headers=AUTH)
     res = client.post("/api/admin/messenger/threads/psid-1/reply", json={"text": "Салбараас лавлана уу."}, headers=AUTH).json()
@@ -263,7 +267,7 @@ def test_pause_after_admin_reply_is_configurable_and_reversible(client, gem, fb)
     thread = client.get("/api/admin/messenger/threads/psid-1", headers=AUTH).json()
     assert thread["ai_on"] and thread["ai_paused_until"]
     assert client.post("/api/admin/messenger/threads/psid-1/ai", json={"paused": False}, headers=AUTH).json()["ai_paused_until"] == ""
-    post(client, event(text="Орц нь юу вэ?", mid="p4"))
+    post(client, event(text="Хэрэглэх заавар юу вэ?", mid="p4"))
     assert texts(fb)[-1] == gem.reply
     client.post("/api/admin/messenger/threads/psid-1/ai", json={"paused": True}, headers=AUTH)
     calls = len(gem.calls)
@@ -293,7 +297,7 @@ def test_reported_case_overloaded_model_falls_back(client, gem, fb):
     enable(client)
     client.put("/api/admin/ai", json={"model": "gemini-3.5-flash-lite"}, headers=AUTH)
     gem.overloaded = ["gemini-3.5-flash-lite:"]
-    post(client, event(text="💰 Үнэ хэд вэ?", mid="o1"))
+    post(client, event(text="Хүүхэд хэрэглэж болох уу?", mid="o1"))
     assert texts(fb) == [gem.reply]
     tried = [c[1].rsplit("/", 1)[-1] for c in gem.calls if c[1].endswith(":generateContent")]
     assert tried == ["gemini-3.5-flash-lite:generateContent", "gemini-3.5-flash:generateContent"]
@@ -305,14 +309,19 @@ def test_all_models_overloaded_sends_the_holding_reply(client, gem, fb):
     connect(client)
     enable(client)
     gem.overloaded = ["gemini-"]
-    post(client, event(text="Орц нь юу вэ?", mid="o2"))
-    assert texts(fb)[-1].startswith("Шүүсэн ус, жамц давс")  # knowledge entry «Орц найрлага»
+    post(client, event(text="Орц нь юу вэ, спирттэй юу?", mid="o2"))  # cards need no AI
+    assert card_titles(sent(fb)[-1])[0].startswith("Найрлага")
+    post(client, event(text="Хэрэглэх заавар?", mid="o2b"))
+    assert not texts(fb)[-1].startswith("Таны асуултыг")  # knowledge entry, no AI
     assert "ачаалалтай" in client.get("/api/admin/ai", headers=AUTH).json()["last_error"]["message"]
     assert "мэдлэгийн сангаас" in client.get("/api/admin/messenger", headers=AUTH).json()["last_decision"]["reason"]
     post(client, event(text="zzzz qqqq", mid="o3"))  # nothing to match: a holding reply that still points somewhere
     assert texts(fb)[-1].startswith("Таны асуултыг хүлээн авлаа") and "http" in texts(fb)[-1]
-    post(client, event(text="Une", mid="o4"))  # «үнэ» typed in Latin letters still finds the price
+    post(client, event(text="Une", mid="o4"))  # «үнэ» in Latin letters: no prices set, so the knowledge entry answers
     assert "мл" in texts(fb)[-1] and not texts(fb)[-1].startswith("Таны асуултыг")
+    dbmod.get_db().run("UPDATE products SET price = CASE WHEN volume_ml = 250 THEN 4500 ELSE 7500 END")
+    post(client, event(text="vne hed we", mid="o5"))  # with prices: the price cards, no AI needed
+    assert texts(fb)[-1] == ai.PRICE_NOTE and all("мл" in t for t in card_titles(sent(fb)[-2]))
 
 
 def test_fallback_chain_skips_previews_and_aliases():
@@ -346,7 +355,7 @@ def test_reported_case_daily_quota_skips_the_model_and_lists_every_try(client, g
         return gem(request)
     monkeypatch.setattr(ai, "http", httpx.Client(transport=httpx.MockTransport(quota)))
     client.put("/api/admin/ai", json={"model": "gemini-3.5-flash"}, headers=AUTH)
-    post(client, event(text="Орц нь юу вэ?", mid="d1"))
+    post(client, event(text="Ам зайлагчийг залгиж болох уу?", mid="d1"))
     assert texts(fb)[-1] == gem.reply
     tried = [c[1].rsplit("/", 1)[-1].split(":")[0] for c in gem.calls if c[1].endswith(":generateContent")]
     assert tried == ["gemini-3.5-flash-lite"]  # the spent model answered 429 before the fake saw it
@@ -558,7 +567,7 @@ def test_prices_always_come_with_the_reminder(client, gem, fb):
     assert "(үйлдвэрийн үнэ)" in prices["text"] and ai.PRICE_NOTE in prices["text"]
     assert "үйлдвэрийн үнэ бөгөөд эмийн сан, дэлгүүрт үүнээс өндөр" in ai.system_prompt(items, "https://domch.gem.mn", "")
     gem.reply = "ДОМЧ 250 мл нь 4,500 төгрөг, 500 мл нь 7,500 төгрөг."  # the model forgot the reminder
-    post(client, page_event(psid="price-1", text="Үнэ нь хэд вэ?", mid="pr1"))
+    post(client, page_event(psid="price-1", text="Үнэ нь хэд вэ, хүүхэд хэрэглэж болох уу?", mid="pr1"))  # mixed: AI
     assert sent(fb)[-1]["text"] == "ДОМЧ 250 мл нь 4,500 төгрөг, 500 мл нь 7,500 төгрөг.\n" + ai.PRICE_NOTE
     # a quick-question answer with prices gets it too; a reply typed by staff is sent as written
     client.put("/api/admin/messenger/welcome", json={"auto_reply": "Сайн байна уу!",
