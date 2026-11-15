@@ -906,6 +906,7 @@ def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at,
             deliver(db, cfg, psid, message, "auto", text)
         except GraphError:  # no button template here (Instagram): the same in text, links included
             send_text(db, cfg, psid, text, kind="auto")
+        send_text(db, cfg, psid, cards.ONLINE_NOTE, kind="auto")  # under the buttons: why shop prices differ
         decide(db, psid, "Онлайн захиалгын хоёр эмийн сангийн холбоос илгээсэн.")
         return
     if payload in (cards.PRICE_PAYLOAD, cards.INGREDIENTS_PAYLOAD):

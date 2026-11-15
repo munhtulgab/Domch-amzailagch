@@ -1064,7 +1064,9 @@ def test_price_and_ingredient_questions_get_cards(client, fb):
     assert price_els[0]["buttons"][1] == {"type": "postback", "title": "Онлайн захиалах", "payload": cards.ONLINE_PAYLOAD}
     pb["entry"][0]["messaging"][0]["postback"] = {"title": "Онлайн захиалах", "payload": cards.ONLINE_PAYLOAD, "mid": "pb2"}
     post_event(client, pb)
-    online = [c[3]["message"] for c in fb.calls if c[1] == "me/messages"][-1]["attachment"]["payload"]
+    after = [c[3]["message"] for c in fb.calls if c[1] == "me/messages"]
+    assert after[-1]["text"] == cards.ONLINE_NOTE  # the note on shop prices comes under the buttons
+    online = after[-2]["attachment"]["payload"]
     assert online["template_type"] == "button"
     assert [(b["title"], b["url"]) for b in online["buttons"]] == [
         ("Emonos", "https://www.emonos.mn/category?search=%D0%94%D0%BE%D0%BC%D1%87"),
