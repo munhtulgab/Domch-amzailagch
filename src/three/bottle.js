@@ -420,6 +420,228 @@ function stripTexture(b) {
   g.fillText('ЭРДСИЙН ТУНАДАС ҮҮСЭЖ БОЛНО.', W / 2, H * 0.54);
   return canvasTexture(cv);
 }
+// ---- Front labels, redrawn from the product photo so every line of print stays sharp ----
+// (a photo crop of the label is soft and full of water drops; only the family drawing is taken from it)
+const FRONT_TEXT = 'НАМАР, ӨВӨЛ, ХАВРЫН УЛИРАЛД ДОМЧ УУСМАЛААР АМНЫ ХӨНДИЙ, ХООЛОЙГОО ТОГТМОЛ ЗАЙЛСНААР АМНЫ ХӨНДИЙ, '
+  + 'БУЙЛ, ХООЛОЙ, ЗАЛГИУРЫН БАКТЕРИ, ВИРУСЫН ГАРАЛТАЙ ҮРЭВСЭЛТ ӨВЧИН, ХАНИАД ТОМУУНААС СЭРГИЙЛНЭ.';
+function greenBand(g, x0, y0, x1, y1) {
+  const head = g.createLinearGradient(x0, y0, x1, y1);
+  head.addColorStop(0, '#2f6a5b');
+  head.addColorStop(0.5, '#1d4a40');
+  head.addColorStop(1, '#143630');
+  return head;
+}
+// The label is set in a narrow bold face: Golos Text squeezed sideways gives the same look.
+const SQUEEZE = 0.8;
+function narrowWidth(g, text, k = SQUEEZE) {
+  return g.measureText(text).width * k;
+}
+function narrowText(g, text, x, y, k = SQUEEZE) {
+  g.save();
+  g.translate(x, y);
+  g.scale(k, 1);
+  g.fillText(text, 0, 0);
+  g.restore();
+}
+// Letter-spaced line, centred on cx.
+function spaced(g, text, cx, y, spacing) {
+  const chars = [...text];
+  const widths = chars.map((ch) => g.measureText(ch).width);
+  const total = widths.reduce((a, w) => a + w, 0) + spacing * (chars.length - 1);
+  let x = cx - total / 2;
+  g.textAlign = 'left';
+  chars.forEach((ch, i) => {
+    g.fillText(ch, x, y);
+    x += widths[i] + spacing;
+  });
+}
+// Justified block of capitals: the largest size whose lines fit between top and bottom.
+function capsBlock(g, text, x, top, maxW, bottom, size, weight = 600) {
+  const words = text.split(' ');
+  for (let px = size; px >= 12; px -= 1) {
+    g.font = font(weight, px);
+    const lh = px * 1.2;
+    const lines = [];
+    let line = [];
+    words.forEach((w) => {
+      if (line.length && narrowWidth(g, [...line, w].join(' ')) > maxW) {
+        lines.push(line);
+        line = [w];
+      } else line.push(w);
+    });
+    if (line.length) lines.push(line);
+    if (top + lines.length * lh <= bottom || px === 12) {
+      lines.forEach((ws, li) => {
+        const last = li === lines.length - 1;
+        const used = ws.reduce((a, w) => a + narrowWidth(g, w), 0);
+        const gap = !last && ws.length > 1 ? (maxW - used) / (ws.length - 1) : narrowWidth(g, ' ');
+        let cx = x;
+        const y = top + px + li * lh;
+        ws.forEach((w) => {
+          narrowText(g, w, cx, y);
+          cx += narrowWidth(g, w) + gap;
+        });
+      });
+      return;
+    }
+  }
+}
+// The red drop with a white cross, as on the upper label.
+function careDrop(g, cx, cy, s) {
+  g.fillStyle = '#d7262b';
+  g.beginPath();
+  g.moveTo(cx, cy - s * 0.62);
+  g.bezierCurveTo(cx + s * 0.16, cy - s * 0.32, cx + s * 0.5, cy - s * 0.08, cx + s * 0.5, cy + s * 0.2);
+  g.arc(cx, cy + s * 0.2, s * 0.5, 0, Math.PI);
+  g.bezierCurveTo(cx - s * 0.5, cy - s * 0.08, cx - s * 0.16, cy - s * 0.32, cx, cy - s * 0.62);
+  g.closePath();
+  g.fill();
+  g.fillStyle = '#ffffff';
+  const a = s * 0.11;
+  const l = s * 0.3;
+  g.fillRect(cx - a, cy + s * 0.2 - l, a * 2, l * 2);
+  g.fillRect(cx - l, cy + s * 0.2 - a, l * 2, a * 2);
+}
+// Upper front label: «ЭЭЛТЭЙ БҮТЭЭГДЭХҮҮН» and «АМНЫ ХӨНДИЙ, БУЙЛ, ХООЛОЙН ҮРЭВСЛЭЭС СЭРГИЙЛНЭ.»
+function upperLabelTexture(b) {
+  const [y0, y1, hw] = b.labels.upper;
+  const W = 1280;
+  const H = Math.round((W * (y1 - y0)) / (2 * hw));
+  const cv = document.createElement('canvas');
+  cv.width = W;
+  cv.height = H;
+  const g = cv.getContext('2d');
+  octagon(g, W, H, H * 0.13);
+  g.save();
+  g.clip();
+  g.fillStyle = silver(g, 0, H * 0.3, W, H);
+  g.fillRect(0, 0, W, H);
+  const band = Math.round(H * 0.36);
+  g.fillStyle = greenBand(g, 0, 0, W, band);
+  g.fillRect(0, 0, W, band);
+  // the green sheen running down from the band, as printed
+  const sheen = g.createLinearGradient(0, band, 0, H * 0.62);
+  sheen.addColorStop(0, 'rgba(58, 108, 96, 0.85)');
+  sheen.addColorStop(1, 'rgba(58, 108, 96, 0)');
+  g.fillStyle = sheen;
+  g.beginPath(); g.moveTo(0, band); g.lineTo(W, band); g.lineTo(W, band + H * 0.05); g.lineTo(0, H * 0.62); g.closePath(); g.fill();
+  g.textBaseline = 'middle';
+  g.fillStyle = '#eef3f1';
+  // letter-spaced, kept to the flat front so no letter slips round the corners
+  let hpx = Math.round(band * 0.46);
+  g.font = font(500, hpx);
+  const room = W * 0.7;
+  const track = (px) => [...'ЭЭЛТЭЙ БҮТЭЭГДЭХҮҮН'].reduce((a, ch) => a + g.measureText(ch).width, 0) + px * 0.4 * 18;
+  while (track(hpx) > room) {
+    hpx -= 2;
+    g.font = font(500, hpx);
+  }
+  spaced(g, 'ЭЭЛТЭЙ БҮТЭЭГДЭХҮҮН', W / 2, band * 0.53, hpx * 0.4);
+  careDrop(g, W / 2, H * 0.47, H * 0.15);
+  g.fillStyle = '#101414';
+  g.textBaseline = 'alphabetic';
+  let px = Math.round(H * 0.2);
+  g.font = font(700, px);
+  while (narrowWidth(g, 'АМНЫ ХӨНДИЙ, БУЙЛ, ХООЛОЙН') > W * 0.72) {
+    px -= 2;
+    g.font = font(700, px);
+  }
+  [['АМНЫ ХӨНДИЙ, БУЙЛ, ХООЛОЙН', H * 0.77], ['ҮРЭВСЛЭЭС СЭРГИЙЛНЭ.', H * 0.77 + px * 1.06]].forEach(([t, y]) => {
+    narrowText(g, t, W / 2 - narrowWidth(g, t) / 2, y);
+  });
+  g.restore();
+  return canvasTexture(cv);
+}
+// Main front label: the DOMCH wordmark, «ЖАМЦ ДАВСНЫ УУСМАЛ», «ГЭР БҮЛИЙН ГИШҮҮН БҮРТ», its text,
+// the family drawing and the name field.
+function mainLabelTexture(b, family) {
+  const [y0, y1, hw] = b.labels.main;
+  const W = 1280;
+  const H = Math.round((W * (y1 - y0)) / (2 * hw));
+  const cv = document.createElement('canvas');
+  cv.width = W;
+  cv.height = H;
+  const g = cv.getContext('2d');
+  octagon(g, W, H, W * 0.065);
+  g.save();
+  g.clip();
+  // silver body, darker towards the right where the family stands
+  const body = g.createLinearGradient(0, 0, W, H * 0.4);
+  body.addColorStop(0, '#e2e2df');
+  body.addColorStop(0.45, '#cfcfcb');
+  body.addColorStop(0.75, '#a9aaa8');
+  body.addColorStop(1, '#8d8f8f');
+  g.fillStyle = body;
+  g.fillRect(0, 0, W, H);
+  const band = Math.round(H * 0.265);
+  g.fillStyle = greenBand(g, 0, 0, W, band);
+  g.fillRect(0, 0, W, band);
+  const shine = g.createLinearGradient(0, 0, W * 0.6, band);
+  shine.addColorStop(0, 'rgba(120, 180, 165, 0.35)');
+  shine.addColorStop(0.5, 'rgba(120, 180, 165, 0)');
+  g.fillStyle = shine;
+  g.fillRect(0, 0, W, band);
+  // «ЖАМЦ ДАВСНЫ УУСМАЛ» on the teal ribbon under the wordmark
+  const rib = Math.round(H * 0.075);
+  const ribbon = g.createLinearGradient(0, band, W, band + rib);
+  ribbon.addColorStop(0, '#5c9a8b');
+  ribbon.addColorStop(1, '#3f786b');
+  g.fillStyle = ribbon;
+  g.fillRect(0, band, W, rib);
+  // DOMCH: silver letters with a dark edge
+  g.textAlign = 'center';
+  g.textBaseline = 'alphabetic';
+  let wpx = Math.round(band * 0.62);
+  g.font = font(600, wpx, 'Unbounded, "Golos Text", sans-serif');
+  while (g.measureText('DOMCH').width > W * 0.72) {
+    wpx -= 4;
+    g.font = font(600, wpx, 'Unbounded, "Golos Text", sans-serif');
+  }
+  const base = band * 0.78;
+  g.lineJoin = 'round';
+  g.lineWidth = wpx * 0.08;
+  g.strokeStyle = '#0d221d';
+  g.strokeText('DOMCH', W / 2, base);
+  g.fillStyle = silver(g, 0, base - wpx * 0.75, 0, base);
+  g.fillText('DOMCH', W / 2, base);
+  g.textAlign = 'left';
+  g.fillStyle = '#0f1f1b';
+  g.font = font(700, Math.round(rib * 0.7));
+  narrowText(g, 'ЖАМЦ ДАВСНЫ УУСМАЛ', W * 0.4 - narrowWidth(g, 'ЖАМЦ ДАВСНЫ УУСМАЛ') / 2, band + rib * 0.76);
+  // heading, rule and text in the left column
+  const colX = W * 0.07;
+  const colW = W * 0.565;
+  g.textAlign = 'left';
+  g.fillStyle = '#141818';
+  let hpx = Math.round(H * 0.06);
+  g.font = font(700, hpx);
+  while (narrowWidth(g, 'ГЭР БҮЛИЙН ГИШҮҮН БҮРТ') > colW) {
+    hpx -= 1;
+    g.font = font(700, hpx);
+  }
+  narrowText(g, 'ГЭР БҮЛИЙН ГИШҮҮН БҮРТ', colX, H * 0.414);
+  g.fillStyle = LABEL_GREEN;
+  g.fillRect(colX - W * 0.005, H * 0.428, colW + W * 0.01, H * 0.009);
+  g.fillStyle = '#141818';
+  capsBlock(g, FRONT_TEXT, colX, H * 0.446, colW, H * 0.845, Math.round(H * 0.05), 600);
+  // the family, cut from the label photo (it was drawn on the label, so it is kept as printed)
+  if (family) g.drawImage(family, W * 0.635, H * 0.2705, W * 0.348, H * 0.585);
+  // name field
+  const fx = W * 0.12;
+  const fy = H * 0.868;
+  const fw = W * 0.78;
+  const fh = H * 0.085;
+  g.fillStyle = 'rgba(250, 250, 247, 0.92)';
+  g.beginPath();
+  if (g.roundRect) g.roundRect(fx, fy, fw, fh, fh * 0.3);
+  else g.rect(fx, fy, fw, fh);
+  g.fill();
+  g.fillStyle = '#141818';
+  g.font = font(700, Math.round(fh * 0.56));
+  narrowText(g, 'НЭР:', fx + fw * 0.09, fy + fh * 0.7);
+  g.restore();
+  return canvasTexture(cv);
+}
 // ---- Ingredient forms ----
 // A chunk of rock salt: a box knocked into an irregular, faceted crystal (vertices moved by position,
 // so shared corners stay joined).
@@ -510,15 +732,13 @@ export function wordmarkTexture() {
  */
 export async function loadBottleKit({ renderer, media = '/media/' }) {
   const loader = new THREE.TextureLoader();
-  let upperTex;
-  let mainTex;
+  let family;
   let saltPhoto;
   let clovePhoto;
   let mintPhoto;
   try {
-    [upperTex, mainTex, saltPhoto, clovePhoto, mintPhoto] = await Promise.all([
-      loader.loadAsync(`${media}label_upper.webp`),
-      loader.loadAsync(`${media}label_main.webp`),
+    [family, saltPhoto, clovePhoto, mintPhoto] = await Promise.all([
+      new THREE.ImageLoader().loadAsync(`${media}label_family.webp`).catch(() => null),
       loader.loadAsync(`${media}ing-salt.webp`),
       loader.loadAsync(`${media}ing-clove.webp`),
       loader.loadAsync(`${media}ing-mint.webp`),
@@ -527,7 +747,7 @@ export async function loadBottleKit({ renderer, media = '/media/' }) {
     return null;
   }
   const aniso = renderer.capabilities.getMaxAnisotropy();
-  [upperTex, mainTex, saltPhoto, clovePhoto, mintPhoto].forEach((t) => {
+  [saltPhoto, clovePhoto, mintPhoto].forEach((t) => {
     t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = aniso;
   });
@@ -596,11 +816,18 @@ export async function loadBottleKit({ renderer, media = '/media/' }) {
   // dark espresso-brown ribbed cap, as on the bottle
   const capMat = new THREE.MeshPhysicalMaterial({ color: 0x3a2b27, roughness: 0.38, metalness: 0.08, clearcoat: 0.5, clearcoatRoughness: 0.3 });
   const beadMat = new THREE.MeshPhysicalMaterial({ color: 0xf2fffa, roughness: 0, metalness: 0, transparent: true, opacity: 0.3, clearcoat: 1, envMapIntensity: 3 });
-  const labelMat = (map) => new THREE.MeshStandardMaterial({
-    map, transparent: true, roughness: 0.42, metalness: 0.12, emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0.18,
-  });
-  const upperMat = labelMat(upperTex);
-  const mainMat = labelMat(mainTex);
+  // printed paper: shown in its own colours (not tone mapped, mostly self-lit) with a little light and shade
+  // for the curve, so the print reads as printed instead of washing out under the studio lights
+  const labelMat = (map) => {
+    map.anisotropy = aniso;
+    return new THREE.MeshStandardMaterial({
+      map, transparent: true, roughness: 0.7, metalness: 0, color: new THREE.Color().setScalar(0.085),
+      emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0.8, toneMapped: false,
+    });
+  };
+  // the front labels are drawn once (to the 500 ml proportions) and shared by both sizes
+  const upperMat = labelMat(upperLabelTexture(BOTTLES.big));
+  const mainMat = labelMat(mainLabelTexture(BOTTLES.big, family));
   // pale pink rock salt: faceted, a little glassy
   const saltMat = new THREE.MeshPhysicalMaterial({
     map: saltTex, color: 0xf6c9b9, roughness: 0.5, metalness: 0, flatShading: true,
@@ -629,12 +856,8 @@ export async function loadBottleKit({ renderer, media = '/media/' }) {
     const body = add(new THREE.Mesh(bodyGeometry(b), liquid), 3);
     add(new THREE.Mesh(labelGeometry(b, b.labels.upper, 1), upperMat), 4);
     add(new THREE.Mesh(labelGeometry(b, b.labels.main, 1), mainMat), 4);
-    const backTex = backLabelTexture(b);
-    backTex.anisotropy = aniso;
-    add(new THREE.Mesh(labelGeometry(b, b.labels.back, -1), labelMat(backTex)), 2);
-    const stripTex = stripTexture(b);
-    stripTex.anisotropy = aniso;
-    add(new THREE.Mesh(labelGeometry(b, b.labels.strip, -1), labelMat(stripTex)), 2);
+    add(new THREE.Mesh(labelGeometry(b, b.labels.back, -1), labelMat(backLabelTexture(b))), 2);
+    add(new THREE.Mesh(labelGeometry(b, b.labels.strip, -1), labelMat(stripTexture(b))), 2);
     const neck = add(new THREE.Mesh(new THREE.CylinderGeometry(b.neck.r * S, b.neck.r * S, (b.neck.y1 - b.neck.y0) * S, 56, 1, true), glass), 4);
     neck.position.y = yWorld(b, (b.neck.y0 + b.neck.y1) / 2);
     b.neck.threads.forEach((ty) => {
@@ -660,12 +883,21 @@ export async function loadBottleKit({ renderer, media = '/media/' }) {
     const zAxis = new THREE.Vector3(0, 0, 1);
     const yA = b.body[0][0] + 20;
     const yB = b.H - 40;
+    // drops sit on the bare plastic only: the print stays clear to read
+    const onLabel = (yPix, p) => Object.entries(b.labels).some(([name, [ly0, ly1, lhw]]) => {
+      const front = name === 'upper' || name === 'main';
+      return yPix > ly0 - 8 && yPix < ly1 + 8 && Math.abs(p.x) < (lhw + 8) * S && (front ? p.z > 0 : p.z < 0);
+    });
+    let bodyN = 0;
+    let capN = 0;
     for (let i = 0; i < total; i += 1) {
       const r = (2.5 + 8 * rand() ** 3) * S;
       let p;
       let n;
       if (i < b.drops) {
-        ({ p, n } = surfacePoint(b, yA + rand() * (yB - yA), rand() * Math.PI * 2));
+        const yPix = yA + rand() * (yB - yA);
+        ({ p, n } = surfacePoint(b, yPix, rand() * Math.PI * 2));
+        if (onLabel(yPix, p)) continue;
       } else {
         const ang = rand() * Math.PI * 2;
         const rr = (b.cap.rBot - 2) * S;
@@ -676,9 +908,11 @@ export async function loadBottleKit({ renderer, media = '/media/' }) {
       q.setFromUnitVectors(zAxis, n);
       sc.set(r, r, r * 0.5);
       m.compose(p, q, sc);
-      if (i < b.drops) beads.setMatrixAt(i, m);
-      else capBeads.setMatrixAt(i - b.drops, m);
+      if (i < b.drops) beads.setMatrixAt(bodyN++, m);
+      else capBeads.setMatrixAt(capN++, m);
     }
+    beads.count = bodyN;
+    capBeads.count = capN;
     beads.renderOrder = 5;
     capBeads.renderOrder = 5;
     inner.add(beads);

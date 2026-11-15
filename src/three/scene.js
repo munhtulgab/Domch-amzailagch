@@ -12,7 +12,9 @@ const OFF_L = [-0.9, -0.05, 0.2, -0.6, 0, 0, 0.9];
 const OFF_LN = [-1, 0.2, 0.2, -0.6, 0, 0, 0.9];
 const POSES = {
   wide: {
-    hero: { big: [0.22, -0.02, 0, -0.32, 0, 0, 1], small: OFF_R, ing: [0, 0, 0, 0], mark: 1 },
+    // both sizes, as in the product photo: the 250 ml a step in front on the left, the 500 ml on the right,
+    // side by side so neither label is covered (the order matches «sizes», so scrolling never swaps them)
+    hero: { big: [0.32, -0.02, 0, -0.34, 0, 0, 1], small: [0.15, -0.08, 0.08, -0.18, 0, 0, 1], ing: [0, 0, 0, 0], mark: 1 },
     sizes: { big: [0.3, -0.02, -0.1, 0.16, 0, 0, 1], small: [0.1, -0.07, 0.3, -0.22, 0, 0, 1], ing: [0, 0, 0, 0], mark: 0 },
     intro: { big: [0.21, 0, 0, 0.9, 0, 0, 0.9], small: OFF_L, ing: [0.75, 0.6, 0.6, 0.6], mark: 0 },
     salt: { big: [0.21, 0, 0, 1.75, 0, 0, 0.9], small: OFF_L, ing: [1, 1, 0.22, 0.22], mark: 0 },
@@ -22,7 +24,7 @@ const POSES = {
     usage: { big: [-0.22, 0, 0, 6.45, 0, -0.34, 1], small: OFF_L, ing: [0, 0, 0, 0], mark: 0 },
   },
   narrow: {
-    hero: { big: [0, 0.19, 0, -0.32, 0, 0, 1], small: [0.85, -0.6, 0.3, 0.4, 0, 0, 0.9], ing: [0, 0, 0, 0], mark: 1 },
+    hero: { big: [0.175, 0.19, 0, -0.14, 0, 0, 1], small: [-0.2, 0.148, 0.06, 0.14, 0, 0, 1], ing: [0, 0, 0, 0], mark: 1 },
     sizes: { big: [0.17, 0.19, -0.1, 0.16, 0, 0, 0.95], small: [-0.17, 0.16, 0.3, -0.22, 0, 0, 0.95], ing: [0, 0, 0, 0], mark: 0 },
     intro: { big: [0, 0.2, 0, 0.9, 0, 0, 0.86], small: OFF_LN, ing: [0.75, 0.6, 0.6, 0.6], mark: 0 },
     salt: { big: [0, 0.2, 0, 1.75, 0, 0, 0.86], small: OFF_LN, ing: [1, 1, 0.22, 0.22], mark: 0 },
@@ -193,7 +195,8 @@ export async function createScene({ canvas, media = '/media/', initialSize = 'bi
   function layout() {
     const w = canvas.clientWidth || window.innerWidth;
     const h = canvas.clientHeight || window.innerHeight;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, window.innerWidth < 820 ? 1.5 : 2));
+    // phones get their full sharpness too (up to 2×): at 1.5× the print on the labels went soft
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(w, h, false);
     aspect = w / h;
     camera.aspect = aspect;
@@ -317,6 +320,10 @@ export async function createScene({ canvas, media = '/media/', initialSize = 'bi
     const ip = reduceMotion ? 1 : clamp((now - t0) / 2400, 0, 1);
     const eRot = 1 - (1 - ip) ** 4;
     const ePos = 1 - (1 - ip) ** 3;
+    // the 250 ml follows the 500 ml in, a moment later
+    const ip2 = reduceMotion ? 1 : clamp((now - t0 - 260) / 2400, 0, 1);
+    const eRot2 = 1 - (1 - ip2) ** 4;
+    const ePos2 = 1 - (1 - ip2) ** 3;
     selB += ((sel === 'big' ? 1 : 0) - selB) * (1 - Math.exp(-dt * 6));
     const wS = sizesY == null ? 0 : clamp(1 - Math.abs(sy - sizesY) / (vh * 0.6), 0, 1);
     if (!dragging) drag *= Math.exp(-dt * 2.4);
@@ -338,12 +345,12 @@ export async function createScene({ canvas, media = '/media/', initialSize = 'bi
     });
     const ps = place(SMALL.pivot, cur.small, {
       z: wS * ((1 - selB) * 0.3 - selB * 0.14),
-      s: 1 + wS * (1 - selB) * 0.03,
-      y: Math.sin(t * 1.1 + 1.7) * 0.012 * idle,
-      yaw: Math.sin(t * 0.5 + 1.7) * 0.06 * idle + drag,
+      s: (0.9 + 0.1 * ePos2) * (1 + wS * (1 - selB) * 0.03),
+      y: -(1 - ePos2) * visH(0) * 0.9 + Math.sin(t * 1.1 + 1.7) * 0.012 * idle,
+      yaw: (1 - eRot2) * -Math.PI * 2.5 + Math.sin(t * 0.5 + 1.7) * 0.06 * idle + drag,
     });
     placeShadow(BIG, pb, ePos * (1 - deep));
-    placeShadow(SMALL, ps, 1 - deep);
+    placeShadow(SMALL, ps, ePos2 * (1 - deep));
 
     const [show, wSalt, wDrop, wMint] = cur.ing;
     const ringS = narrow ? 0.78 : 1;
@@ -367,7 +374,7 @@ export async function createScene({ canvas, media = '/media/', initialSize = 'bi
     halo.material.opacity = deep * 0.45;
     rim.intensity = 0.9 + deep * 0.9;
     edgeTone.value = Math.max(deep, darkPage);
-    mark.position.set(pb.x, pb.y - 0.02, -2.6);
+    mark.position.set((pb.x + ps.x) / 2, pb.y - 0.02, -2.6); // behind the pair
     mark.scale.setScalar(narrow ? 0.42 : 0.55);
     mark.material.opacity = cur.mark * ePos;
 

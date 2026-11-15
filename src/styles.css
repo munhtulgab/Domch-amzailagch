@@ -339,6 +339,10 @@ html.menu-open .mcta { display: none; }
   .z3d > .hero__foot { display: none; }
   .deep::before { border-radius: 30px; left: max(6px, env(safe-area-inset-left, 0px)); right: max(6px, env(safe-area-inset-right, 0px)); }
   .opts { max-width: none; }
+  /* «250 мл» stays clear of the radio dot on narrow cards */
+  .opt { padding: 16px; }
+  .opt::after { top: 14px; right: 14px; }
+  .opt__vol { font-size: clamp(26px, 8vw, 40px); padding-right: 22px; white-space: nowrap; }
 }
 
 /* Solid sections */
