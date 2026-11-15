@@ -96,9 +96,13 @@ DIRECT = ("салбар", "худалдаалах цэг", "борлуулах �
           "hypermarket", "supermarket", "minii hyper", "minii delguur", "minii discounter",
           "эфэс", "efes", "effes", "бсб", "bsb", "монос", "monos", "emonos", "е-монос")
 NOT_WHERE = ("үйлдвэрл", "uildwerl", "uildverl")  # «хаана үйлдвэрлэдэг вэ» asks where it is made
+# «500 яагаад e-Монос-т илүү үнэтэй байгаа вэ»: names a shop but asks why / about the price, not where to buy
+WHY_OR_PRICE = ("яагаад", "яах", "yagaad", "yagad", "ygd", "ygaad", "yaagaad", "үнэ", "une", "vne", "хямд", "hyamd",
+                "xyamd", "илүү", "iluu", "ilvv", "өндөр", "undur", "vndur", "хэд", "hed", "xed")
 
 
 WHERE_WORDS, BUY_WORDS = tuple(_norm(w).strip() for w in WHERE_WORDS), tuple(_norm(w).strip() for w in BUY_WORDS)
+WHY_OR_PRICE = tuple(_norm(w).strip() for w in WHY_OR_PRICE)
 DIRECT, NOT_WHERE = tuple(_norm(w).rstrip() for w in DIRECT), tuple(_norm(w).rstrip() for w in NOT_WHERE)
 
 
@@ -106,10 +110,12 @@ def where_intent(text: str) -> bool:
     t = _norm(text)
     if any(n in t for n in NOT_WHERE):
         return False
-    if any(d in t for d in DIRECT):
-        return True
     words = t.split()
     asks_where = any(w.startswith(x) for w in words for x in WHERE_WORDS)
+    if not asks_where and any(w.startswith(x) for w in words for x in WHY_OR_PRICE):
+        return False  # a question about the price or a «why» goes to the AI, even when it names a shop
+    if any(d in t for d in DIRECT):
+        return True
     buys = any(w.startswith(x) for w in words for x in BUY_WORDS)
     return asks_where and buys
 

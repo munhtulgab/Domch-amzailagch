@@ -234,3 +234,15 @@ def test_supermarket_chain_joins_the_district_answer(client, fb, stocked):
     assert "1. Миний дэлгүүр — Minii Discounter\nСүхбаатар дүүрэг, 17-р хороо\n09:00–22:00 · 7575-6061" in text
     item = next(i for i in ai.knowledge_items(dbmod.get_db()) if i["title"] == "Салбарууд: Сүхбаатар дүүрэг")
     assert "Миний дэлгүүр" in item["keys"]
+
+
+def test_reported_case_price_question_naming_a_shop_goes_to_the_ai():
+    """«500 ygd emonost iluu vnetei bga we» (why is the 500 dearer at e-Monos) got «which district?»."""
+    from _lib import places
+
+    for text in ("500 ygd emonost iluu vnetei bga we", "Яагаад Монос-т үнэтэй байгаа вэ", "emiin san hed we",
+                 "Эмийн санд хямд байна уу"):
+        assert not places.where_intent(text), text
+    for text in ("emonos-oos awch boloh uu", "Монос эмийн санд байгаа юу", "Хаанаас авах вэ, үнэ хэд вэ",
+                 "Ази фармад зарагддаг уу", "Эрдэнэтэд хаана байна"):
+        assert places.where_intent(text), text
