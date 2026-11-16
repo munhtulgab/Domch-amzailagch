@@ -47,7 +47,12 @@ COMBOS = {
                 ("эмийн", "сан", "захиалга"), ("emiin", "san", "bgaa", "yum"), ("эмийн", "сан", "байгаа", "юм"),
                 # «Эмийн санд(аа) авах гэсэн юм» — buying for a pharmacy, not from one («эмийн сангаас»)
                 ("эмийн", "санд", "ав"), ("emiin", "sand", "aw"), ("emiin", "sand", "av"),
-                ("худалдан", "борлуул"), ("hudaldan", "borluul"), ("авч", "борлуул"), ("awch", "borluul"), ("avch", "borluul")),
+                ("худалдан", "борлуул"), ("hudaldan", "borluul"), ("авч", "борлуул"), ("awch", "borluul"), ("avch", "borluul"),
+                # «үнэ эмийн санд зарахаар», «дэлгүүртээ зармаар байна» — to sell it in one's own shop. Only the
+                # intent forms: «эмийн санд зарагддаг уу», «хаана зарж байгаа вэ» ask where to buy.
+                *((shop, sell) for shop in ("эмийн", "дэлгүүр", "emiin", "delguur", "дэлгүүрт", "лангуу", "langu")
+                  for sell in ("зарах", "зармаар", "заръя", "зарья", "зарая", "борлуулах", "борлуулмаар", "zarah", "zarax",
+                               "zarmaar", "zarya", "zaraya", "borluulah", "borluulmaar"))),
 }
 COMBOS = {k: tuple(tuple(_fold(s.casefold()) for s in combo) for combo in v) for k, v in COMBOS.items()}
 THANKS = tuple(_fold(w) for w in ("баярла", "bayrla", "bayarla", "баярлалаа"))
@@ -71,8 +76,15 @@ def partner_link(site: str, kind: str = "") -> str:
     return f"{(site or primary_url()).rstrip('/')}/?partner={kind}#partner"
 
 
-def ask_partner(site: str, kind: str = "") -> str:
-    return ASK_PHONE.format(link=partner_link(site, kind))
+PARTNER_PRICE = "Борлуулах үнэ, нөхцөлийг манай ажилтан хүсэлтийн дагуу танд мэдэгдэнэ."
+
+
+def ask_partner(site: str, kind: str = "", text: str = "") -> str:
+    """The request-form reply; «үнэ эмийн санд зарахаар» also hears that the reseller price comes from staff."""
+    msg = ASK_PHONE.format(link=partner_link(site, kind))
+    if text and "price" in classify(text):
+        msg = msg.replace("\n\nЭсвэл", f"\n\n{PARTNER_PRICE}\nЭсвэл", 1)
+    return msg
 
 
 def partner_kind(db, psid: str, channel: str) -> str:

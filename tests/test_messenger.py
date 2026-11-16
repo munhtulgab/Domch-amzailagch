@@ -903,13 +903,16 @@ def test_buying_for_a_pharmacy_gets_the_partner_form(client, fb):
     from _lib import insights
 
     connect(client)
-    for i, text in enumerate(["Эмийн санд авах гэсэн юм", "Bi emiin sandaa hudaldan awch borluulah hd bna"]):
+    for i, text in enumerate(["Эмийн санд авах гэсэн юм", "Bi emiin sandaa hudaldan awch borluulah hd bna",
+                              "үнэ эмийн снд зарахаар", "Delguurtee zarmaar bn"]):
         before = len(sent_texts(fb))
         post_event(client, event(psid=f"ph{i}", text=text, mid=f"ph{i}"))
         sent = [m.get("text", "") for m in sent_texts(fb)][before:]
         assert len(sent) == 1 and sent[0].startswith(ASK_START) and "/?partner=pharmacy#partner" in sent[0], text
     # buying from a pharmacy is a customer asking where, not a partner
-    for text in ["Эмийн сангаас авах уу", "Эмийн санд байгаа юу", "Хаана борлуулдаг вэ"]:
+    assert insights.PARTNER_PRICE in [m.get("text", "") for m in sent_texts(fb)][-2]  # «үнэ …»: who gives that price
+    for text in ["Эмийн сангаас авах уу", "Эмийн санд байгаа юу", "Хаана борлуулдаг вэ", "Эмийн санд зарагддаг уу",
+                 "Хаана зарж байгаа вэ"]:
         assert "partner" not in insights.classify(text), text
 
 

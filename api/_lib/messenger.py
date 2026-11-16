@@ -1168,7 +1168,8 @@ def handle_event(db, cfg: dict, event: dict, site: str = "", channel: str = "mes
                          attachment=attachment, sticker=sticker, received_at=when, in_id=in_id)
         if partner and not ai_paused_until(db, psid):  # staff talking in this chat: leave it to them
             if partner == "ask":
-                send_text(db, cfg, psid, insights.ask_partner(site, insights.partner_kind(db, psid, channel)), kind="auto")
+                send_text(db, cfg, psid, insights.ask_partner(site, insights.partner_kind(db, psid, channel), text),
+                          kind="auto")
                 decide(db, psid, "Хамтран ажиллах санал илэрсэн: хүсэлтийн маягтын холбоос илгээж, утасны дугаар асуусан.")
             else:
                 phone = insights.find_phone([text])
