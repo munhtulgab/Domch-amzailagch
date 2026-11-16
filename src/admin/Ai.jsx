@@ -136,6 +136,8 @@ export function AiSettings({ call, go }) {
         <p className="a-muted">«Жишээ» тэмдэгтэй эмчийн зөвлөгөөг AI ашиглахгүй. Messenger-ийн асуулт, бүтээгдэхүүний үнэ, холбоо барих мэдээллийг мөн ашиглана.</p>
       </div>
 
+      <Lessons call={call} go={go} ready={ready} />
+
       <form className="a-card a-stack" onSubmit={ask}>
         <h2>Туршиж асуух</h2>
         <p className="a-muted">Messenger-т илгээхгүйгээр AI ямар хариулт өгөхийг шалгана.</p>
@@ -155,6 +157,75 @@ export function AiSettings({ call, go }) {
           </div>
         ))}
       </form>
+    </div>
+  );
+}
+
+// What the assistant has learned from staff answers: each new piece of knowledge with the chat it came from.
+function Lessons({ call, go, ready }) {
+  const [data, setData] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState(null);
+
+  useEffect(() => {
+    call('/ai/lessons').then(setData).catch((err) => setNote({ ok: false, message: err.message }));
+  }, [call]);
+
+  const runNow = async () => {
+    setBusy(true);
+    setNote(null);
+    try {
+      const res = await call('/ai/lessons/run', { method: 'POST' });
+      const added = res.done.filter((d) => d.outcome === 'added' || d.outcome === 'updated').length;
+      setData((d) => ({ ...d, items: res.items, learned: (d?.learned || 0) + res.done.filter((x) => x.outcome === 'added').length }));
+      setNote({ ok: true, message: res.done.length ? `${res.done.length} хариу үзэж, ${added} шинэ мэдлэг нэмлээ.` : 'Шинээр суралцах хариу алга (эсвэл өнөөдрийн хязгаар дууссан).' });
+    } catch (err) {
+      setNote({ ok: false, message: err.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const items = data?.items || [];
+  const learned = items.filter((i) => i.outcome === 'added' || i.outcome === 'updated');
+  const skipped = items.filter((i) => i.outcome === 'skipped');
+  return (
+    <div className="a-card a-stack">
+      <h2>Ажилтнаас суралцсан</h2>
+      <p className="a-muted">
+        Ажилтан чатад (админ эсвэл Page Inbox-оос) хариулахад AI тэр асуулт, хариултаас бүх харилцагчид хамаатай ерөнхий
+        мэдээллийг автоматаар мэдлэгийн санд нэмнэ. Хувь хүний нэр, утас, нэг хүнтэй тохирсон нөхцөл, мэндчилгээ орохгүй.
+        Буруу суралцсан бол «Мэдлэгийн сан»-гаас засах эсвэл унтраах боломжтой.
+      </p>
+      <div className="a-form__actions">
+        <button type="button" className="a-btn a-btn--ghost" onClick={runNow} disabled={busy || !ready}>{busy ? 'Суралцаж байна…' : 'Одоо суралцах'}</button>
+        <button type="button" className="a-btn a-btn--ghost" onClick={() => go('knowledge')}>Мэдлэгийн сан</button>
+        {data && <span className="a-hint">{data.learned} мэдлэг суралцсан · өдөрт {data.daily_limit} хүртэл</span>}
+      </div>
+      {note && <p className={note.ok ? 'a-note' : 'a-error'} role="status">{note.message}</p>}
+      {data && !learned.length && <p className="a-muted">Одоогоор суралцсан мэдлэг алга.</p>}
+      <ul className="a-lessons">
+        {learned.map((l) => (
+          <li key={l.id} className="a-lesson">
+            <strong>{l.title || '(устгагдсан)'}</strong>{l.outcome === 'updated' && <span className="a-hint"> · шинэчилсэн</span>}
+            {l.active === 0 && <span className="a-hint"> · унтраасан</span>}
+            {l.body && <p className="a-msg__text">{l.body}</p>}
+            <details>
+              <summary className="a-hint">{formatDate(l.created_at)} · хаанаас суралцсан</summary>
+              <p className="a-hint"><b>Харилцагч:</b> {l.question}</p>
+              <p className="a-hint"><b>Ажилтан:</b> {l.answer}</p>
+            </details>
+          </li>
+        ))}
+      </ul>
+      {skipped.length > 0 && (
+        <details>
+          <summary className="a-hint">Суралцаагүй хариу ({skipped.length})</summary>
+          <ul className="a-guide">
+            {skipped.map((l) => <li key={l.id}><span className="a-hint">{(l.answer || '').slice(0, 90)} — {l.note}</span></li>)}
+          </ul>
+        </details>
+      )}
     </div>
   );
 }

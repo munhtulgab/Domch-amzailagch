@@ -1254,6 +1254,12 @@ def process(cfg: dict, data: dict, site: str) -> None:
         move_webhook(db, cfg, site)
     except DBError:
         pass
+    try:  # learn from one staff answer that is waiting, if any (after the customer has been answered)
+        from . import learn
+
+        learn.run(db, limit=1)
+    except Exception as exc:  # noqa: BLE001 — learning must never break the chat
+        print(f"[learn] {exc}", flush=True)
 
 
 def adopt_instagram(db, cfg: dict, ig_id: str) -> None:

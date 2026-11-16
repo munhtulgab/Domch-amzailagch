@@ -50,7 +50,7 @@ const EVENT_LABEL = {
 };
 
 const KNOWLEDGE_TOPICS = [['product', 'Бүтээгдэхүүн'], ['ingredients', 'Орц найрлага'], ['usage', 'Хэрэглээ'],
-  ['buy', 'Худалдан авах'], ['health', 'Эрүүл мэнд'], ['company', 'Компани, хамтын ажиллагаа'], ['general', 'Бусад']];
+  ['buy', 'Худалдан авах'], ['health', 'Эрүүл мэнд'], ['company', 'Компани, хамтын ажиллагаа'], ['general', 'Бусад'], ['learned', 'Ажилтнаас суралцсан']];
 const TOPIC_LABEL = Object.fromEntries(KNOWLEDGE_TOPICS);
 const ACTIVE = { k: 'active', l: 'Сайтад харуулах', type: 'checkbox', def: true };
 const SORT = { k: 'sort', l: 'Эрэмбэ', type: 'number', hint: 'Бага тоо түрүүлж харагдана.' };

@@ -1,5 +1,6 @@
 """Gemini answers grounded in the knowledge base, doctor tips and FAQs (fake Gemini + fake Graph API)."""
 import json
+from datetime import datetime, timedelta, timezone
 import time
 import sys
 from pathlib import Path
@@ -578,3 +579,70 @@ def test_prices_always_come_with_the_reminder(client, gem, fb):
     assert sent(fb)[-1]["text"].endswith(ai.PRICE_NOTE)
     client.post("/api/admin/messenger/threads/price-1/reply", json={"text": "Манайд 4 500₮ байна."}, headers=AUTH)
     assert sent(fb)[-1]["text"] == "Манайд 4 500₮ байна."
+
+
+def chat(db, psid, *turns, minutes_ago=10):
+    """Store a conversation: turns are ("in" | "reply" | "inbox" | "ai", text), oldest first."""
+    stamp = (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).strftime("%Y-%m-%d %H:%M:%S")
+    for kind, text in turns:
+        db.run("INSERT INTO messenger_messages (psid, direction, kind, text, created_at) VALUES (?, ?, ?, ?, ?)",
+               (psid, "in" if kind == "in" else "out", "message" if kind == "in" else kind, text, stamp))
+
+
+def test_ai_learns_general_knowledge_from_staff_answers(client, gem, fb):
+    from _lib import learn
+
+    connect(client)
+    enable(client)
+    db = dbmod.get_db()
+    chat(db, "w1", ("in", "Bunuur awah bol yamar nuhtsultei we"), ("ai", "Ажилтан удахгүй хариулна."),
+         ("reply", "Бөөний захиалга 50 ширхэгээс эхэлнэ."), ("reply", "Бөөний үнэ 10% хямд, Улаанбаатарт үнэгүй хүргэнэ."))
+    gem.reply = json.dumps({"learn": True, "reason": "Бөөний нөхцөл", "title": "Бөөний нөхцөл ямар вэ?",
+                            "body": "Бөөний захиалга 50 ширхэгээс эхэлж, үнэ 10% хямд. Улаанбаатарт үнэгүй хүргэнэ.",
+                            "keywords": "бөөний bunuur wholesale", "update_id": None}, ensure_ascii=False)
+    res = client.post("/api/admin/ai/lessons/run", headers=AUTH).json()
+    assert [d["outcome"] for d in res["done"]][0] == "added"
+    learned = db.all("SELECT title, body, topic FROM knowledge WHERE topic = 'learned'")
+    assert learned == [{"title": "Бөөний нөхцөл ямар вэ?", "topic": "learned",
+                        "body": "Бөөний захиалга 50 ширхэгээс эхэлж, үнэ 10% хямд. Улаанбаатарт үнэгүй хүргэнэ."}]
+    # the two staff messages were one answer to one question
+    lesson = db.one("SELECT question, answer FROM ai_lessons WHERE psid = 'w1'")
+    assert lesson["question"] == "Bunuur awah bol yamar nuhtsultei we" and "50 ширхэг" in lesson["answer"] and "10%" in lesson["answer"]
+    chat(db, "w2", ("in", "Bayrlalaa"), ("inbox", "😍🙏"))
+    chat(db, "w3", ("in", "Narantsetseg baina, 9911 2233 ruu zalgaarai"), ("inbox", "Za tand margaash 10 tsagt zalgaya, Narantsetseg ee"))
+    chat(db, "w4", ("in", "Shine ym bichij bna"), ("reply", "Одоохондоо хариулж байна, хүлээгээрэй."), minutes_ago=1)  # not settled
+    gem.reply = json.dumps({"learn": False, "reason": "Нэг хүнд хамаатай"}, ensure_ascii=False)
+    calls = len(gem.calls)
+    client.post("/api/admin/ai/lessons/run", headers=AUTH)
+    # an emoji is skipped without asking Gemini; one person's call-back: Gemini says no
+    assert db.one("SELECT outcome FROM ai_lessons WHERE psid = 'w2'")["outcome"] == "skipped"
+    assert len([c for c in gem.calls[calls:] if c[1].endswith(":generateContent")]) == 1
+    assert db.one("SELECT outcome, note FROM ai_lessons WHERE psid = 'w3'") == {"outcome": "skipped", "note": "Нэг хүнд хамаатай"}
+    assert db.one("SELECT COUNT(*) AS n FROM knowledge WHERE topic = 'learned'")["n"] == 1
+    # a staff answer still being written is left for later; nothing is learned twice
+    calls = len(gem.calls)
+    assert client.post("/api/admin/ai/lessons/run", headers=AUTH).json()["done"] == []
+    assert len(gem.calls) == calls and not db.one("SELECT id FROM ai_lessons WHERE psid = 'w4'")
+    # the assistant now uses it, and the admin sees what was learned
+    assert any(i["title"] == "Бөөний нөхцөл ямар вэ?" for i in ai.knowledge_items(db))
+    view = client.get("/api/admin/ai/lessons", headers=AUTH).json()
+    assert view["learned"] == 1 and view["items"][0]["title"] == "Бөөний нөхцөл ямар вэ?"
+    assert client.put("/api/admin/t/knowledge/" + str(db.one("SELECT id FROM knowledge WHERE topic = 'learned'")["id"]),
+                      json={"topic": "learned", "title": "Бөөний нөхцөл", "body": "Засварласан.", "active": False},
+                      headers=AUTH).status_code == 200
+
+
+def test_learning_waits_when_gemini_is_busy_and_follows_new_chats(client, gem, fb):
+    connect(client)
+    enable(client)
+    db = dbmod.get_db()
+    chat(db, "q1", ("in", "Hudaldaanii tuv deer lanhuu bii yu"), ("reply", "Тийм, Нарантуул захын 2 давхарт манай лангуу бий."))
+    gem.status = 429
+    assert client.post("/api/admin/ai/lessons/run", headers=AUTH).json()["done"] == []
+    assert not db.one("SELECT id FROM ai_lessons WHERE psid = 'q1'")  # released, to try again later
+    gem.status = 200
+    gem.reply = json.dumps({"learn": True, "title": "Лангуу хаана байдаг вэ?", "body": "Нарантуул захын 2 давхарт лангуутай.",
+                            "keywords": "лангуу Нарантуул"}, ensure_ascii=False)
+    # a customer message arriving through the webhook is answered first, then one waiting staff answer is learned
+    post(client, event(psid="q2", text="Сайн уу", mid="q2"))
+    assert db.one("SELECT outcome FROM ai_lessons WHERE psid = 'q1'")["outcome"] == "added"

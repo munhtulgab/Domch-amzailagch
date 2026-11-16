@@ -772,3 +772,7 @@ p.a-alert { margin: 0; font-size: 14px; }
 .a-phonefix p > .a-ic { margin-top: 2px; color: var(--danger); }
 .a-phonefix .a-copy input { font-family: var(--body); font-size: 15px; max-width: 220px; }
 .a-phonefix__edit { margin-top: 12px; }
+
+.a-lessons { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.a-lesson { padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; display: grid; gap: 6px; }
+.a-lesson .a-msg__text { margin: 0; }

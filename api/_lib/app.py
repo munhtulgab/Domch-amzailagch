@@ -13,7 +13,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .common import FieldErrors, ago, fail, now_utc, require_admin
 from .db import SCHEMA_PATH, DBError, NotConfigured, get_db
-from . import ai, auth, insights, media, messenger, push
+from . import ai, auth, insights, learn, media, messenger, push
 
 app = FastAPI(
     title="DOMCH API",
@@ -527,7 +527,7 @@ TABLES = {
         "required": ("title", "body"), "order": "sort, id",
     },
 }
-KNOWLEDGE_TOPICS = ("product", "ingredients", "usage", "buy", "health", "company", "general")
+KNOWLEDGE_TOPICS = ("product", "ingredients", "usage", "buy", "health", "company", "general", "learned")
 CHOICES = {("tips", "kind"): ("advice", "minute", "myth"), ("videos", "kind"): ("creator", "family"),
            ("knowledge", "topic"): KNOWLEDGE_TOPICS}
 # NOT NULL columns that fall back to their default when the admin leaves them empty
@@ -820,6 +820,7 @@ app.include_router(push.admin)
 app.include_router(insights.admin)
 app.include_router(messenger.admin)
 app.include_router(ai.admin)
+app.include_router(learn.admin)
 app.include_router(media.admin)
 app.include_router(media.public)
 app.include_router(messenger.public)
