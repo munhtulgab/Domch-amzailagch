@@ -713,3 +713,45 @@ def test_reported_case_out_of_stock_and_picture_follow_up(client, gem, fb):
     assert msg["text"] == cards.STOCK_REPLY and [q["title"] for q in msg["quick_replies"]] == ["Хаанаас авах", "Онлайн захиалах"]
     assert ai.local_answer(dbmod.get_db(), "Uldegdelgui bna gej bna") == ""
     assert ai.local_answer(dbmod.get_db(), "Орц найрлага") != ""
+
+
+def test_context_is_small_and_branches_only_for_named_places():
+    """AI Studio showed ~7K input tokens per reply: every branch of every district went with every question."""
+    core = [{"source": "Мэдлэгийн сан", "title": f"Сэдэв {i}", "text": "мэдээлэл " * 40, "keys": ""} for i in range(5)]
+    branches = [{"source": ai.BRANCH_SOURCE, "title": f"Салбарууд: {name}", "text": "Салбар, хаяг, утас\n" * 30,
+                 "keys": "хаана авах салбар"} for name in ("Баянзүрх дүүрэг", "Хан-Уул дүүрэг", "Дархан-Уул аймаг",
+                                                            "Орхон аймаг", "Сүхбаатар дүүрэг")]
+    picked = ai.select(core + branches, "Үнэ хэд вэ?")
+    assert not [i for i in picked if i["source"] == ai.BRANCH_SOURCE]
+    picked = ai.select(core + branches, "Баянзүрхэд хаана байна?")
+    assert [i["title"] for i in picked if i["source"] == ai.BRANCH_SOURCE] == ["Салбарууд: Баянзүрх дүүрэг"]
+    picked = ai.select(core + branches, "26-р хороо", context="Ta al duureg ve? / bayanzurkh")
+    assert [i["title"] for i in picked if i["source"] == ai.BRANCH_SOURCE] == ["Салбарууд: Баянзүрх дүүрэг"]
+    assert sum(len(i["text"]) for i in picked) < ai.CONTEXT_BUDGET + 1500
+
+
+def test_a_refused_thinking_setting_is_remembered_and_a_400_model_is_skipped(client, gem, fb):
+    connect(client)
+    enable(client)
+    ai.NO_THINKING.clear()
+    db = dbmod.get_db()
+    cfg = ai.load(db)
+    calls = []
+
+    def fake(method, path, key, body=None, timeout=10.0):
+        calls.append((path, bool((body or {}).get("generationConfig", {}).get("thinkingConfig"))))
+        if body and body["generationConfig"].get("thinkingConfig"):
+            raise ai.AIError("Thinking level is not supported for this model.", status=400)
+        return {"candidates": [{"content": {"parts": [{"text": "Сайн байна уу"}]}}]}
+
+    import _lib.ai as mod
+    original = mod._request
+    mod._request = fake
+    try:
+        ai.generate_any(cfg, "sys", [{"role": "user", "parts": [{"text": "hi"}]}], db=db)
+        ai.generate_any(ai.load(db), "sys", [{"role": "user", "parts": [{"text": "hi"}]}], db=db)
+    finally:
+        mod._request = original
+    assert [t for _, t in calls] == [True, False, False]  # the second reply asks once, without thinking
+    assert cfg["model"] in json.loads(ai.load(db)["no_thinking"])
+    ai.NO_THINKING.clear()

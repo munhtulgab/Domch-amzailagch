@@ -21,7 +21,11 @@ KEYS = ("gemini_key", "model", "enabled", "instructions", "models", "checked_at"
         "cooldown")
 PAUSE_CHOICES = (0, 15, 30, 60, 180, 720)
 DEFAULT_PAUSE = 30
-CONTEXT_BUDGET = 24000  # characters of knowledge sent with each question
+# Characters of knowledge sent with each question. It was 24 000 (with every branch of every district) — ~10K input
+# tokens per reply, which used up the free quota and made the light models time out.
+CONTEXT_BUDGET = 7000
+BRANCH_SOURCE = "Худалдаалах цэг"
+NO_THINKING: set = set()  # models that refuse a thinking setting (each refusal is a 400 and a second request)
 SKIP_MODEL = re.compile(r"image|tts|audio|live|embedding|vision|aqa|imagen|veo|robotics|computer|learnlm|gemma|nano", re.I)
 
 http = httpx.Client(timeout=10.0)  # replaced in tests
@@ -143,8 +147,10 @@ def _thinking(model: str) -> dict:
 
 
 def generate(key: str, model: str, system: str, contents: list, timeout: float = 8.0) -> str:
+    if not contents:
+        raise AIError("Асуулт хоосон байна.")  # an empty request is a 400 from Gemini
     config = {"temperature": 0.6, "maxOutputTokens": 800}  # a little variety: replies should not read like a template
-    thinking = _thinking(model)
+    thinking = {} if model in NO_THINKING else _thinking(model)
     body = {"systemInstruction": {"parts": [{"text": system}]}, "contents": contents, "generationConfig": config}
     if thinking:
         config["thinkingConfig"] = thinking
@@ -152,6 +158,7 @@ def generate(key: str, model: str, system: str, contents: list, timeout: float =
         data = _request("POST", f"models/{model}:generateContent", key, body, timeout=timeout)
     except AIError as exc:
         if thinking and "thinking" in str(exc).lower():
+            NO_THINKING.add(model)  # remembered (see generate_any), so the 400 is not repeated on every reply
             config.pop("thinkingConfig", None)
             data = _request("POST", f"models/{model}:generateContent", key, body, timeout=timeout)
         else:
@@ -255,10 +262,34 @@ def _words(text: str) -> set:
     return {_fold(w) for w in WORD.findall(str(text or "").casefold()) if len(w) > 2}
 
 
-def select(items: list, question: str, budget: int = CONTEXT_BUDGET) -> list:
-    """All items when they fit; otherwise the ones that share the most words with the question."""
-    def size(i):
-        return len(i["title"]) + len(i["text"]) + 40
+def select(items: list, question: str, budget: int = CONTEXT_BUDGET, context: str = "") -> list:
+    """What the assistant needs for this question, kept small (every character is paid for in tokens): the product
+    knowledge that fits, best matches first, and the branch lists only of the places named in the question or the
+    last messages (at most 2) — not all 21 districts and aimags."""
+    branches = [i for i in items if i["source"] == BRANCH_SOURCE]
+    core = [i for i in items if i["source"] != BRANCH_SOURCE]
+    named = _words(f"{question} {context}") - FILLER
+    places_named = [b for b in branches
+                    if any(w in named or w[:5] in {n[:5] for n in named} for w in _words(b["title"].replace("Салбарууд:", ""))
+                           if len(w) > 3 and w not in PLACE_WORDS)]
+    picked = _pick(core, question, budget)
+    room = max(budget - sum(_size(i) for i in picked), 2500)
+    for b in places_named[:2]:
+        if _size(b) <= room:
+            picked.append(b)
+            room -= _size(b)
+    return picked
+
+
+PLACE_WORDS = {_fold(w) for w in ("дүүрэг", "аймаг", "хороо", "хот", "сум", "баг")}  # not a place's name
+
+
+def _size(i) -> int:
+    return len(i["title"]) + len(i["text"]) + 40
+
+
+def _pick(items: list, question: str, budget: int) -> list:
+    size = _size
     if sum(size(i) for i in items) <= budget:
         return items
     q = _words(question)
@@ -416,6 +447,22 @@ def generate_any(cfg: dict, system: str, contents: list, budget: float = 18.0, d
     models that can still answer.
     """
     started = time.monotonic()
+    try:
+        NO_THINKING.update(json.loads(cfg.get("no_thinking") or "[]"))
+    except ValueError:
+        pass
+    known = set(NO_THINKING)
+    try:
+        return _generate_any(cfg, system, contents, budget, db, started)
+    finally:
+        if db is not None and NO_THINKING - known:
+            try:
+                store(db, {"no_thinking": json.dumps(sorted(NO_THINKING))})
+            except Exception:  # noqa: BLE001 — remembering is a nicety
+                pass
+
+
+def _generate_any(cfg: dict, system: str, contents: list, budget: float, db, started: float):
     chain = fallback_chain(cfg)
     resting = cooldowns(cfg)
     order = [m for m in chain if m not in resting] + [m for m in chain if m in resting]
@@ -434,6 +481,11 @@ def generate_any(cfg: dict, system: str, contents: list, budget: float = 18.0, d
             print(f"[ai] {model}: {exc}", flush=True)
             if exc.status == 429:
                 rest_model(db, cfg, model, quota_wait(str(exc)))
+            elif exc.status in (400, 404) and not re.search(r"api key|API_KEY|permission|location", str(exc), re.I):
+                # this model refuses the request (retired, renamed, unsupported option): rest it, try the next one
+                rest_model(db, cfg, model, 6 * 3600)
+                failures.append(f"{model}: {_short(exc)}")
+                continue
             if not exc.transient:
                 raise
             failures.append(f"{model}: {_short(exc)}")
@@ -472,9 +524,15 @@ def local_answer(db, question: str, messenger_faq: list | None = None, site: str
     return text + (f"\n\nДэлгэрэнгүй: {site}" if site and site not in text else "")
 
 
+HISTORY_TURNS = 6
+HISTORY_CHARS = 500  # a long branch list sent earlier need not be sent back in full with every reply
+
+
 def answer(db, cfg: dict, question: str, history: list | None = None, site: str = "",
            messenger_faq: list | None = None, timeout: float = 18.0) -> dict:
-    items = select(knowledge_items(db, messenger_faq), question)
+    history = [{**h, "text": str(h.get("text") or "")[:HISTORY_CHARS]} for h in (history or [])[-HISTORY_TURNS:]]
+    recent = " ".join(h["text"] for h in history[-4:])
+    items = select(knowledge_items(db, messenger_faq), question, context=recent)
     started = time.monotonic()
     text, model = generate_any(cfg, system_prompt(items, site, cfg.get("instructions") or ""),
                                to_contents(history or [], question), budget=timeout, db=db)
