@@ -42,6 +42,9 @@ Do NOT learn:
 - guesses, promises or medical diagnoses;
 - what the existing knowledge already says (same facts in other words).
 
+When the assistant had answered first and the staff answer corrects or completes it, learn the correct facts (use
+update_id when the wrong facts came from a «learned» entry).
+
 Reply with JSON only, no other text:
 {"learn": true|false, "reason": "<short, in Mongolian>", "title": "<the question, in Mongolian Cyrillic, max 70 chars>",
  "body": "<the general answer, in Mongolian Cyrillic, max 450 chars, no personal data>", "keywords": "<5-8 words,
@@ -82,14 +85,16 @@ def next_lesson(db):
                 answer.append(row["text"].strip())
     before = db.all("SELECT direction, kind, text FROM messenger_messages WHERE psid = ? AND id < ? ORDER BY id DESC"
                     " LIMIT 15", (first["psid"], first["id"]))
-    question = []
+    question, bot = [], ""
     for row in before:
         if row["direction"] == "out" and row["kind"] in STAFF_KINDS:
             break  # an earlier staff answer: its question was learned with it
+        if row["direction"] == "out" and row["kind"] == "ai" and not bot and not question:
+            bot = (row.get("text") or "").strip()[:600]  # what the assistant said just before staff stepped in
         if row["direction"] == "in" and row.get("text") and len(question) < 3:
             question.append(row["text"].strip()[:400])
     return {"psid": first["psid"], "msg_id": first["id"], "last_id": last_id,
-            "question": "\n".join(reversed(question)), "answer": "\n".join(answer)[:1500]}
+            "question": "\n".join(reversed(question)), "answer": "\n".join(answer)[:1500], "bot": bot}
 
 
 def _worth_asking(lesson) -> str:
@@ -149,7 +154,9 @@ def learn_one(db, cfg: dict) -> dict | None:
     if skip:
         db.run("UPDATE ai_lessons SET outcome = 'skipped', note = ? WHERE id = ?", (skip, lid))
         return {"outcome": "skipped", "note": skip}
-    prompt = (f"EXISTING KNOWLEDGE:\n{_known(db)}\n\nCUSTOMER:\n{lesson['question']}\n\nSTAFF ANSWER:\n{lesson['answer']}")
+    said = f"\n\nTHE ASSISTANT HAD ANSWERED (staff stepped in after it):\n{lesson['bot']}" if lesson.get("bot") else ""
+    prompt = (f"EXISTING KNOWLEDGE:\n{_known(db)}\n\nCUSTOMER:\n{lesson['question']}{said}"
+              f"\n\nSTAFF ANSWER:\n{lesson['answer']}")
     try:
         text, _model = ai.generate_any(_light_cfg(cfg), SYSTEM, [{"role": "user", "parts": [{"text": prompt}]}],
                                        budget=12.0, db=db)

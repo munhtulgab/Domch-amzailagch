@@ -18,7 +18,7 @@ import httpx
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 
-from . import ai, cards, places
+from . import ai, cards, places, tone
 from .common import ago, fail, now_utc, public_links, require_admin, site_url
 from .db import DBError, get_db
 
@@ -698,8 +698,8 @@ def send_path(db, cfg: dict, psid: str) -> str:
 
 def send_text(db, cfg: dict, psid: str, text: str, kind: str = "reply", quick_replies: list | None = None) -> dict:
     text = public_links(text)
-    if kind != "reply":  # automatic answers (buttons, knowledge base): a price comes with the factory-price reminder
-        text = ai.price_note(text)
+    if kind not in ("reply", "ai"):  # automatic answers (buttons, knowledge base): a price comes with the reminder
+        text = ai.price_note(text)  # (AI replies get it in ai.clean, once per conversation — see tone.polish)
     message = {"text": text}
     if quick_replies:
         message["quick_replies"] = quick_replies
@@ -879,7 +879,8 @@ def ai_reply(db, cfg: dict, psid: str, text: str, site: str, buttons: list | Non
     if newer_message(db, psid, in_id):  # arrived while the AI was thinking: the newer message's reply covers it
         decide(db, psid, "Хариу бэлдэх зуур дараагийн мессеж ирсэн тул хамтад нь нэг удаа хариулна.")
         return
-    send_text(db, cfg, psid, drop_greeting(db, psid, text, result["answer"]), kind="ai", quick_replies=buttons)
+    answer = tone.polish(db, psid, drop_greeting(db, psid, text, result["answer"]))  # read once more before sending
+    send_text(db, cfg, psid, answer, kind="ai", quick_replies=buttons)
     decide(db, psid, f"AI хариулсан ({result['model']}, {result['ms']} мс).")
 
 

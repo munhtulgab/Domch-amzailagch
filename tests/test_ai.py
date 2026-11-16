@@ -646,3 +646,26 @@ def test_learning_waits_when_gemini_is_busy_and_follows_new_chats(client, gem, f
     # a customer message arriving through the webhook is answered first, then one waiting staff answer is learned
     post(client, event(psid="q2", text="Сайн уу", mid="q2"))
     assert db.one("SELECT outcome FROM ai_lessons WHERE psid = 'q1'")["outcome"] == "added"
+
+
+def test_ai_replies_are_read_once_more_before_sending(client, gem, fb):
+    """Reported replies: the same opening and reminders every time, «…чөлөөтэй асуугаарай» closers, broken long links."""
+    from _lib import tone
+
+    connect(client)
+    enable(client)
+    gem.reply = ("Баянзүрхийн 26-р хороонд салбар байхгүй байна. Emonos: https://www.emonos.mn/category?search=%D0%94%D0%BE%D0%BC"
+                 "%D1%8част асуулт байвал чөлөөтэй асуугаарай.")
+    post(client, event(psid="t1", text="26-khoroo bayanzurkh", mid="t1"))
+    assert texts(fb)[-1] == f"Баянзүрхийн 26-р хороонд салбар байхгүй байна. Emonos: {tone.EMONOS}"
+    gem.reply = "250 мл нь 4 500₮, 500 мл нь 7 500₮.\n" + ai.PRICE_NOTE
+    post(client, event(psid="t1", text="Хүүхдэд тохирох уу, хэд вэ?", mid="t2"))
+    assert texts(fb)[-1].endswith(ai.PRICE_NOTE)  # the first price of the conversation comes with the reminder
+    gem.reply = "500 мл нь 7 500₮. " + ai.PRICE_NOTE + " Өөр юу сонирхож байна вэ? Танд туслахад бэлэн байна."
+    post(client, event(psid="t1", text="500 ml hed bilee, huuhed heregleh uu", mid="t3"))
+    assert texts(fb)[-1] == "500 мл нь 7 500₮."  # said once is enough; no stock closing lines
+    # asked again word for word: the whole answer, not a fragment
+    gem.reply = "Домч спирт агуулаагүй тул хүүхэд эцэг эхийн хяналтан дор хэрэглэж болно."
+    post(client, event(psid="t1", text="Хүүхэд хэрэглэж болох уу?", mid="t4"))
+    post(client, event(psid="t1", text="Хүүхэд хэрэглэж болох уу дахиад", mid="t5"))
+    assert texts(fb)[-1] == gem.reply
