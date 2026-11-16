@@ -742,10 +742,7 @@ def send_cards(db, cfg: dict, psid: str, elements: list, summary: str, quick_rep
 
 def answer_with_cards(db, cfg: dict, psid: str, what: str, site: str, quick_replies: list | None = None) -> bool:
     """«Үнэ хэд вэ?» → the two sizes as cards, then the factory-price note; «Найрлага?» → the ingredients as cards."""
-    if what == "price":
-        elements, summary = cards.price_elements(db, site), cards.price_summary(db)
-    else:
-        elements, summary = cards.ingredient_elements(site), cards.INGREDIENT_SUMMARY
+    elements, summary = card_set(db, what, site)
     if not elements or not summary:
         return False
     if what == "price":
@@ -754,8 +751,19 @@ def answer_with_cards(db, cfg: dict, psid: str, what: str, site: str, quick_repl
         send_text(db, cfg, psid, cards.PRICE_NOTE, kind="auto", quick_replies=quick_replies)
     elif not send_cards(db, cfg, psid, elements, summary, quick_replies=quick_replies):
         return False
-    decide(db, psid, "Үнийг картаар харуулсан." if what == "price" else "Найрлагыг картаар харуулсан.")
+    decide(db, psid, {"price": "Үнийг", "ingredients": "Найрлагыг", "usage": "Хэрэглэх зааврыг",
+                      "info": "Бүтээгдэхүүний танилцуулгыг"}.get(what, "Мэдээллийг") + " картаар харуулсан.")
     return True
+
+
+def card_set(db, what: str, site: str) -> tuple[list, str]:
+    if what == "price":
+        return cards.price_elements(db, site), cards.price_summary(db)
+    if what == "usage":
+        return cards.usage_elements(site), cards.USAGE_SUMMARY
+    if what == "info":
+        return cards.overview_elements(db, site), cards.OVERVIEW_SUMMARY
+    return cards.ingredient_elements(site), cards.INGREDIENT_SUMMARY
 
 
 def faq_buttons(faq: list, skip: int | None = None) -> list:
@@ -910,9 +918,9 @@ def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at,
         send_text(db, cfg, psid, cards.ONLINE_NOTE, kind="auto")  # under the buttons: why shop prices differ
         decide(db, psid, "Онлайн захиалгын хоёр эмийн сангийн холбоос илгээсэн.")
         return
-    if payload in (cards.PRICE_PAYLOAD, cards.INGREDIENTS_PAYLOAD):
+    if cards.for_payload(payload):
         db.run("UPDATE messenger_contacts SET welcomed_at = ? WHERE psid = ?", (now_utc(), psid))
-        if answer_with_cards(db, cfg, psid, "price" if payload == cards.PRICE_PAYLOAD else "ingredients", site):
+        if answer_with_cards(db, cfg, psid, cards.for_payload(payload), site):
             return
     index = None
     if payload.startswith("FAQ_") and payload[4:].isdigit():
@@ -999,7 +1007,7 @@ def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at,
     # «Үнэ хэд вэ?», «Найрлага юу вэ?» on their own: cards (a repeat within 10 minutes goes to the AI instead)
     what = cards.which(topics, clean)
     if what:
-        summary = cards.price_summary(db) if what == "price" else cards.INGREDIENT_SUMMARY
+        summary = card_set(db, what, site)[1]
         if summary and not replied_lately(db, psid, summary, minutes=10) and answer_with_cards(
                 db, cfg, psid, what, site, quick_replies=faq_buttons(faq) if first else None):
             return

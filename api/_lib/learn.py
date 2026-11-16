@@ -19,6 +19,11 @@ STAFF_KINDS = ("inbox", "reply")
 SETTLE_MINUTES = 3  # staff often answer in several messages: wait until they have finished
 DAILY_LIMIT = 20  # lessons use the same Gemini quota as the answers to customers
 SHORT = "Хариу хэт богино (мэндчилгээ, эмодзи, хавсралт)."
+CANNED = "Олон харилцагчид ижил илгээсэн бэлэн хариу (Page-ийн автомат хариу байж магадгүй)."
+PRICES = "Үнийг сургахгүй: үнэ «Бүтээгдэхүүн» хэсгээс л ирнэ."
+OLD = "Хуучин хариу: тэр үеийн мэдээлэл одоо өөрчлөгдсөн байж болно."
+MAX_AGE_DAYS = 10  # older staff answers may tell what is no longer true (the 500 ml once cost 7 000₮)
+MONEY = re.compile(r"\d[\d\s,.]*\s*(₮|төг|tug|mnt)", re.I)
 NO_QUESTION = "Харилцагчийн асуулт алга."
 LETTERS = re.compile(r"[A-Za-zА-Яа-яЁёӨөҮү]")
 
@@ -40,6 +45,7 @@ Do NOT learn:
 - anything about one person: names, phone numbers, addresses, one order, one delivery, a deal or price offered to
   one customer, influencer or partner (e.g. a fee for a reel, free products for one person);
 - guesses, promises or medical diagnoses;
+- prices or volumes of the product (they come from the product list, which is always right);
 - what the existing knowledge already says (same facts in other words).
 
 When the assistant had answered first and the staff answer corrects or completes it, learn the correct facts (use
@@ -66,7 +72,7 @@ def next_lesson(db):
     """The oldest staff answer not learned from yet, with the customer's question before it and every staff message
     that followed in a row (one answer is often several messages)."""
     first = db.one(
-        "SELECT m.id, m.psid FROM messenger_messages m WHERE m.direction = 'out' AND m.kind IN ('inbox', 'reply')"
+        "SELECT m.id, m.psid, m.created_at FROM messenger_messages m WHERE m.direction = 'out' AND m.kind IN ('inbox', 'reply')"
         " AND m.created_at <= ? AND NOT EXISTS (SELECT 1 FROM ai_lessons l WHERE l.psid = m.psid"
         " AND m.id BETWEEN l.msg_id AND l.last_id) ORDER BY m.id LIMIT 1",
         (ago(minutes=SETTLE_MINUTES),),
@@ -94,15 +100,24 @@ def next_lesson(db):
         if row["direction"] == "in" and row.get("text") and len(question) < 3:
             question.append(row["text"].strip()[:400])
     return {"psid": first["psid"], "msg_id": first["id"], "last_id": last_id,
+            "old": (first.get("created_at") or "") < ago(days=MAX_AGE_DAYS),
             "question": "\n".join(reversed(question)), "answer": "\n".join(answer)[:1500], "bot": bot}
 
 
-def _worth_asking(lesson) -> str:
+def _worth_asking(db, lesson) -> str:
     """Why a lesson is skipped without asking Gemini, or ''."""
+    if lesson.get("old"):
+        return OLD
     if len(LETTERS.findall(lesson["answer"])) < 15:
         return SHORT
     if len(LETTERS.findall(lesson["question"])) < 3:
         return NO_QUESTION
+    # the same text in several chats is a saved reply or Meta's own automation, not someone answering this person
+    first_line = lesson["answer"].split("\n", 1)[0]
+    same = db.one("SELECT COUNT(DISTINCT psid) AS n FROM messenger_messages WHERE direction = 'out'"
+                  " AND kind IN ('inbox', 'reply') AND text = ?", (first_line,))
+    if int((same or {}).get("n") or 0) >= 3:
+        return CANNED
     return ""
 
 
@@ -131,8 +146,9 @@ def _known(db) -> str:
 
 def _today_count(db) -> int:
     """Lessons that went to Gemini in the last 24 hours (learned or not)."""
-    row = db.one("SELECT COUNT(*) AS n FROM ai_lessons WHERE outcome != 'pending' AND COALESCE(note, '') NOT IN (?, ?)"
-                 " AND created_at >= ?", (SHORT, NO_QUESTION, ago(hours=24)))
+    row = db.one("SELECT COUNT(*) AS n FROM ai_lessons WHERE outcome != 'pending'"
+                 " AND COALESCE(note, '') NOT IN (?, ?, ?, ?) AND created_at >= ?",
+                 (SHORT, NO_QUESTION, CANNED, OLD, ago(hours=24)))
     return int((row or {}).get("n") or 0)
 
 
@@ -150,7 +166,7 @@ def learn_one(db, cfg: dict) -> dict | None:
     except DBError:
         return None
     lid = db.one("SELECT id FROM ai_lessons WHERE msg_id = ?", (lesson["msg_id"],))["id"]
-    skip = _worth_asking(lesson)
+    skip = _worth_asking(db, lesson)
     if skip:
         db.run("UPDATE ai_lessons SET outcome = 'skipped', note = ? WHERE id = ?", (skip, lid))
         return {"outcome": "skipped", "note": skip}
@@ -173,6 +189,9 @@ def learn_one(db, cfg: dict) -> dict | None:
     if not data.get("learn") or not title or not body:
         db.run("UPDATE ai_lessons SET outcome = 'skipped', note = ? WHERE id = ?", (reason or "Ерөнхий мэдээлэл биш.", lid))
         return {"outcome": "skipped", "note": reason}
+    if MONEY.search(body) or MONEY.search(title):
+        db.run("UPDATE ai_lessons SET outcome = 'skipped', note = ? WHERE id = ?", (PRICES, lid))
+        return {"outcome": "skipped", "note": PRICES}
     keywords = str(data.get("keywords") or "")[:300]
     target = None
     if data.get("update_id"):

@@ -19,7 +19,11 @@ TOPICS = [
     ("partner", "Хамтран ажиллах, бөөний худалдаа", ("бөөн", "нийлүүл", "борлуулмаар", "борлуулъя", "борлуулагч", "дистрибь",
                                                      "хамтр", "хамтын", "реклам", "сурталч", "контент", "спонсор",
                                                      "төлөөлөгч", "франчайз", "дилер", "борлуулах", "borluulah", "borluulax", "booniin", "boonii", "бүүний",
-                                                     "buunii", "гэрээтийн", "байршуул", "bairshuul", "tuluulugch", "reel")),
+                                                     "buunii", "гэрээтийн", "байршуул", "bairshuul", "tuluulugch", "reel",
+                                                     # «хамтарч ажиллах», «олноор авбал», «манай дэлгүүрт тавиулж»,
+                                                     # «дэлгүүртэй шүдний эмч» (from real chats)
+                                                     "хамтар", "hamtar", "hamtr", "олноор", "olnoor", "buunuur", "bunuur",
+                                                     "тавиул", "taviul", "дэлгүүртэй", "delguurtei", "gereetiin")),
     ("price", "Үнэ", ("үнэ", "үний", "yne", "une", "vne", "uniin", "price")),
     ("where", "Хаанаас авах, байршил", ()),
     ("order", "Захиалах, авмаар байна", ("захиал", "zahial", "zaxial", "авъя", "авья", "авий", "awie", "awii", "abii", "aviy",
@@ -50,6 +54,10 @@ COMBOS = {
                 ("худалдан", "борлуул"), ("hudaldan", "borluul"), ("авч", "борлуул"), ("awch", "borluul"), ("avch", "borluul"),
                 # «үнэ эмийн санд зарахаар», «дэлгүүртээ зармаар байна» — to sell it in one's own shop. Only the
                 # intent forms: «эмийн санд зарагддаг уу», «хаана зарж байгаа вэ» ask where to buy.
+                ("гэрээт", "хэрхэн"), ("гэрээт", "яаж"), ("gereet", "yaj"), ("гэрээт", "авдаг"), ("gereet", "awdag"),
+                ("gereet", "avdag"), ("манайх", "эмнэлэг"), ("манай", "эмнэлэг"), ("manaih", "emneleg"), ("манайх", "лангуу"),
+                ("manaih", "languu"), ("хайрцаг", "ширхэг"), ("байгууллагад", "ав"), ("baiguullagad", "aw"),
+                ("компанид", "ав"), ("kompanid", "aw"), ("эмийн", "сантай"), ("emiin", "santai"),
                 *((shop, sell) for shop in ("эмийн", "дэлгүүр", "emiin", "delguur", "дэлгүүрт", "лангуу", "langu")
                   for sell in ("зарах", "зармаар", "заръя", "зарья", "зарая", "борлуулах", "борлуулмаар", "zarah", "zarax",
                                "zarmaar", "zarya", "zaraya", "borluulah", "borluulmaar"))),
@@ -174,7 +182,7 @@ def _stems(text: str) -> list:
 
 def classify(text: str) -> list:
     """Topic keys for one incoming message (most specific first)."""
-    raw = str(text or "").strip()
+    raw = str(text or "").replace("\xad", "").replace("\u200b", "").strip()  # soft hyphens, zero-width spaces
     if not raw:
         return ["other"]
     if MEDIA.match(raw):

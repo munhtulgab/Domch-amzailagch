@@ -904,7 +904,7 @@ def test_buying_for_a_pharmacy_gets_the_partner_form(client, fb):
 
     connect(client)
     for i, text in enumerate(["Эмийн санд авах гэсэн юм", "Bi emiin sandaa hudaldan awch borluulah hd bna",
-                              "үнэ эмийн снд зарахаар", "Delguurtee zarmaar bn"]):
+                              "үнэ эмийн снд зарахаар", "Delguurtee zarmaar bn"]):  # the reseller-price one is [2]
         before = len(sent_texts(fb))
         post_event(client, event(psid=f"ph{i}", text=text, mid=f"ph{i}"))
         sent = [m.get("text", "") for m in sent_texts(fb)][before:]
@@ -1078,3 +1078,40 @@ def test_price_and_ingredient_questions_get_cards(client, fb):
     before = len(fb.calls)
     post_event(client, event(psid="k3", text="500 ygd iluu vnetei bga we", mid="k3"))
     assert not any("attachment" in (c[3] or {}).get("message", {}) for c in fb.calls[before:])
+
+
+
+def test_partnership_phrasings_from_real_chats():
+    from _lib import insights
+
+    yes = ["Сайнуу танайх гэрээт хэрхэн авдаг вэ  Манайх шүдний эмнэлэг юмаа", "Хамтарч ажиллах санал байна",
+           "Олноор авбал хямдрах уу", "Байгууллагадаа 100 ширхэг авъя", "Манай дэлгүүрт тавиулж болох уу",
+           "Nii\xadluulegch boloh bolomj bga yu", "sn bnu manaih go.to marketd bdg ahuin baraa zardag languu bgma",
+           "Үндэсний бүтээгдэхүүнтэй дэлгүүртэй шүдний эмч байгаа юмаа", "gereet salbar boloe",
+           "Sain bnu. Oron nutgiin supermarket avch zarah gesiin. Buunii une ene ter bii yu."]
+    no = ["Huwsgul aimagt gereet bgaa yu?", "Khentii gereet dugaara uguuch", "Хаагуур борлуулдаг вэ",
+          "Delguuruudeer ene uneeree bga yu", "Хайрцаг нь цаасан уу", "Эмнэлэгт үзүүлэх хэрэгтэй юу",
+          "Хамт хэрэглэж болох уу", "Эмийн санд зарагддаг уу"]
+    assert [t for t in yes if "partner" not in insights.classify(t)] == []
+    assert [t for t in no if "partner" in insights.classify(t)] == []
+
+
+def test_usage_and_overview_cards(client, fb):
+    from _lib import cards, insights
+
+    connect(client)
+    dbmod.get_db().run("UPDATE products SET price = CASE WHEN volume_ml = 250 THEN 4500 ELSE 7500 END")
+    last = lambda: [c[3]["message"] for c in fb.calls if c[1] == "me/messages"][-1]  # noqa: E731
+    post_event(client, event(psid="u1", text="Хэрхэн хэрэглэх вэ?", mid="u1"))
+    els = last()["attachment"]["payload"]["elements"]
+    assert [e["title"] for e in els] == ["Насанд хүрэгчид · 25 мл", "Хүүхэд · 15 мл", "Анхааруулга"]
+    assert "10 секунд" in els[0]["subtitle"] and "2 удаа" in els[0]["subtitle"]
+    post_event(client, event(psid="u2", text="Дэлгэрэнгүй мэдээлэл", mid="u2"))
+    els = last()["attachment"]["payload"]["elements"]
+    assert [e["title"] for e in els] == ["ДОМЧ ам зайлагч", "Найрлага", "Хэрэглэх заавар", "Хаанаас авах"]
+    assert "250 мл 4 500₮" in els[0]["subtitle"] and "500 мл 7 500₮" in els[0]["subtitle"]
+    assert all(len(e["title"]) <= 80 and len(e["subtitle"]) <= 80 and len(e["buttons"]) <= 3 for e in els)
+    # «Үнийн мэдээлэл» asks the price; «may I…» and shelf-life questions are not «how to use»
+    assert cards.which(set(insights.classify("Үнийн мэдээлэл")), "Үнийн мэдээлэл") == "price"
+    for text in ("Жирэмсэн үед хэрэглэж болох уу?", "Хэр удаан хадгалах вэ?", "Хүүхэд хэрэглэж болох уу?"):
+        assert cards.which(set(insights.classify(text)), text) != "usage", text

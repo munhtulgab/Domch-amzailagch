@@ -11,6 +11,9 @@ ONLINE_TEXT = "🛒 Emonos болон Health point эмийн сангийн о�
 ONLINE_NOTE = ("Эмийн сан, дэлгүүрт үйлдвэрийн үнээс өндөр үнээр зарагдаж болно. Эмийн сан болон дэлгүүр бүр өөрийн "
                "нэмэгдэлтэй зардаг тул үнэ салбар бүрт өөр байж болно.")
 INGREDIENTS_PAYLOAD = "INGREDIENTS"
+USAGE_PAYLOAD = "USAGE"
+# «мэдээлэл өгөөч», «дэлгэрэнгүй мэдээлэл»: nothing specific asked — an overview of the product as cards
+INFO = re.compile(r"мэдээл|medeel|mdeel|medel|дэлгэрэнгүй|delgerengui|delgrengui|танилцуул|taniltsuul|info", re.I)
 # «500 яагаад илүү үнэтэй вэ» asks why, not what: that one goes to the AI
 WHY = re.compile(r"(?<!\w)(яагаад|яах|yagaad|yagad|ygd|ygaad|yaagaad|yaah)", re.I)
 
@@ -95,13 +98,74 @@ INGREDIENT_SUMMARY = ("🗂 Найрлага: шүүсэн ус, жамц дав
                       "Спирт агуулаагүй.")
 
 
+HOW_TO_USE = re.compile(r"хэрэгл|heregl|hereglee|заавар|zaavar|зайл|zail|хэдэн удаа|heden udaa|hed udaa|хэдэн мл|heden ml",
+                        re.I)
+# «хэр удаан хадгалах вэ» (shelf life) or «жирэмсэн хэрэглэж болох уу» (may I?) are not «how to use»: the AI answers
+NOT_HOW = re.compile(r"хадгал|hadgal|хугацаа|hugatsaa|дуусах|duusah|задар|болох|болно|bolo|bolh|bolno|bolku|болхуу", re.I)
+USAGE = (
+    ("use-adult", "Насанд хүрэгчид · 25 мл", "Шүдээ угаасны дараа 25 мл-ээр 10 секунд зайлаад нулимна. 2 удаа давтана."),
+    ("use-kid", "Хүүхэд · 15 мл", "Эцэг эхийн хяналтан дор 15 мл-ээр 10 секунд зайлаад нулимна. 2 удаа давтана."),
+    ("use-warn", "Анхааруулга", "Залгихгүй. Найрлагын аль нэг бодист харшилтай бол хэрэглэж болохгүй."),
+)
+USAGE_SUMMARY = ("🗂 Хэрэглэх заавар: насанд хүрэгчид 25 мл, хүүхэд 15 мл, 10 секунд зайлаад нулимна, 2 удаа давтана. "
+                 "Залгихгүй.")
+
+
+def usage_elements(site: str) -> list:
+    base = _base(site)
+    return [{
+        "title": title, "subtitle": line, "image_url": f"{base}/media/bot/{key}.jpg",
+        "default_action": {"type": "web_url", "url": f"{base}/#usage"},
+        "buttons": [
+            {"type": "web_url", "title": "Дэлгэрэнгүй", "url": f"{base}/#usage"},
+            {"type": "postback", "title": "Найрлага", "payload": INGREDIENTS_PAYLOAD},
+            {"type": "postback", "title": "Хаанаас авах", "payload": "WHERE_ASK"},
+        ],
+    } for key, title, line in USAGE]
+
+
+def overview_elements(db, site: str) -> list:
+    """The product in four cards: what it is and costs, ingredients, how to use, where to buy."""
+    base = _base(site)
+    prices = " · ".join(f"{int(p['volume_ml'])} мл {_money(p['price'])}" for p in products(db) if p.get("price"))
+    return [
+        {"title": "ДОМЧ ам зайлагч", "subtitle": f"Жамц давсны уусмал, спирт агуулаагүй. {prices}".strip()[:80],
+         "image_url": f"{base}/media/bot/domch-500.jpg", "default_action": {"type": "web_url", "url": base},
+         "buttons": [{"type": "postback", "title": "Үнэ", "payload": PRICE_PAYLOAD},
+                     {"type": "web_url", "title": "Вэбээс үзэх", "url": base}]},
+        {"title": "Найрлага", "subtitle": INGREDIENTS[0][2], "image_url": f"{base}/media/bot/ing-all.jpg",
+         "default_action": {"type": "web_url", "url": f"{base}/#ingredients"},
+         "buttons": [{"type": "postback", "title": "Найрлага", "payload": INGREDIENTS_PAYLOAD}]},
+        {"title": "Хэрэглэх заавар", "subtitle": USAGE[0][2], "image_url": f"{base}/media/bot/use-adult.jpg",
+         "default_action": {"type": "web_url", "url": f"{base}/#usage"},
+         "buttons": [{"type": "postback", "title": "Хэрэглэх заавар", "payload": USAGE_PAYLOAD}]},
+        {"title": "Хаанаас авах", "subtitle": "Эмийн сан, дэлгүүрүүдээс эсвэл Emonos, Health point-оос онлайнаар.",
+         "image_url": f"{base}/media/bot/where.jpg", "default_action": {"type": "web_url", "url": f"{base}/#where"},
+         "buttons": [{"type": "postback", "title": "Хаанаас авах", "payload": "WHERE_ASK"},
+                     {"type": "postback", "title": "Онлайн захиалах", "payload": ONLINE_PAYLOAD}]},
+    ]
+
+
+OVERVIEW_SUMMARY = "🗂 Танилцуулга: ДОМЧ ам зайлагч · найрлага · хэрэглэх заавар · хаанаас авах"
+
+
 def which(topics: set, text: str) -> str:
-    """'price' or 'ingredients' when the message asks only that (cards answer it whole), else ''."""
+    """'price', 'ingredients', 'usage' or 'info' when the message asks only that (cards answer it whole), else ''."""
     if WHY.search(text or ""):
         return ""
     rest = topics - {"greeting", "other"}
+    if rest - {"info", "order"}:
+        rest = rest - {"info", "order"}  # «Үнийн мэдээлэл» asks the price
     if rest == {"price"}:
         return "price"
     if rest == {"ingredients"}:
         return "ingredients"
+    if rest == {"usage"} and HOW_TO_USE.search(text or "") and not NOT_HOW.search(text or ""):
+        return "usage"  # «хэрхэн хэрэглэх вэ», not «хэр удаан хадгалах вэ»
+    if (rest and rest <= {"info", "order"} and "info" in rest) or (not rest and INFO.search(text or "")):
+        return "info"  # «мэдээлэл авъя», «дэлгэрэнгүй мэдээлэл»
     return ""
+
+
+def for_payload(payload: str) -> str:
+    return {PRICE_PAYLOAD: "price", INGREDIENTS_PAYLOAD: "ingredients", USAGE_PAYLOAD: "usage"}.get(payload, "")

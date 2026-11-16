@@ -149,7 +149,7 @@ def test_messenger_answers_with_ai(client, gem, fb):
     convo = client.get("/api/admin/messenger/threads/psid-1", headers=AUTH).json()["items"]
     assert [m["kind"] for m in convo] == ["message", "ai"]
     # follow-up keeps the conversation history
-    raw, headers = signed(event(text="Хэдэн удаа хэрэглэх вэ?", mid="ai2"))
+    raw, headers = signed(event(text="Жирэмсэн үед хэрэглэж болох уу?", mid="ai2"))
     client.post("/api/messenger/webhook", content=raw, headers=headers)
     contents = gem.calls[-1][3]["contents"]
     assert [c["role"] for c in contents] == ["user", "model", "user"]
@@ -163,7 +163,7 @@ def test_greeting_gets_welcome_only_and_question_gets_both(client, gem, fb):
     raw, headers = signed(event(text="Сайн байна уу", mid="g1"))
     client.post("/api/messenger/webhook", content=raw, headers=headers)
     assert texts(fb) == ["Сайн байна уу! ДОМЧ-д тавтай морил."]
-    raw, headers = signed(event(psid="psid-7", text="Сайн байна уу, хэрхэн хэрэглэх вэ?", mid="g2"))
+    raw, headers = signed(event(psid="psid-7", text="Сайн байна уу, жирэмсэн үед хэрэглэж болох уу?", mid="g2"))
     client.post("/api/messenger/webhook", content=raw, headers=headers)
     assert texts(fb)[-2:] == ["Сайн байна уу! ДОМЧ-д тавтай морил.", gem.reply]
 
@@ -195,7 +195,7 @@ def test_ai_failure_falls_back_and_is_reported(client, gem, fb):
 def test_disabled_ai_does_nothing(client, gem, fb):
     connect(client)
     enable(client, enabled=False)
-    raw, headers = signed(event(text="Хэрхэн хэрэглэх вэ?", mid="d1"))
+    raw, headers = signed(event(text="Жирэмсэн үед хэрэглэж болох уу?", mid="d1"))
     client.post("/api/messenger/webhook", content=raw, headers=headers)
     assert texts(fb) == [] and not any(c[1].endswith(":generateContent") for c in gem.calls)
 
@@ -243,9 +243,9 @@ def test_reported_case_old_manual_reply_does_not_block_ai(client, gem, fb):
     enable(client)
     post(client, event(text="Hi", mid="r1"))
     dbmod.get_db().run("INSERT INTO messenger_messages (psid, direction, kind, text) VALUES ('psid-1', 'out', 'reply', 'хш')")
-    post(client, event(text="Medeelel og", mid="r2"))
+    post(client, event(text="Shud tsairuulah uu", mid="r2"))
     assert texts(fb)[-1] == gem.reply
-    assert gem.calls[-1][3]["contents"][-1]["parts"][0]["text"] == "Medeelel og"
+    assert gem.calls[-1][3]["contents"][-1]["parts"][0]["text"] == "Shud tsairuulah uu"
     assert "латин" in gem.calls[-1][3]["systemInstruction"]["parts"][0]["text"]
     decision = client.get("/api/admin/messenger", headers=AUTH).json()["last_decision"]
     assert decision["reason"].startswith("AI хариулсан")
@@ -268,7 +268,7 @@ def test_pause_after_admin_reply_is_configurable_and_reversible(client, gem, fb)
     thread = client.get("/api/admin/messenger/threads/psid-1", headers=AUTH).json()
     assert thread["ai_on"] and thread["ai_paused_until"]
     assert client.post("/api/admin/messenger/threads/psid-1/ai", json={"paused": False}, headers=AUTH).json()["ai_paused_until"] == ""
-    post(client, event(text="Хэрэглэх заавар юу вэ?", mid="p4"))
+    post(client, event(text="Шүд цайруулах уу?", mid="p4"))
     assert texts(fb)[-1] == gem.reply
     client.post("/api/admin/messenger/threads/psid-1/ai", json={"paused": True}, headers=AUTH)
     calls = len(gem.calls)
@@ -312,10 +312,12 @@ def test_all_models_overloaded_sends_the_holding_reply(client, gem, fb):
     gem.overloaded = ["gemini-"]
     post(client, event(text="Орц нь юу вэ, спирттэй юу?", mid="o2"))  # cards need no AI
     assert card_titles(sent(fb)[-1])[0].startswith("Найрлага")
-    post(client, event(text="Хэрэглэх заавар?", mid="o2b"))
-    assert not texts(fb)[-1].startswith("Таны асуултыг")  # knowledge entry, no AI
+    post(client, event(text="Хүүхэд эцэг эхийн хяналтгүй хэрэглэж болох уу?", mid="o2b"))
+    assert not texts(fb)[-1].startswith("Таны асуултыг")  # a knowledge entry answers, no AI
     assert "ачаалалтай" in client.get("/api/admin/ai", headers=AUTH).json()["last_error"]["message"]
     assert "мэдлэгийн сангаас" in client.get("/api/admin/messenger", headers=AUTH).json()["last_decision"]["reason"]
+    post(client, event(text="Хэрэглэх заавар?", mid="o2c"))  # how to use: cards, no AI needed either
+    assert card_titles(sent(fb)[-1])[0].startswith("Насанд хүрэгчид")
     post(client, event(text="zzzz qqqq", mid="o3"))  # nothing to match: a holding reply that still points somewhere
     assert texts(fb)[-1].startswith("Таны асуултыг хүлээн авлаа") and "http" in texts(fb)[-1]
     post(client, event(text="Une", mid="o4"))  # «үнэ» in Latin letters: no prices set, so the knowledge entry answers
@@ -364,7 +366,7 @@ def test_reported_case_daily_quota_skips_the_model_and_lists_every_try(client, g
     assert list(resting) == ["gemini-3.5-flash"]
 
     gem.calls.clear()
-    post(client, event(text="Хэрэглэх заавар?", mid="d2"))
+    post(client, event(text="Шүд цайруулах уу?", mid="d2"))
     assert texts(fb)[-1] == gem.reply
     tried = [c[1].rsplit("/", 1)[-1].split(":")[0] for c in gem.calls if c[1].endswith(":generateContent")]
     assert tried == ["gemini-3.5-flash-lite"]  # skipped straight to the model that still has quota
@@ -488,7 +490,7 @@ def test_reported_case_two_quick_messages_get_one_answer(client, gem, fb, monkey
         original(received_at)
 
     monkeypatch.setattr(messenger, "wait_to_gather", gather)
-    post(client, page_event(text="Sn bnu, medeelel awii", mid="g1"))
+    post(client, page_event(text="Sn bnu, juremsen hereglej bolh uu", mid="g1"))
     replies = [m["text"] for m in sent(fb)[before:]]
     assert len(replies) == 1 and replies[0].startswith("250 мл")
 
@@ -669,3 +671,23 @@ def test_ai_replies_are_read_once_more_before_sending(client, gem, fb):
     post(client, event(psid="t1", text="Хүүхэд хэрэглэж болох уу?", mid="t4"))
     post(client, event(psid="t1", text="Хүүхэд хэрэглэж болох уу дахиад", mid="t5"))
     assert texts(fb)[-1] == gem.reply
+
+
+
+def test_learning_skips_saved_replies_old_answers_and_prices(client, gem, fb):
+    """Reported: an old saved reply «500 мл … 7000 төгрөг» was learned as the price."""
+    connect(client)
+    enable(client)
+    db = dbmod.get_db()
+    canned = "ДОМЧ ам зайлагч нь 250 мл савлагаатай нь 4500 төгрөг, 500 мл савлагаатай нь 7000 төгрөгийн үнэтэй байна."
+    for i in range(3):
+        chat(db, f"c{i}", ("in", "💰 Үнэ хэд вэ?"), ("inbox", canned))
+    chat(db, "old", ("in", "Хаана лангуутай вэ?"), ("reply", "Нарантуул захын 2 давхарт лангуутай байсан."), minutes_ago=60 * 24 * 12)
+    chat(db, "pr", ("in", "Бөөний үнэ?"), ("reply", "Бөөний үнэ 50 ширхэгээс дээш авбал нэг нь 6 000 төгрөг."))
+    gem.reply = json.dumps({"learn": True, "title": "Бөөний үнэ", "body": "50-аас дээш ширхэгт 6 000₮.", "keywords": "бөөн"},
+                           ensure_ascii=False)
+    client.post("/api/admin/ai/lessons/run", headers=AUTH)
+    client.post("/api/admin/ai/lessons/run", headers=AUTH)
+    notes = {r["psid"]: r["note"] for r in db.all("SELECT psid, note FROM ai_lessons")}
+    assert notes["c0"].startswith("Олон харилцагчид") and notes["old"].startswith("Хуучин") and notes["pr"].startswith("Үнийг")
+    assert db.one("SELECT COUNT(*) AS n FROM knowledge WHERE topic = 'learned'")["n"] == 0
