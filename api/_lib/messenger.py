@@ -870,7 +870,7 @@ def ai_reply(db, cfg: dict, psid: str, text: str, site: str, buttons: list | Non
             break
     typing(db, cfg, psid)
     try:
-        result = ai.answer(db, acfg, text, history[-8:], site=site, messenger_faq=parse_faq(cfg), timeout=18.0)
+        result = ai.answer(db, acfg, text, history[-8:], site=site, messenger_faq=parse_faq(cfg), timeout=ai.REPLY_BUDGET)
     except ai.AIError as exc:
         ai.note_error(db, "Messenger хариулт", exc)
         # still answer: the matching knowledge entry, or at least where to look
@@ -1268,6 +1268,7 @@ def verify(request: Request):
 
 
 def process(cfg: dict, data: dict, site: str) -> None:
+    started = time.monotonic()
     db = get_db()
     channel = "instagram" if data.get("object") == "instagram" else "messenger"
     for entry in data.get("entry") or []:
@@ -1285,7 +1286,8 @@ def process(cfg: dict, data: dict, site: str) -> None:
     try:  # learn from one staff answer that is waiting, if any (after the customer has been answered)
         from . import learn
 
-        learn.run(db, limit=1)
+        if time.monotonic() - started < 25:  # a slow reply already used the time: learning waits for the next one
+            learn.run(db, limit=1)
     except Exception as exc:  # noqa: BLE001 — learning must never break the chat
         print(f"[learn] {exc}", flush=True)
 

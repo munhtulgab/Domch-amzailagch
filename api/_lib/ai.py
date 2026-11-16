@@ -25,7 +25,10 @@ DEFAULT_PAUSE = 30
 # tokens per reply, which used up the free quota and made the light models time out.
 CONTEXT_BUDGET = 7000
 BRANCH_SOURCE = "Худалдаалах цэг"
-NO_THINKING: set = set()  # models that refuse a thinking setting (each refusal is a 400 and a second request)
+NO_THINKING: set = set()
+MODEL_TIMEOUT = 25.0  # seconds one model may take
+RETRY_PAUSE = 1.5  # seconds before asking a busy model again
+REPLY_BUDGET = 45.0  # seconds for a whole chat reply (the function may run 60)  # models that refuse a thinking setting (each refusal is a 400 and a second request)
 SKIP_MODEL = re.compile(r"image|tts|audio|live|embedding|vision|aqa|imagen|veo|robotics|computer|learnlm|gemma|nano", re.I)
 
 http = httpx.Client(timeout=10.0)  # replaced in tests
@@ -125,11 +128,11 @@ def list_models(key: str) -> list:
 
 
 def _model_rank(name: str):
-    """Stable before preview; Flash (fast enough for Messenger), then Flash-Lite, then others; newest first."""
+    """Stable before preview; Flash-Lite (≈500 free requests a day), then Flash (≈20), then others; newest first."""
     parts = name.split("-")
     nums = [int(n) for n in re.findall(r"\d+", parts[1] if len(parts) > 1 else "")[:2]]
     version = tuple(nums + [0] * (2 - len(nums)))
-    tier = 1 if "flash-lite" in name else 0 if "flash" in name else 2
+    tier = 0 if "flash-lite" in name else 1 if "flash" in name else 2
     unstable = 1 if re.search(r"preview|exp|latest", name) else 0
     return (unstable, tier, tuple(-v for v in version), name)
 
@@ -375,9 +378,10 @@ def to_contents(history: list, question: str) -> list:
     return turns
 
 
-def fallback_chain(cfg: dict, limit: int = 4) -> list:
-    """The chosen model first, then stable Flash-Lite and Flash models in turn: different models have separate
-    capacity, so when one is "experiencing high demand" another usually answers."""
+def fallback_chain(cfg: dict, limit: int = 3) -> list:
+    """Stable Flash-Lite models only, newest first (gemini-3.5-flash-lite, then gemini-3.1-flash-lite): on the free
+    plan they allow ~500 requests a day each, while Flash models allow ~20 — 10 customers writing twice used one up.
+    The chosen model leads when it is a Flash-Lite; a Flash model is used only when no Flash-Lite is available."""
     try:
         models = json.loads(cfg.get("models") or "[]")
     except ValueError:
@@ -385,12 +389,11 @@ def fallback_chain(cfg: dict, limit: int = 4) -> list:
     stable = [m for m in sorted(models, key=_model_rank)
               if "flash" in m and not re.search(r"preview|exp|latest|transcribe|omni|image|tts|live", m)]
     lites = [m for m in stable if "flash-lite" in m]
-    flashes = [m for m in stable if "flash-lite" not in m]
-    chain = [cfg["model"]] if cfg.get("model") else []
-    for pair in zip(lites + [None] * len(flashes), flashes + [None] * len(lites)):
-        for name in pair:
-            if name and name not in chain:
-                chain.append(name)
+    chosen = cfg.get("model") or ""
+    if lites:
+        chain = ([chosen] if "flash-lite" in chosen else []) + [m for m in lites if m != chosen]
+    else:
+        chain = ([chosen] if chosen else []) + [m for m in stable if m != chosen]
     return chain[:limit]
 
 
@@ -469,16 +472,26 @@ def _generate_any(cfg: dict, system: str, contents: list, budget: float, db, sta
     if not order:
         raise AIError("Gemini загвар сонгогдоогүй байна.")
     failures, last = [], None
-    for model in order:
+    attempts = [(m, 1) for m in order]
+    i = 0
+    while i < len(attempts):
+        model, tries_left = attempts[i]
+        i += 1
         left = budget - (time.monotonic() - started)
         if left < 1.5:
             failures.append("хугацаа дууссан")
             break
         try:
-            return generate(cfg["gemini_key"], model, system, contents, timeout=min(6.0, left)), model
+            # the light models answer well when given time: up to 25 s each (was 6 s, which cut them off)
+            return generate(cfg["gemini_key"], model, system, contents, timeout=min(MODEL_TIMEOUT, left)), model
         except AIError as exc:
             last = exc
             print(f"[ai] {model}: {exc}", flush=True)
+            busy = exc.status in (500, 502, 503, 504) or (exc.transient and exc.status != 429)
+            if busy and tries_left and budget - (time.monotonic() - started) > RETRY_PAUSE + 5:
+                time.sleep(RETRY_PAUSE)  # «high demand» or a timeout usually passes in a moment: the same model once more
+                attempts.insert(i, (model, 0))
+                continue
             if exc.status == 429:
                 rest_model(db, cfg, model, quota_wait(str(exc)))
             elif exc.status in (400, 404) and not re.search(r"api key|API_KEY|permission|location", str(exc), re.I):
@@ -529,7 +542,7 @@ HISTORY_CHARS = 500  # a long branch list sent earlier need not be sent back in 
 
 
 def answer(db, cfg: dict, question: str, history: list | None = None, site: str = "",
-           messenger_faq: list | None = None, timeout: float = 18.0) -> dict:
+           messenger_faq: list | None = None, timeout: float = REPLY_BUDGET) -> dict:
     history = [{**h, "text": str(h.get("text") or "")[:HISTORY_CHARS]} for h in (history or [])[-HISTORY_TURNS:]]
     recent = " ".join(h["text"] for h in history[-4:])
     items = select(knowledge_items(db, messenger_faq), question, context=recent)

@@ -22,6 +22,7 @@ KEY = "AIzaSyFakeGeminiKey0123456789abcdef"
 MODELS = [
     {"name": "models/gemini-3.5-flash", "supportedGenerationMethods": ["generateContent", "countTokens"]},
     {"name": "models/gemini-3.5-flash-lite", "supportedGenerationMethods": ["generateContent"]},
+    {"name": "models/gemini-3.1-flash-lite", "supportedGenerationMethods": ["generateContent"]},
     {"name": "models/gemini-3.6-flash-preview", "supportedGenerationMethods": ["generateContent"]},
     {"name": "models/gemini-3.5-flash-image", "supportedGenerationMethods": ["generateContent"]},
     {"name": "models/text-embedding-005", "supportedGenerationMethods": ["embedContent"]},
@@ -84,6 +85,9 @@ def client():
     return TestClient(app)
 
 
+ai.RETRY_PAUSE = 0  # no real waiting before the retry in tests
+
+
 def enable(client, **extra):
     body = {"gemini_key": KEY, "enabled": True, "instructions": "Үргэлж эелдэг бай."}
     body.update(extra)
@@ -102,8 +106,8 @@ def test_save_key_lists_models_and_hides_key(client, gem):
     res = enable(client)
     assert res.status_code == 200 and res.json()["check"]["ok"]
     cfg = res.json()["config"]
-    assert cfg["model"] == "gemini-3.5-flash" and cfg["enabled"]
-    assert cfg["models"] == ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.6-flash-preview"]
+    assert cfg["model"] == "gemini-3.5-flash-lite" and cfg["enabled"]  # Flash-Lite: ~500 free requests a day, not ~20
+    assert cfg["models"] == ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.5-flash", "gemini-3.6-flash-preview"]
     assert cfg["gemini_key"] == {"set": True, "hint": "…cdef"} and KEY not in json.dumps(cfg)
     assert cfg["counts"]["knowledge"] == 8  # starter entries
     assert KEY not in json.dumps(client.get("/api/content").json())
@@ -293,7 +297,7 @@ def test_page_inbox_reply_pauses_ai_and_own_echo_is_ignored(client, gem, fb):
 
 
 def test_reported_case_overloaded_model_falls_back(client, gem, fb):
-    """«This model is currently experiencing high demand» on the chosen model: the next stable Flash answers."""
+    """«This model is currently experiencing high demand»: asked once more, then the next Flash-Lite answers."""
     connect(client)
     enable(client)
     client.put("/api/admin/ai", json={"model": "gemini-3.5-flash-lite"}, headers=AUTH)
@@ -301,9 +305,10 @@ def test_reported_case_overloaded_model_falls_back(client, gem, fb):
     post(client, event(text="Хүүхэд хэрэглэж болох уу?", mid="o1"))
     assert texts(fb) == [gem.reply]
     tried = [c[1].rsplit("/", 1)[-1] for c in gem.calls if c[1].endswith(":generateContent")]
-    assert tried == ["gemini-3.5-flash-lite:generateContent", "gemini-3.5-flash:generateContent"]
+    assert tried == ["gemini-3.5-flash-lite:generateContent", "gemini-3.5-flash-lite:generateContent",
+                     "gemini-3.1-flash-lite:generateContent"]
     decision = client.get("/api/admin/messenger", headers=AUTH).json()["last_decision"]["reason"]
-    assert "gemini-3.5-flash," in decision
+    assert "gemini-3.1-flash-lite," in decision
 
 
 def test_all_models_overloaded_sends_the_holding_reply(client, gem, fb):
@@ -331,9 +336,13 @@ def test_fallback_chain_skips_previews_and_aliases():
     cfg = {"model": "gemini-flash-lite-latest", "models": json.dumps(
         ["gemini-4-argon", "gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash-lite", "gemini-3.5-transcribe",
          "gemini-3-flash-preview", "gemini-flash-latest", "gemini-omni-flash-preview", "gemini-flash-lite-latest"])}
-    assert ai.fallback_chain(cfg) == ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-3.7-flash"]
+    assert ai.fallback_chain(cfg) == ["gemini-flash-lite-latest", "gemini-3.5-flash-lite"]
+    # Flash models allow ~20 requests a day on the free plan: Flash-Lite (~500) only, even when Flash was chosen
     cfg["model"] = "gemini-3.8-flash"
-    assert ai.fallback_chain(cfg) == ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.7-flash"]
+    cfg["models"] = json.dumps(["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite"])
+    assert ai.fallback_chain(cfg) == ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite"]
+    cfg["models"] = json.dumps(["gemini-3.8-flash", "gemini-3.7-flash"])  # no Flash-Lite at all: Flash it is
+    assert ai.fallback_chain(cfg) == ["gemini-3.8-flash", "gemini-3.7-flash"]
 
 
 def test_quota_wait_is_read_from_the_error():
@@ -348,7 +357,7 @@ def test_reported_case_daily_quota_skips_the_model_and_lists_every_try(client, g
     """gemini-3.8-flash: «limit: 20 … per day … retry in 4h»: the other models answer, the spent one is skipped."""
     connect(client)
     enable(client)
-    spent = {"gemini-3.5-flash:"}
+    spent = {"gemini-3.5-flash-lite:"}
 
     def quota(request):
         if any(m in request.url.path for m in spent):
@@ -361,20 +370,20 @@ def test_reported_case_daily_quota_skips_the_model_and_lists_every_try(client, g
     post(client, event(text="Ам зайлагчийг залгиж болох уу?", mid="d1"))
     assert texts(fb)[-1] == gem.reply
     tried = [c[1].rsplit("/", 1)[-1].split(":")[0] for c in gem.calls if c[1].endswith(":generateContent")]
-    assert tried == ["gemini-3.5-flash-lite"]  # the spent model answered 429 before the fake saw it
+    assert tried == ["gemini-3.1-flash-lite"]  # the spent model answered 429 before the fake saw it
     resting = json.loads(ai.load(dbmod.get_db())["cooldown"])
-    assert list(resting) == ["gemini-3.5-flash"]
+    assert list(resting) == ["gemini-3.5-flash-lite"]
 
     gem.calls.clear()
     post(client, event(text="Шүд цайруулах уу?", mid="d2"))
     assert texts(fb)[-1] == gem.reply
     tried = [c[1].rsplit("/", 1)[-1].split(":")[0] for c in gem.calls if c[1].endswith(":generateContent")]
-    assert tried == ["gemini-3.5-flash-lite"]  # skipped straight to the model that still has quota
+    assert tried == ["gemini-3.1-flash-lite"]  # skipped straight to the model that still has quota
 
-    spent.add("gemini-3.5-flash-lite:")
+    spent.add("gemini-3.1-flash-lite:")
     post(client, event(text="Хүүхэд хэрэглэж болох уу?", mid="d3"))
     reason = client.get("/api/admin/messenger", headers=AUTH).json()["last_decision"]["reason"]
-    assert "gemini-3.5-flash-lite: хязгаар дууссан" in reason and "gemini-3.5-flash: хязгаар дууссан" in reason
+    assert "gemini-3.1-flash-lite: хязгаар дууссан" in reason and "gemini-3.5-flash-lite: хязгаар дууссан" in reason
 
 
 def test_latin_script_questions_find_the_knowledge_when_ai_is_down(client, gem, fb):
@@ -753,5 +762,5 @@ def test_a_refused_thinking_setting_is_remembered_and_a_400_model_is_skipped(cli
     finally:
         mod._request = original
     assert [t for _, t in calls] == [True, False, False]  # the second reply asks once, without thinking
-    assert cfg["model"] in json.loads(ai.load(db)["no_thinking"])
+    assert ai.fallback_chain(cfg)[0] in json.loads(ai.load(db)["no_thinking"])
     ai.NO_THINKING.clear()
