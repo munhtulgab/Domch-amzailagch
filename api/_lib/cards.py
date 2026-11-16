@@ -169,3 +169,24 @@ def which(topics: set, text: str) -> str:
 
 def for_payload(payload: str) -> str:
     return {PRICE_PAYLOAD: "price", INGREDIENTS_PAYLOAD: "ingredients", USAGE_PAYLOAD: "usage"}.get(payload, "")
+
+
+# «Үлдэгдэлгүй байна гэж байна», «2 эмийн сангаар орлоо байхгүй байна», «дууссан гэсэн»: the shop was out of stock
+STOCK = re.compile(
+    r"үлдэгдэл|uldegdel|vldegdel|дууссан|дуусчихсан|duussan|duuschihsan|duuschsan|орж ирээгүй|ireegui|"
+    r"(байхгүй|bhgui|bhgvi|baihgui|baihgvi|байхгуй|байдаггүй|bdaggui|baidaggui|bdgui)\s*"
+    r"(бна|байна|bna|baina|bn|gej|гэж|гэсэн|gesen|gsn|байсан|bsan|baisan|гэнэ|gene|gn)",
+    re.I,
+)
+STOCK_REPLY = ("Уучлаарай, тэр салбарт ДОМЧ түр дууссан байж магадгүй 🙏 Аль дүүрэг, хороонд байгаагаа бичвэл ойролцоох "
+               "өөр салбаруудыг хэлье. Эсвэл Emonos болон Health point эмийн сангийн онлайн захиалгаар авах боломжтой.")
+# «Ийм байгаад байна» right after a picture: about the picture, which only a person can look at
+ABOUT_PICTURE = re.compile(r"^\W*(ийм|iim|энэ|ene|ингээд|ingeed|ингэж|ingej|үүнийг|uunig|ийм юм|ene yum)\b", re.I)
+
+
+def stock_complaint(text: str, topics: set) -> bool:
+    """A shop ran out — but not «26-р хороонд салбар байхгүй юу?» (asking) nor a partnership offer."""
+    words = re.findall(r"\w+", (text or "").casefold())
+    asking = "?" in (text or "")[-2:] or (words and words[-1] in {"уу", "үү", "юу", "yu", "uu", "vv", "вэ", "бэ", "we",
+                                                                    "ve", "be", "бэ", "bnu", "bnuu", "бну"})
+    return bool(STOCK.search(text or "")) and "partner" not in topics and not asking

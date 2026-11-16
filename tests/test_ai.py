@@ -691,3 +691,25 @@ def test_learning_skips_saved_replies_old_answers_and_prices(client, gem, fb):
     notes = {r["psid"]: r["note"] for r in db.all("SELECT psid, note FROM ai_lessons")}
     assert notes["c0"].startswith("Олон харилцагчид") and notes["old"].startswith("Хуучин") and notes["pr"].startswith("Үнийг")
     assert db.one("SELECT COUNT(*) AS n FROM knowledge WHERE topic = 'learned'")["n"] == 0
+
+
+def test_reported_case_out_of_stock_and_picture_follow_up(client, gem, fb):
+    """Picture + «Iim bgaad bnaoo» got an AI guess about the picture; «Uldegdelgui bna gej bna» (with Gemini out of
+    quota) got «ДОМЧ бол жамц давсны уусмал…» because «gej» matched «ДОМЧ гэж юу вэ?»."""
+    from _lib import cards
+
+    connect(client)
+    enable(client)
+    post(client, event(psid="s1", text="Sain bnauu? Onliner zaxialj boldog uu?", mid="s0"))
+    image = event(psid="s1", text="", mid="s1")
+    image["entry"][0]["messaging"][0]["message"] = {"mid": "s1", "attachments": [{"type": "image", "payload": {"url": "https://x/y.jpg"}}]}
+    post(client, image)
+    calls = len(gem.calls)
+    post(client, event(psid="s1", text="Iim bgaad bnaoo", mid="s2"))
+    assert not any(c[1].endswith(":generateContent") for c in gem.calls[calls:])  # staff look at the picture
+    gem.status = 429
+    post(client, event(psid="s1", text="Uldegdelgui bna gej bna", mid="s3"))
+    msg = sent(fb)[-1]
+    assert msg["text"] == cards.STOCK_REPLY and [q["title"] for q in msg["quick_replies"]] == ["Хаанаас авах", "Онлайн захиалах"]
+    assert ai.local_answer(dbmod.get_db(), "Uldegdelgui bna gej bna") == ""
+    assert ai.local_answer(dbmod.get_db(), "Орц найрлага") != ""

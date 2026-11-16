@@ -991,9 +991,27 @@ def auto_respond(db, cfg: dict, psid: str, text: str, payload: str, welcomed_at,
             decide(db, psid, {LIKE_REPLY: "Like-д хариулсан.", FILE_REPLY: "Хавсралтыг хүлээн авснаа мэдэгдсэн.",
                               STICKER_REPLY: "Стикерт хариулсан.", HELP_REPLY: "Юугаар туслахыг асуусан."}[reply])
         return
+    topics = set(insights.classify(clean))
+    # «Үлдэгдэлгүй байна гэж байна»: the shop was out — say sorry, offer other branches and online, tell the team
+    if cards.stock_complaint(clean, topics):
+        if not replied_lately(db, psid, cards.STOCK_REPLY, minutes=60):
+            send_text(db, cfg, psid, cards.STOCK_REPLY, kind="auto", quick_replies=[
+                {"content_type": "text", "title": "Хаанаас авах", "payload": "WHERE_ASK"},
+                {"content_type": "text", "title": "Онлайн захиалах", "payload": cards.ONLINE_PAYLOAD}])
+        from . import push
+
+        push.notify("messages", "Нөөц дууссан гэж мэдэгдлээ", clean[:160], "/admin#/messenger", "stock", db)
+        decide(db, psid, "Салбарт дууссан гэж бичсэн: уучлалт, бусад салбар, онлайн захиалгыг санал болгож, багт мэдэгдсэн.")
+        return
+    # «Ийм байгаад байна» a moment after a picture: the attachment reply has said staff will look; no AI guess
+    last_two = db.all("SELECT text FROM messenger_messages WHERE psid = ? AND direction = 'in' ORDER BY id DESC LIMIT 2",
+                      (psid,))
+    if (len(last_two) == 2 and (last_two[1].get("text") or "").startswith("[") and "хавсралт" in (last_two[1]["text"] or "")
+            and cards.ABOUT_PICTURE.search(clean) and len(clean.split()) <= 6 and not topics - {"greeting", "other"}):
+        decide(db, psid, "Зургийн тухай бичсэн тул AI таамаглахгүй, ажилтан үзнэ.")
+        return
     # «Хүргэлт байгаа юу?»: the branches page and the pharmacies that take online orders (a fixed, exact answer);
     # a message that also asks something else goes to the AI, whose rules carry the same links
-    topics = set(insights.classify(clean))
     if "delivery" in topics and not topics - {"delivery", "where", "greeting", "other"}:
         reply = insights.delivery_reply(site)
         if replied_lately(db, psid, reply):

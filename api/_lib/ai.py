@@ -317,6 +317,8 @@ Instagram дээр харилцагчидтай чатладаг туслах. �
    Health point: https://hpoint.mn/categories/0?q=%D0%94%D0%BE%D0%BC%D1%87
 11. Хамтран ажиллах (борлуулах, нийлүүлэх, бөөний, хамтарсан контент) санал тавибал «Хамтран ажиллах хүсэлт»-ийг энэ холбоосоор
    бөглөхийг санал болго: {site}/?partner=pharmacy#partner
+13. Харилцагч салбарт дууссан, байхгүй байна гэж бичвэл уучлалт гуйгаад ойролцоох өөр салбар эсвэл Emonos, Health point-ийн
+   онлайн захиалгыг санал болго. Тэр салбарт хэзээ ирэхийг бүү амла.
 12. Тодорхой эмийн сан, дэлгүүр (Emonos, Health point гэх мэт) яагаад илүү үнэтэй вэ гэж асуувал: мэдлэгт байгаа үйлдвэрийн
    үнийг хэлээд, эмийн сан, дэлгүүр бүр жижиглэнгийн үнээ өөрсдөө тогтоодог тул үйлдвэрийн үнээс өндөр байж болохыг тайлбарла.
    Тухайн дэлгүүрийн үнийг мэдэхгүй бол таамаглаж бүү хэл."""
@@ -440,15 +442,23 @@ def generate_any(cfg: dict, system: str, contents: list, budget: float = 18.0, d
     raise AIError("Бүх загвар амжилтгүй (" + "; ".join(failures) + "). " + str(last), status=last.status, transient=True)
 
 
+# words that say nothing about the subject: «Uldegdelgui bna gej bna» matched «ДОМЧ гэж юу вэ?» on «гэж»
+FILLER = {_fold(w) for w in (
+    "гэж gej bna байна бнаа байгаа бгаа bga bgaa юу yu вэ we ve уу uu бэ be бол bol нь энэ ene тэр ter ийм iim "
+    "сайн sain snu бну bnuu нуу би bi та ta танай tanai манай manai хэрэгтэй байдаг bdag боло bolo болох boloh "
+    "болно bolno гээд geed гэсэн gesen гэсэн юм yum юмаа ymaa шүү shuu").split()}
+
+
 def local_answer(db, question: str, messenger_faq: list | None = None, site: str = "") -> str:
-    """No AI available: the knowledge entry that best matches the question, as is."""
-    q = _words(question)
+    """No AI available: the knowledge entry that best matches the question, as is — only when it really matches
+    (shares a word that means something); otherwise nothing, and the holding reply goes instead."""
+    q = {w for w in _words(question) if w not in FILLER}
     if not q:
         return ""
     prefix = {w[:5] for w in q}
 
     def hits(text):
-        return sum(1 for w in _words(text) if w in q or w[:5] in prefix)
+        return sum(1 for w in _words(text) if w not in FILLER and (w in q or w[:5] in prefix))
     best, score = None, 0
     for item in knowledge_items(db, messenger_faq):
         value = 3 * hits(item["title"]) + 3 * hits(item["keys"]) + hits(item["text"])
