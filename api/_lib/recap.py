@@ -1,4 +1,5 @@
-"""A short summary of one Messenger / Instagram conversation, written before every AI reply.
+"""A short summary of one customer's own Messenger / Instagram conversation (their psid only — never other
+customers' chats), written before every AI reply.
 
 The AI sees only the last few messages word for word (ai.HISTORY_TURNS); this summary carries what came before:
 where the customer is, which size they asked about, what they have asked so far, whether they want to sell it, and

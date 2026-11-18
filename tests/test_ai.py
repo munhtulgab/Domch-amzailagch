@@ -807,3 +807,25 @@ def test_a_new_conversation_has_no_summary(client, gem, fb):
     system = gem.calls[-1][3]["systemInstruction"]["parts"][0]["text"]
     assert "Энэ ярианд асуусан сэдэв" in system or "ЭНЭ ЯРИАНЫ ТОВЧ" not in system
     assert "Байршил:" not in system and "Аль хэдийн илгээсэн" not in system
+
+
+def test_the_summary_is_only_about_this_customer(client, gem, fb):
+    """Another customer's district, size, partner request or links never reach this customer's reply."""
+    from _lib import recap
+
+    connect(client)
+    enable(client)
+    db = dbmod.get_db()
+    for psid, direction, kind, text in [
+        ("other", "in", "message", "Би Баянзүрх дүүрэгт байна, 500 мл авна"),
+        ("other", "in", "message", "Эмийн сандаа авч борлуулах гэсэн юм 99112233"),
+        ("other", "out", "auto", "🤝 https://domch.gem.mn/?partner=pharmacy#partner"),
+        ("me", "in", "message", "Хан-Уул дүүрэгт байдаг"),
+        ("me", "in", "message", "250 мл хэд вэ?"),
+    ]:
+        db.run("INSERT INTO messenger_messages (psid, direction, kind, text) VALUES (?, ?, ?, ?)", (psid, direction, kind, text))
+    f = recap.facts(db, "me")
+    assert f["place"] == "Хан-Уул дүүрэг" and f["sizes"] == ["250 мл"]
+    assert not f["partner"] and not f["phone"] and not f["sent"]
+    assert all("Баянзүрх" not in q and "борлуулах" not in q for q in f["earlier"])
+    assert recap.notes(db, "nobody")["text"] == ""  # a new customer starts with nothing
