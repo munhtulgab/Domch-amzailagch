@@ -669,6 +669,12 @@ export function MessengerInbox({ call, onChange, openSettings, initial = '' }) {
                 {aiPaused > '2100' ? 'Энэ ярианд AI зогссон. Та өөрөө хариулна.' : `AI ${timeOf(aiPaused)} хүртэл түр зогссон (ажилтан хариулсан).`}
               </p>
             )}
+            {convo.recap && convo.recap.length > 0 && (
+              <details className="a-recap">
+                <summary><Icon name="spark" size={14} />Ярианы товч <span className="a-muted">· AI хариулт бүрт үүнийг уншдаг</span></summary>
+                <ul>{convo.recap.map((line) => <li key={line}>{line}</li>)}</ul>
+              </details>
+            )}
             <ol className="a-msgs" ref={endRef}>
               {convo.items.map((m, i) => {
                 const day = dayOf(m.created_at);

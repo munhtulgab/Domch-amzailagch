@@ -18,7 +18,7 @@ import httpx
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 
-from . import ai, cards, places, tone
+from . import ai, cards, places, recap, tone
 from .common import ago, fail, now_utc, public_links, require_admin, site_url
 from .db import DBError, get_db
 
@@ -870,7 +870,9 @@ def ai_reply(db, cfg: dict, psid: str, text: str, site: str, buttons: list | Non
             break
     typing(db, cfg, psid)
     try:
-        result = ai.answer(db, acfg, text, history[-8:], site=site, messenger_faq=parse_faq(cfg), timeout=ai.REPLY_BUDGET)
+        summary = recap.notes(db, psid, current=text, shown=min(len(history), ai.HISTORY_TURNS))
+        result = ai.answer(db, acfg, text, history[-8:], site=site, messenger_faq=parse_faq(cfg), timeout=ai.REPLY_BUDGET,
+                           notes=summary["text"], context=summary["context"])
     except ai.AIError as exc:
         ai.note_error(db, "Messenger хариулт", exc)
         # still answer: the matching knowledge entry, or at least where to look
@@ -1566,6 +1568,7 @@ def thread(psid: str, limit: int = Query(200, ge=1, le=500)):
         "can_reply": bool(last_in and last_in >= ago(hours=24)),
         "ai_on": ai.ready(ai.load(db)),
         "ai_paused_until": ai_paused_until(db, psid),
+        "recap": recap.notes(db, psid)["lines"],
     }
 
 

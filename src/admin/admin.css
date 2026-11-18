@@ -458,6 +458,10 @@ p.a-alert { margin: 0; font-size: 14px; }
 }
 .a-ai-chip.is-paused { background: var(--tint-2); color: var(--muted); }
 .a-ai-chip:disabled { opacity: 0.6; }
+.a-recap { padding: 6px 22px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.a-recap summary { cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: 600; padding: 2px 0; }
+.a-recap summary span { font-weight: 400; }
+.a-recap ul { margin: 6px 0 4px; padding-left: 18px; color: var(--muted); display: grid; gap: 3px; }
 .a-ai-state { margin: 0; padding: 8px 22px; background: var(--tint-2); color: var(--muted); font-size: 13px; border-bottom: 1px solid var(--line); }
 .a-msgs {
   flex: 1 1 auto; min-height: 0; list-style: none; margin: 0; padding: 16px 22px 8px; display: flex; flex-direction: column; gap: 2px;
@@ -498,7 +502,7 @@ p.a-alert { margin: 0; font-size: 14px; }
   .a-split--chat.has-sel .a-split__detail { min-height: 0; }
   .a-msgs { padding: 12px 14px 6px; }
   .a-msg { max-width: 86%; }
-  .a-ai-state { padding: 8px 14px; }
+  .a-ai-state, .a-recap { padding: 8px 14px; }
   .a-ai-chip { padding: 0 10px; }
   .a-ai-chip span { display: none; }
 }

@@ -311,7 +311,7 @@ def _pick(items: list, question: str, budget: int) -> list:
     return chosen
 
 
-def system_prompt(items: list, site: str, extra: str) -> str:
+def system_prompt(items: list, site: str, extra: str, notes: str = "") -> str:
     knowledge = "\n\n".join(f"### [{i['source']}] {i['title']}\n{i['text']}" for i in items) or "(хоосон)"
     rules = f"""Чи ДОМЧ брэндийн (жамц давсны уусмал, спирт агуулаагүй ам зайлагч, үйлдвэрлэгч Жем Интернэшнл ХХК) Facebook Messenger,
 Instagram дээр харилцагчидтай чатладаг туслах. Манай багийн найрсаг ажилтан чатлаж байгаа юм шиг амьд, энгийн ярь.
@@ -358,6 +358,10 @@ Instagram дээр харилцагчидтай чатладаг туслах. �
    Тухайн дэлгүүрийн үнийг мэдэхгүй бол таамаглаж бүү хэл."""
     if extra.strip():
         rules += f"\n\nАдминаас өгсөн нэмэлт заавар:\n{extra.strip()}"
+    if notes.strip():
+        rules += ("\n\nЭНЭ ЯРИАНЫ ТОВЧ (өмнөх бүх мессежээс гаргасан). Хариултаа үүнтэй уялдуул: харилцагчийн аль хэдийн хэлсэн"
+                  " байршил, хэмжээг дахин бүү асуу, аль хэдийн илгээсэн мэдээлэл, холбоосыг давтахгүй, өмнөх асуултыг"
+                  f" нь санаж хариул:\n{notes.strip()}")
     return f"{rules}\n\nМЭДЛЭГ:\n{knowledge}"
 
 
@@ -542,12 +546,15 @@ HISTORY_CHARS = 500  # a long branch list sent earlier need not be sent back in 
 
 
 def answer(db, cfg: dict, question: str, history: list | None = None, site: str = "",
-           messenger_faq: list | None = None, timeout: float = REPLY_BUDGET) -> dict:
+           messenger_faq: list | None = None, timeout: float = REPLY_BUDGET, notes: str = "",
+           context: str = "") -> dict:
+    """`notes` is the conversation summary (recap.notes), `context` words from it — the place named earlier — that
+    help choose the knowledge."""
     history = [{**h, "text": str(h.get("text") or "")[:HISTORY_CHARS]} for h in (history or [])[-HISTORY_TURNS:]]
-    recent = " ".join(h["text"] for h in history[-4:])
+    recent = " ".join([*(h["text"] for h in history[-4:]), context])
     items = select(knowledge_items(db, messenger_faq), question, context=recent)
     started = time.monotonic()
-    text, model = generate_any(cfg, system_prompt(items, site, cfg.get("instructions") or ""),
+    text, model = generate_any(cfg, system_prompt(items, site, cfg.get("instructions") or "", notes),
                                to_contents(history or [], question), budget=timeout, db=db)
     return {"answer": text, "sources": [f"{i['source']}: {i['title']}" for i in items],
             "ms": int((time.monotonic() - started) * 1000), "model": model}

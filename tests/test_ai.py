@@ -764,3 +764,46 @@ def test_a_refused_thinking_setting_is_remembered_and_a_400_model_is_skipped(cli
     assert [t for _, t in calls] == [True, False, False]  # the second reply asks once, without thinking
     assert ai.fallback_chain(cfg)[0] in json.loads(ai.load(db)["no_thinking"])
     ai.NO_THINKING.clear()
+
+
+def test_each_reply_reads_a_summary_of_the_whole_conversation(client, gem, fb):
+    """Only the last turns go to Gemini word for word; what was said before comes as a short summary."""
+    from _lib import recap
+
+    connect(client)
+    enable(client)
+    db = dbmod.get_db()
+    say = [("in", "message", "Сайн байна уу"),
+           ("in", "message", "Би Баянзүрх дүүрэгт амьдардаг"),
+           ("in", "message", "500 мл нь хэд вэ?"),
+           ("out", "auto", "🗂 Үнэ: 250 мл — 4 500₮ · 500 мл — 7 500₮"),
+           ("out", "ai", "Энэ нь үйлдвэрийн үнэ бөгөөд эмийн сан, дэлгүүрт үүнээс өндөр үнээр зарагдаж болно."),
+           ("in", "message", "Эмийн сандаа авч борлуулах гэсэн юм"),
+           ("out", "auto", "🤝 Хүсэлтээ бөглөнө үү: https://domch.gem.mn/?partner=pharmacy#partner")]
+    say += [("in", "message", f"Хүүхэд хэрэглэж болох уу {i}") if i % 2 == 0 else ("out", "ai", f"Болно {i}.")
+            for i in range(10)]
+    for direction, kind, text in say:
+        db.run("INSERT INTO messenger_messages (psid, direction, kind, text) VALUES ('s1', ?, ?, ?)", (direction, kind, text))
+
+    f = recap.facts(db, "s1", current="", shown=6)
+    assert f["place"] == "Баянзүрх дүүрэг" and f["sizes"] == ["500 мл"] and f["partner"] and not f["phone"]
+    assert "үнийн карт" in f["sent"] and "үйлдвэрийн үнийн сануулга" in f["sent"]
+    assert "«Хамтран ажиллах хүсэлт»-ийн холбоос" in f["sent"]
+    assert "Би Баянзүрх дүүрэгт амьдардаг" in " ".join(f["earlier"])  # older than what Gemini reads word for word
+
+    post(client, event(psid="s1", text="Шүдний буйланд нөлөөлөх үү?", mid="s1-new"))
+    system = gem.calls[-1][3]["systemInstruction"]["parts"][0]["text"]
+    assert "ЭНЭ ЯРИАНЫ ТОВЧ" in system and "Байршил: Баянзүрх дүүрэг" in system and "Сонирхсон хэмжээ: 500 мл" in system
+    assert "утасны дугаар үлдээгээгүй" in system and "Аль хэдийн илгээсэн" in system
+    # staff see the same summary beside the conversation
+    lines = client.get("/api/admin/messenger/threads/s1", headers=AUTH).json()["recap"]
+    assert any(line.startswith("Байршил: Баянзүрх") for line in lines)
+
+
+def test_a_new_conversation_has_no_summary(client, gem, fb):
+    connect(client)
+    enable(client)
+    post(client, event(psid="n1", text="Хүүхэд хэрэглэж болох уу?", mid="n1"))
+    system = gem.calls[-1][3]["systemInstruction"]["parts"][0]["text"]
+    assert "Энэ ярианд асуусан сэдэв" in system or "ЭНЭ ЯРИАНЫ ТОВЧ" not in system
+    assert "Байршил:" not in system and "Аль хэдийн илгээсэн" not in system
