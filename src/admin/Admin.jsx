@@ -873,7 +873,7 @@ function InboxBody({ kind, r }) {
         <Row label="Утас" value={r.phone} href={r.phone ? `tel:${r.phone.replace(/\s/g, '')}` : ''} />
         <Row label="И-мэйл" value={r.email} href={r.email ? `mailto:${r.email}` : ''} />
         <Row label="Байршил" value={r.location} />
-        {Object.entries(r.details || {}).filter(([k]) => k !== 'asked_phone').map(([k, v]) => <Row key={k} label={DETAIL_LABEL[k] || k} value={v} />)}
+        {Object.entries(r.details || {}).filter(([k]) => !['asked_phone', 'asked_location', 'got_location', 'place_from_chat'].includes(k)).map(([k, v]) => <Row key={k} label={DETAIL_LABEL[k] || k} value={v} />)}
         <Row label="Мессеж" value={r.message} />
       </dl>
     );

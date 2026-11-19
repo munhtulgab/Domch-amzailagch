@@ -99,6 +99,23 @@ def partner_kind(db, psid: str, channel: str) -> str:
     row = db.one("SELECT kind FROM partner_requests WHERE source_ref = ?", (_ref(psid, channel),))
     return (row or {}).get("kind") or ""
 THANK_PHONE = "Баярлалаа! Утасны дугаарыг тань ({phone}) хүлээн авлаа. Манай ажилтан удахгүй холбогдоно. 🙏"
+# after the phone: where the shop is, so staff know who covers it before they call
+ASK_LOCATION = ("📍 Таны эмийн сан, дэлгүүр аль дүүрэг, аймагт байрладаг вэ? Байгууллагынхаа нэр, хаягийг бичээд "
+                "үлдээвэл манай ажилтан илүү хурдан холбогдоно.")
+ASK_LOCATION_KNOWN = ("📍 Байршил: {place} гэж ойлголоо. Байгууллагынхаа нэр, дэлгэрэнгүй хаягийг бичээд үлдээвэл "
+                      "манай ажилтан илүү хурдан холбогдоно.")
+LOCATION_MARK = "📍"
+THANK_LOCATION = "Баярлалаа! Байршлын мэдээллийг тань хүлээн авлаа ({location}). Манай ажилтан удахгүй холбогдоно. 🙏"
+# a question asked instead of the address gets its answer, not «thanks for the location»
+NOT_LOCATION = {"price", "order", "delivery", "usage", "ingredients", "health", "stock", "info"}
+# what an address or a shop name has in it (a district or aimag is found by places.find_place)
+ADDRESS_WORDS = re.compile(
+    r"хороо|хороолол|гудамж|байр|тоот|давхар|хотхон|\bсум|\bбаг\b|дүүрэг|аймаг|\bхот|төв\b|центр|плаза|молл|зах\b|"
+    r"эмийн\s*сан|дэлгүүр|эмнэлэг|клиник|апотек|маркет|ххк|компани|"
+    r"khoroo|horoo|xoroo|gudamj|bair|toot|davhar|hothon|\bsum\b|duureg|aimag|\bhot\b|tuv\b|center|plaza|mall|"
+    r"emiin\s*san|delguur|emneleg|clinic|apotek|market|hhk|llc", re.I)
+# «Гэрээт борлуулагч болох уу?»: a question, not the address
+QUESTION_END = re.compile(r"(\?|\b(уу|үү|вэ|бэ|юу|юм\s+уу|we|ve|be|uu|yu)\s*[.!]*)\s*$|хаана|haana|\bhana", re.I)
 
 
 def find_phone(texts) -> str | None:
@@ -304,16 +321,77 @@ def _ref(psid: str, channel: str) -> str:
     return f"{'instagram' if channel == 'instagram' else 'messenger'}:{psid}"
 
 
+def _details(row) -> dict:
+    try:
+        return json.loads((row or {}).get("details") or "{}") or {}
+    except ValueError:
+        return {}
+
+
+def _request(db, psid: str, channel: str):
+    return db.one("SELECT id, phone, location, details FROM partner_requests WHERE source_ref = ?", (_ref(psid, channel),))
+
+
+def thanks_text(db, psid: str, channel: str, phone: str) -> str:
+    """The thanks for the phone, and — when the request does not say where the shop is yet — the question where it
+    is (asked once). A district or aimag named earlier in the chat is kept and only the name and address asked."""
+    thanks = THANK_PHONE.format(phone=pretty_phone(phone))
+    row = _request(db, psid, channel)
+    details = _details(row)
+    if not row or (row.get("location") and not details.get("place_from_chat")) or details.get("asked_location"):
+        return thanks
+    texts = [r["text"] for r in db.all("SELECT text FROM messenger_messages WHERE psid = ? AND direction = 'in'"
+                                       " ORDER BY id DESC LIMIT 30", (psid,))]
+    place = next((p for p in map(places.find_place, texts) if p), None)  # the latest place named
+    details["asked_location"] = "1"
+    if place:
+        details["place_from_chat"] = "1"
+    db.run("UPDATE partner_requests SET details = ?, location = COALESCE(location, ?) WHERE id = ?",
+           (json.dumps(details, ensure_ascii=False), place["label"] if place else None, row["id"]))
+    ask = ASK_LOCATION_KNOWN.format(place=place["label"]) if place else ASK_LOCATION
+    return f"{thanks.replace(' Манай ажилтан удахгүй холбогдоно. 🙏', '')}\n\n{ask}"
+
+
+def take_location(db, psid: str, channel: str, text: str) -> str:
+    """The answer to «where is your shop?» (the bot's last message): saved on the request. Returns what was saved,
+    or "" when this message is something else (a question, a sticker, another subject)."""
+    row = _request(db, psid, channel)
+    details = _details(row)
+    if not row or not details.get("asked_location") or details.get("got_location"):
+        return ""
+    last = db.one("SELECT text FROM messenger_messages WHERE psid = ? AND direction = 'out' ORDER BY id DESC LIMIT 1",
+                  (psid,)) or {}
+    if LOCATION_MARK not in (last.get("text") or ""):
+        return ""
+    answer = re.sub(r"\s+", " ", PHONE.sub("", str(text or ""))).strip(" ,.;")
+    place = places.find_place(answer)
+    asks = bool(QUESTION_END.search(answer)) or (bool(set(classify(answer)) & NOT_LOCATION) and not place)
+    looks_like = bool(place or ADDRESS_WORDS.search(answer))
+    if len(re.findall(r"[^\W\d_]", answer)) < 3 or asks or not looks_like or MEDIA.match(answer):
+        return ""
+    # «Номин эмийн сан, 3-р хороо» after the bot already heard «Баянзүрх»: keep both
+    guessed = row.get("location") if details.get("place_from_chat") else ""
+    location = f"{guessed} · {answer}" if guessed and not place else answer
+    details.pop("place_from_chat", None)
+    details["got_location"] = "1"
+    db.run("UPDATE partner_requests SET location = ?, details = ? WHERE id = ?",
+           (location[:300], json.dumps(details, ensure_ascii=False), row["id"]))
+    return location[:300]
+
+
 def on_message(db, psid: str, text: str, channel: str) -> str:
     """Called for each new incoming message. Returns what to say next, if anything:
-    'ask'    — a partnership message and no phone yet: ask for one (once per conversation);
-    'thanks' — the phone the request was waiting for has arrived;
-    ''       — nothing."""
+    'ask'      — a partnership message and no phone yet: ask for one (once per conversation);
+    'thanks'   — the phone the request was waiting for has arrived (thanks, then where the shop is);
+    'location' — the answer to «where is your shop?» was saved on the request;
+    ''         — nothing."""
+    ensure_partner_columns(db)
+    if take_location(db, psid, channel, text):
+        return "location"
     partner = "partner" in classify(text)
     phone = find_phone([text])
     if not partner and not phone:
         return ""
-    ensure_partner_columns(db)
     ref = _ref(psid, channel)
     if not partner:
         # a number sent later in the same conversation completes the request
@@ -333,9 +411,12 @@ def on_message(db, psid: str, text: str, channel: str) -> str:
     rows = db.all("SELECT text FROM messenger_messages WHERE psid = ? AND direction = 'in' ORDER BY created_at DESC LIMIT 30", (psid,))
     texts = [r["text"] for r in reversed(rows)]
     contact = db.one("SELECT name FROM messenger_contacts WHERE psid = ?", (psid,)) or {}
+    had = db.one("SELECT phone FROM partner_requests WHERE source_ref = ?", (ref,)) or {}
     record_partner(db, psid, contact.get("name"), channel, [t for t in texts if "partner" in classify(t)] or [text],
                    phone=find_phone(texts))
     row = db.one("SELECT id, phone, details FROM partner_requests WHERE source_ref = ?", (ref,))
+    if row and row["phone"] and phone and not had.get("phone"):
+        return "thanks"  # «Эмийн сандаа борлуулмаар байна 99112233»: the offer and the number together
     if not row or row["phone"]:
         return ""
     try:

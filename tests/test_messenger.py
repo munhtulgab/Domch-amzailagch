@@ -950,9 +950,18 @@ def test_chat_partner_request_asks_for_phone_once_and_saves_it(client, fb):
     before = len(sent_texts(fb))
     post_event(client, event(psid="w", text="9911 2233", mid="w3"))
     after = [m.get("text", "") for m in sent_texts(fb)][before:]
-    assert after == [insights.THANK_PHONE.format(phone="9911-2233")]  # just the thanks, no AI answer to a bare number
+    # just the thanks and where the shop is — no AI answer to a bare number
+    assert len(after) == 1 and after[0].startswith("Баярлалаа! Утасны дугаарыг тань (9911-2233) хүлээн авлаа.")
+    assert after[0].endswith(insights.ASK_LOCATION)
     row = dbmod.get_db().one("SELECT phone FROM partner_requests WHERE source_ref = 'messenger:w'")
     assert row["phone"] == "9911-2233"
+    before = len(sent_texts(fb))
+    post_event(client, event(psid="w", text="Сонгинохайрхан дүүрэг, 3-р хороо, Номин эмийн сан", mid="w4"))
+    after = [m.get("text", "") for m in sent_texts(fb)][before:]
+    # saved on the request and thanked — not taken as «which branches are in Сонгинохайрхан?»
+    assert after == [insights.THANK_LOCATION.format(location="Сонгинохайрхан дүүрэг, 3-р хороо, Номин эмийн сан")]
+    row = dbmod.get_db().one("SELECT location FROM partner_requests WHERE source_ref = 'messenger:w'")
+    assert row["location"] == "Сонгинохайрхан дүүрэг, 3-р хороо, Номин эмийн сан"
     shown = client.get("/api/admin/inbox/partners", headers=AUTH).json()["items"]
     assert [r["source_ref"] for r in shown] == ["messenger:w"]
 
@@ -968,7 +977,7 @@ def test_reported_case_phone_with_words_gets_one_thanks_and_joins_the_site_reque
     before = len(sent_texts(fb))
     post_event(client, event(psid="t", text="99216252 huselt ilgeesen", mid="t2"))
     after = [m.get("text", "") for m in sent_texts(fb)][before:]
-    assert after == [insights.THANK_PHONE.format(phone="9921-6252")]
+    assert len(after) == 1 and after[0].startswith("Баярлалаа! Утасны дугаарыг тань (9921-6252) хүлээн авлаа.")
     rows = dbmod.get_db().all("SELECT org, source_ref FROM partner_requests")
     assert rows == [{"org": "Номин эмийн сан", "source_ref": "messenger:t"}]
 
@@ -1115,3 +1124,30 @@ def test_usage_and_overview_cards(client, fb):
     assert cards.which(set(insights.classify("Үнийн мэдээлэл")), "Үнийн мэдээлэл") == "price"
     for text in ("Жирэмсэн үед хэрэглэж болох уу?", "Хэр удаан хадгалах вэ?", "Хүүхэд хэрэглэж болох уу?"):
         assert cards.which(set(insights.classify(text)), text) != "usage", text
+
+
+def test_partner_phone_then_location_asked_once_and_questions_still_answered(client, fb):
+    """After the phone the bot asks where the shop is; a district named before is kept, a question is answered."""
+    from _lib import insights
+
+    connect(client)
+    # the offer and the number in one message, the district already named
+    post_event(client, event(psid="l", text="Баянзүрхэд эмийн сантай", mid="l0"))
+    before = len(sent_texts(fb))
+    post_event(client, event(psid="l", text="Эмийн сандаа авч борлуулмаар байна 9911 4455", mid="l1"))
+    after = [m.get("text", "") for m in sent_texts(fb)][before:]
+    assert len(after) == 1 and "(9911-4455)" in after[0]
+    assert after[0].endswith(insights.ASK_LOCATION_KNOWN.format(place="Баянзүрх дүүрэг"))
+    db = dbmod.get_db()
+    assert db.one("SELECT location FROM partner_requests WHERE source_ref = 'messenger:l'")["location"] == "Баянзүрх дүүрэг"
+    post_event(client, event(psid="l", text="Энхжин эмийн сан, 26-р хороо", mid="l2"))
+    assert sent_texts(fb)[-1]["text"] == insights.THANK_LOCATION.format(location="Баянзүрх дүүрэг · Энхжин эмийн сан, 26-р хороо")
+    # asked once: a later address-like message is a normal message again
+    assert not insights.take_location(db, "l", "messenger", "Хан-Уул дүүрэгт бас салбартай")
+
+    # a question instead of the address is not saved as the address
+    post_event(client, event(psid="q", text="Бөөний үнээр авч зарах гэсэн юм", mid="q1"))
+    post_event(client, event(psid="q", text="88001122", mid="q2"))
+    assert sent_texts(fb)[-1]["text"].endswith(insights.ASK_LOCATION)
+    post_event(client, event(psid="q", text="Гэрээт борлуулагч болох уу", mid="q3"))
+    assert db.one("SELECT location FROM partner_requests WHERE source_ref = 'messenger:q'")["location"] is None
