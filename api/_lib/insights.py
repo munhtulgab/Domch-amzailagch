@@ -104,16 +104,18 @@ ASK_LOCATION = ("📍 Таны эмийн сан, дэлгүүр аль дүүр
                 "үлдээвэл манай ажилтан илүү хурдан холбогдоно.")
 ASK_LOCATION_KNOWN = ("📍 Байршил: {place} гэж ойлголоо. Байгууллагынхаа нэр, дэлгэрэнгүй хаягийг бичээд үлдээвэл "
                       "манай ажилтан илүү хурдан холбогдоно.")
-LOCATION_MARK = "📍"
+LOCATION_WINDOW_HOURS = 2  # answers to «where is your shop?» are taken this long after it…
+LOCATION_WINDOW_MESSAGES = 6  # …and for this many messages
+ADDED_LOCATION = "Нэмж бичсэн мэдээллийг тань хүсэлтэд нэмлээ. 🙏"
 THANK_LOCATION = "Баярлалаа! Байршлын мэдээллийг тань хүлээн авлаа ({location}). Манай ажилтан удахгүй холбогдоно. 🙏"
 # a question asked instead of the address gets its answer, not «thanks for the location»
 NOT_LOCATION = {"price", "order", "delivery", "usage", "ingredients", "health", "stock", "info"}
 # what an address or a shop name has in it (a district or aimag is found by places.find_place)
 ADDRESS_WORDS = re.compile(
     r"хороо|хороолол|гудамж|байр|тоот|давхар|хотхон|\bсум|\bбаг\b|дүүрэг|аймаг|\bхот|төв\b|центр|плаза|молл|зах\b|"
-    r"эмийн\s*сан|дэлгүүр|эмнэлэг|клиник|апотек|маркет|ххк|компани|"
+    r"салбар|эмийн\s*сан|дэлгүүр|эмнэлэг|клиник|апотек|маркет|ххк|компани|"
     r"khoroo|horoo|xoroo|gudamj|bair|toot|davhar|hothon|\bsum\b|duureg|aimag|\bhot\b|tuv\b|center|plaza|mall|"
-    r"emiin\s*san|delguur|emneleg|clinic|apotek|market|hhk|llc", re.I)
+    r"salbar|emiin\s*san|delguur|emneleg|clinic|apotek|market|hhk|llc", re.I)
 # «Гэрээт борлуулагч болох уу?»: a question, not the address
 QUESTION_END = re.compile(r"(\?|\b(уу|үү|вэ|бэ|юу|юм\s+уу|we|ve|be|uu|yu)\s*[.!]*)\s*$|хаана|haana|\bhana", re.I)
 
@@ -352,31 +354,59 @@ def thanks_text(db, psid: str, channel: str, phone: str) -> str:
     return f"{thanks.replace(' Манай ажилтан удахгүй холбогдоно. 🙏', '')}\n\n{ask}"
 
 
+def _location_ask(db, psid: str):
+    """The bot's «where is your shop?» in this chat (not a branch list, which also starts with 📍)."""
+    return db.one("SELECT id, created_at FROM messenger_messages WHERE psid = ? AND direction = 'out'"
+                  " AND (text LIKE ? OR text LIKE ?) ORDER BY id DESC LIMIT 1",
+                  (psid, f"%{ASK_LOCATION[:24]}%", f"%{ASK_LOCATION_KNOWN.split('{')[0]}%"))
+
+
 def take_location(db, psid: str, channel: str, text: str) -> str:
-    """The answer to «where is your shop?» (the bot's last message): saved on the request. Returns what was saved,
-    or "" when this message is something else (a question, a sticker, another subject)."""
+    """An answer to «where is your shop?», saved on the request. People answer in several messages, and an AI reply
+    to one of them may come in between («5salbar bgaa», «BGD-2 SXD-3», «Батчингүрэн ХХК Увидаст эмийн сан»), so every
+    address-like message within LOCATION_WINDOW of the question counts, not only the one right after it.
+    Returns 'first' (the first answer), 'more' (added to it) or "" (a question, a sticker, another subject)."""
     row = _request(db, psid, channel)
     details = _details(row)
-    if not row or not details.get("asked_location") or details.get("got_location"):
+    if not row or not details.get("asked_location"):
         return ""
-    last = db.one("SELECT text FROM messenger_messages WHERE psid = ? AND direction = 'out' ORDER BY id DESC LIMIT 1",
-                  (psid,)) or {}
-    if LOCATION_MARK not in (last.get("text") or ""):
+    ask = _location_ask(db, psid)
+    if not ask or str(ask.get("created_at") or "") < ago(hours=LOCATION_WINDOW_HOURS):
+        return ""
+    after = db.one("SELECT COUNT(*) AS n FROM messenger_messages WHERE psid = ? AND direction = 'in' AND id > ?",
+                   (psid, ask["id"])) or {}
+    if (after.get("n") or 0) > LOCATION_WINDOW_MESSAGES:
         return ""
     answer = re.sub(r"\s+", " ", PHONE.sub("", str(text or ""))).strip(" ,.;")
     place = places.find_place(answer)
     asks = bool(QUESTION_END.search(answer)) or (bool(set(classify(answer)) & NOT_LOCATION) and not place)
     looks_like = bool(place or ADDRESS_WORDS.search(answer))
-    if len(re.findall(r"[^\W\d_]", answer)) < 3 or asks or not looks_like or MEDIA.match(answer):
+    if len(re.findall(r"[^\W\d_]", answer)) < 2 or asks or not looks_like or MEDIA.match(answer):
         return ""
+    if details.get("got_location"):
+        known = row.get("location") or ""
+        if answer.casefold() not in known.casefold():
+            db.run("UPDATE partner_requests SET location = ? WHERE id = ?", (f"{known}; {answer}"[:500], row["id"]))
+        return "more"
     # «Номин эмийн сан, 3-р хороо» after the bot already heard «Баянзүрх»: keep both
     guessed = row.get("location") if details.get("place_from_chat") else ""
     location = f"{guessed} · {answer}" if guessed and not place else answer
     details.pop("place_from_chat", None)
     details["got_location"] = "1"
     db.run("UPDATE partner_requests SET location = ?, details = ? WHERE id = ?",
-           (location[:300], json.dumps(details, ensure_ascii=False), row["id"]))
-    return location[:300]
+           (location[:500], json.dumps(details, ensure_ascii=False), row["id"]))
+    return "first"
+
+
+def added_location_once(db, psid: str, channel: str) -> bool:
+    """True the first time more address details are added — the one time they are acknowledged."""
+    row = _request(db, psid, channel)
+    details = _details(row)
+    if not row or details.get("added_location"):
+        return False
+    details["added_location"] = "1"
+    db.run("UPDATE partner_requests SET details = ? WHERE id = ?", (json.dumps(details, ensure_ascii=False), row["id"]))
+    return True
 
 
 def on_message(db, psid: str, text: str, channel: str) -> str:
@@ -384,10 +414,12 @@ def on_message(db, psid: str, text: str, channel: str) -> str:
     'ask'      — a partnership message and no phone yet: ask for one (once per conversation);
     'thanks'   — the phone the request was waiting for has arrived (thanks, then where the shop is);
     'location' — the answer to «where is your shop?» was saved on the request;
+    'location_more' — more of that answer (another message about the same shop) was added;
     ''         — nothing."""
     ensure_partner_columns(db)
-    if take_location(db, psid, channel, text):
-        return "location"
+    taken = take_location(db, psid, channel, text)
+    if taken:
+        return "location" if taken == "first" else "location_more"
     partner = "partner" in classify(text)
     phone = find_phone([text])
     if not partner and not phone:

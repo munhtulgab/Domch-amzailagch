@@ -1142,8 +1142,13 @@ def test_partner_phone_then_location_asked_once_and_questions_still_answered(cli
     assert db.one("SELECT location FROM partner_requests WHERE source_ref = 'messenger:l'")["location"] == "Баянзүрх дүүрэг"
     post_event(client, event(psid="l", text="Энхжин эмийн сан, 26-р хороо", mid="l2"))
     assert sent_texts(fb)[-1]["text"] == insights.THANK_LOCATION.format(location="Баянзүрх дүүрэг · Энхжин эмийн сан, 26-р хороо")
-    # asked once: a later address-like message is a normal message again
-    assert not insights.take_location(db, "l", "messenger", "Хан-Уул дүүрэгт бас салбартай")
+    # more about the same shop soon after is added to it (acknowledged once), not taken as a branch question
+    before = len(sent_texts(fb))
+    post_event(client, event(psid="l", text="Хан-Уул дүүрэгт бас салбартай", mid="l3"))
+    post_event(client, event(psid="l", text="ХУД 11-р хороо", mid="l4"))
+    assert [m.get("text", "") for m in sent_texts(fb)][before:] == [insights.ADDED_LOCATION]
+    assert db.one("SELECT location FROM partner_requests WHERE source_ref = 'messenger:l'")["location"] == \
+        "Баянзүрх дүүрэг · Энхжин эмийн сан, 26-р хороо; Хан-Уул дүүрэгт бас салбартай; ХУД 11-р хороо"
 
     # a question instead of the address is not saved as the address
     post_event(client, event(psid="q", text="Бөөний үнээр авч зарах гэсэн юм", mid="q1"))
@@ -1151,3 +1156,29 @@ def test_partner_phone_then_location_asked_once_and_questions_still_answered(cli
     assert sent_texts(fb)[-1]["text"].endswith(insights.ASK_LOCATION)
     post_event(client, event(psid="q", text="Гэрээт борлуулагч болох уу", mid="q3"))
     assert db.one("SELECT location FROM partner_requests WHERE source_ref = 'messenger:q'")["location"] is None
+
+
+def test_reported_case_location_answer_in_several_messages_with_an_ai_reply_between(client, fb, monkeypatch):
+    """«5salbar bgaa», «BGD-2 SXD-3», then — after an AI reply — «Батчингүрэн ХХК Увидаст эмийн сан» was asked
+    «which district?» and sent a branch list. All three belong to the request."""
+    from _lib import insights
+
+    connect(client)
+    db = dbmod.get_db()
+    post_event(client, event(psid="r", text="Hi salbar emiin san ba gereeldeguu niiluulehuu", mid="r1"))
+    post_event(client, event(psid="r", text="88118156", mid="r2"))
+    assert sent_texts(fb)[-1]["text"].endswith(insights.ASK_LOCATION)
+    post_event(client, event(psid="r", text="5salbar bgaa", mid="r3"))
+    # an AI reply lands between the answers
+    db.run("INSERT INTO messenger_messages (psid, direction, kind, text) VALUES ('r', 'out', 'ai', 'Зүгээр ээ 🙂')")
+    post_event(client, event(psid="r", text="BGD-2 \nSXD-3", mid="r4"))
+    before = len(sent_texts(fb))
+    post_event(client, event(psid="r", text="Батчингүрэн ХХК Увидаст эмийн сан", mid="r5"))
+    assert sent_texts(fb)[before:] == []  # no «which district?», no branch list
+    row = db.one("SELECT location FROM partner_requests WHERE source_ref = 'messenger:r'")
+    assert row["location"] == "5salbar bgaa; BGD-2 SXD-3; Батчингүрэн ХХК Увидаст эмийн сан"
+    # a question is still answered normally, and long after the window the bot is back to normal
+    assert not insights.take_location(db, "r", "messenger", "Үнэ хэд вэ?")
+    for i in range(6):
+        db.run("INSERT INTO messenger_messages (psid, direction, kind, text) VALUES ('r', 'in', 'message', ?)", (f"x{i}",))
+    assert not insights.take_location(db, "r", "messenger", "Баянгол")
