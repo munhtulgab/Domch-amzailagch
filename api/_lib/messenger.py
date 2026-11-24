@@ -429,6 +429,13 @@ def connect(db, cfg: dict, request: Request) -> list:
         info = graph("GET", "debug_token", f"{cfg['app_id']}|{cfg['app_secret']}",
                      {"input_token": cfg["page_token"]}).get("data") or {}
     except GraphError as exc:
+        if "deleted" in str(exc).lower() or "removed" in str(exc).lower():
+            # Meta answers this for an app that was removed: its ID and secret are right, the app itself is gone
+            step("token", "Meta app", False,
+                 f"Энэ App ID-тай ({cfg['app_id']}) Meta app устгагдсан байна — App ID, App Secret буруу биш. "
+                 "developers.facebook.com/apps дээр app-аа сэргээх (Restore) эсвэл шинэ app үүсгээд шинэ App ID, App Secret,"
+                 " Page token-оо оруулна уу. Устгагдсан app-ын бүх token, webhook ажиллахгүй." + _detail(exc))
+            return steps
         step("token", "App ID, App Secret", False,
              "App ID эсвэл App Secret буруу байна. App settings → Basic хэсгээс дахин хуулна уу." + _detail(exc))
         return steps
